@@ -1,0 +1,28 @@
+# 系统与工具产物
+*.log
+*.tmp
+*.bak
+*.swp
+.DS_Store
+Thumbs.db
+
+# 构建与依赖目录
+node_modules/
+dist/
+build/
+out/
+target/
+.cache/
+venv/
+.venv/
+__pycache__/
+
+# 编辑器与 IDE
+.vscode/
+.idea/
+*.iml
+
+# 本地环境与密钥
+.env
+.env.*
+*.local
