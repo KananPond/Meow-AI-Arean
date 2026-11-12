@@ -3,7 +3,7 @@
 只读，不写任何文件。赛事组织方可用 ../开赛.py 重置、暂停、恢复计时；
 暂停/恢复会把本文件的“解压时刻”同步到赛务记录中的逻辑起点。
 
-默认赛程：60 分钟是目标完成时间，90 分钟是强制收卷时间。
+默认赛程：90 分钟是目标完成时间，120 分钟是强制收卷时间。
 """
 
 from __future__ import annotations
@@ -13,8 +13,8 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-TARGET_MINUTES = 60
-LIMIT_MINUTES = 90
+TARGET_MINUTES = 90
+LIMIT_MINUTES = 120
 HERE = Path(__file__).resolve()
 
 

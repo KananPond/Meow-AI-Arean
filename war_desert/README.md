@@ -18,11 +18,11 @@ python -X utf8 开赛.py                  # 组织方开始/重置计时
 python -X utf8 开赛.py --status         # 查看计时
 python -X utf8 开赛.py --pause --note="原因"
 python -X utf8 开赛.py --resume
-python -X utf8 开赛.py --freeze-due     # 到 90 分钟后强制收卷
+python -X utf8 开赛.py --freeze-due     # 到 120 分钟后强制收卷
 python -X utf8 开赛.py --freeze         # 立即收卷
 ```
 
-- 默认 60 分钟目标、90 分钟强制收卷；
+- 默认 90 分钟目标、120 分钟强制收卷；
 - `clock.py` 只读，从文件解压/重置后的创建时刻起算；
 - 权威计时与暂停审计保存在 `赛务记录.json`；
 - 收卷文件为 `workspace/submission/decide.go`；

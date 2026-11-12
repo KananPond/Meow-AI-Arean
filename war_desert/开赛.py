@@ -14,11 +14,11 @@
   python -X utf8 开赛.py --pause=14:33 --note="模型限额"
   python -X utf8 开赛.py --resume        恢复计时
   python -X utf8 开赛.py --freeze        立即冻结 decide.go
-  python -X utf8 开赛.py --freeze-due    只冻结已到 90 分钟的目录
+  python -X utf8 开赛.py --freeze-due    只冻结已到 120 分钟的目录
   python -X utf8 开赛.py --all --status  查看全部选手目录
   python -X utf8 开赛.py --all --freeze-due
 
-默认时间：60 分钟为目标完成时间，90 分钟为强制收卷。超过 90 分钟仍会冻结
+默认时间：90 分钟为目标完成时间，120 分钟为强制收卷。超过 120 分钟仍会冻结
 当前文件以便留档，但记录 accepted=false，正式成绩不计。
 
 目标目录默认是 war_desert/workspace；未来多位选手可放在 war_desert/bots/<名字>/workspace
@@ -39,8 +39,8 @@ from datetime import datetime
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-TARGET_MINUTES = 60
-LIMIT_MINUTES = 90
+TARGET_MINUTES = 90
+LIMIT_MINUTES = 120
 SUBMISSION_REL = Path("workspace") / "submission" / "decide.go"
 CLOCK_REL = Path("workspace") / "clock.py"
 SERVICE_LOG = HERE / "赛务记录.json"
@@ -431,7 +431,7 @@ def main() -> int:
     ap.add_argument("--note", default="", metavar="说明", help="暂停原因，写入赛务记录")
     ap.add_argument("--resume", action="store_true", help="恢复计时")
     ap.add_argument("--freeze", action="store_true", help="立即冻结 decide.go 并记录哈希")
-    ap.add_argument("--freeze-due", action="store_true", help="只冻结已到 90 分钟的目录")
+    ap.add_argument("--freeze-due", action="store_true", help="只冻结已到 120 分钟的目录")
     ap.add_argument("--force", action="store_true", help="允许覆盖已有收卷记录")
     ap.add_argument("--all", action="store_true", help="作用于全部选手目录")
     args = ap.parse_args()

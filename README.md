@@ -40,7 +40,7 @@ npm --prefix MVP test
 
 - 选手自查时间：`python -X utf8 war_desert/workspace/clock.py`
 - 组织方开赛/暂停/恢复/收卷：`python -X utf8 war_desert/开赛.py`
-- 默认 60 分钟目标、90 分钟强制收卷；
+- 默认 90 分钟目标、120 分钟强制收卷；
 - 权威记录保存在 `war_desert/赛务记录.json`；
 - 收卷对象是 `war_desert/workspace/submission/decide.go`；
 - 到点冻结会记录 SHA-256、用时、accepted、缺件状态，超时或未提交均不计正式成绩。
