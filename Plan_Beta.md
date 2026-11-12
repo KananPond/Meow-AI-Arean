@@ -114,6 +114,23 @@ schema 必须覆盖：字段名称、类型、可选性、数组形状、枚举�
 - 超时的回复不得进入当前或后续 tick；`ORDER_LATENCY = 1` 是协议保证，不得受机器负载影响。
 - 换边必须重启 Bot 进程，禁止跨局保留内存状态。
 
+### 3.5 开发用时与强制收卷
+
+开发阶段的“比赛时间”与单局 `DECIDE_MS` 是两套计时，不得混用：
+
+- 选手包必须包含 `workspace/clock.py`，供模型随时查看开发已用时间、目标时间和强制收卷时间。
+- 组织方使用 `war_desert/开赛.py` 开赛、暂停、恢复和收卷；权威记录写入 `war_desert/赛务记录.json`，`clock.py` 是选手侧展示，不作为最终审计依据。
+- 默认赛程：60 分钟为目标完成时间，90 分钟为强制收卷；到点后即使仍可留档，也必须标记 `accepted=false`。
+- 收卷对象是 `workspace/submission/decide.go`；强制收卷时复制到 `<选手目录>/交卷/decide.go`，记录 SHA-256、字节数、用时、accepted 和缺失状态。
+- 未找到 `decide.go` 也必须生成收卷记录，且 `accepted=false`、`missing_submission=true`。
+- 暂停/恢复必须写入赛务记录；暂停期间不增长已用时间，恢复后接续原计时。
+- 选手不得修改 `clock.py` 或赛务记录；组织方重置计时时必须保留重开、暂停和收卷历史。
+
+当前工具实现见：
+
+- 选手侧：`war_desert/workspace/clock.py`
+- 组织侧：`war_desert/开赛.py`
+
 ---
 
 ## 4. Go 目标架构

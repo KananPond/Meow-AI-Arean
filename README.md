@@ -36,6 +36,17 @@ npm --prefix MVP test
 
 期望：HEAD 为 `288db07f164bc6c680a2d878c47153804d3fdcab`；语法检查和 10 个测试套件全部通过。详细口径见 [ORACLE.md](ORACLE.md)。
 
+## 赛事计时与强制收卷
+
+- 选手自查时间：`python -X utf8 war_desert/workspace/clock.py`
+- 组织方开赛/暂停/恢复/收卷：`python -X utf8 war_desert/开赛.py`
+- 默认 60 分钟目标、90 分钟强制收卷；
+- 权威记录保存在 `war_desert/赛务记录.json`；
+- 收卷对象是 `war_desert/workspace/submission/decide.go`；
+- 到点冻结会记录 SHA-256、用时、accepted、缺件状态，超时或未提交均不计正式成绩。
+
+详细契约见 [Plan_Beta.md](Plan_Beta.md) §3.5。
+
 ## 当前规则快照
 
 以 [Plan_Beta.md](Plan_Beta.md) §2 为准：

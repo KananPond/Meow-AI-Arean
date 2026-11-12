@@ -10,6 +10,25 @@
 
 本目录按正式版规划保留，但本轮只做迁移准备，不启动 Go 实现。在协议 schema、golden trace、进程隔离设计和测试门禁完成前，不先写引擎代码，避免把冻结 MVP 的结构债翻译进正式版。
 
+## 当前已预置的赛事计时工具
+
+```bash
+python -X utf8 workspace/clock.py       # 选手查看已用时间、目标和强制收卷时刻
+python -X utf8 开赛.py                  # 组织方开始/重置计时
+python -X utf8 开赛.py --status         # 查看计时
+python -X utf8 开赛.py --pause --note="原因"
+python -X utf8 开赛.py --resume
+python -X utf8 开赛.py --freeze-due     # 到 90 分钟后强制收卷
+python -X utf8 开赛.py --freeze         # 立即收卷
+```
+
+- 默认 60 分钟目标、90 分钟强制收卷；
+- `clock.py` 只读，从文件解压/重置后的创建时刻起算；
+- 权威计时与暂停审计保存在 `赛务记录.json`；
+- 收卷文件为 `workspace/submission/decide.go`；
+- 冻结副本与哈希写入 `<目录>/交卷/`；
+- 超时、缺件或已无法找到提交都会生成 `accepted=false` 的留档记录。
+
 ## 未来代码边界
 
 正式实现应按以下层次组织，详细依赖规则见 `Plan_Beta.md` §4：
