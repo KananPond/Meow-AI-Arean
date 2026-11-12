@@ -25,7 +25,7 @@ bots/
 ## 重建
 
 ```bash
-cd 社区比赛__WoD
+cd war_of_desert
 go run ./cmd/arena build
 ```
 

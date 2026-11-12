@@ -34,7 +34,7 @@ go run ./cmd/arena check -seed 20261109
 go run ./cmd/arena check -a bots/bin/submission.exe -b bots/bin/nomad.exe -seed 20261110
 ```
 
-以上命令都在仓库根目录执行。
+以上命令都在 `war_of_desert/` 目录执行。
 
 ## 计时
 

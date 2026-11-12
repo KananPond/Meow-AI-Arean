@@ -170,7 +170,7 @@ go build -o bots/bin/submission.exe ./workspace/submission
 ## 9. 自检
 
 ```bash
-cd 社区比赛__WoD
+cd war_of_desert
 go build -o bots/bin/submission.exe ./workspace/submission
 go run ./cmd/arena check -seed 20261109
 ```

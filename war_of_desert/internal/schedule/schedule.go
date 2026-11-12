@@ -7,7 +7,7 @@ import (
 	"os"
 )
 
-// Entry 是一名参赛选手。Bin 是已编译程序的路径（相对仓库根目录）。
+// Entry 是一名参赛选手。Bin 是已编译程序的路径（相对 war_of_desert 目录）。
 type Entry struct {
 	Name   string `json:"name"`
 	Author string `json:"author,omitempty"`

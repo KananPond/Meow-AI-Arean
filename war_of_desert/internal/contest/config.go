@@ -41,7 +41,7 @@ type Config struct {
 	Verify  bool             `json:"verify"`
 }
 
-// Load 读取配置。root 是仓库根目录（配置文件的上一级）。
+// Load 读取配置。root 是 war_of_desert 目录（配置文件的上一级）。
 func Load(path string) (*Config, string, error) {
 	abs, err := filepath.Abs(path)
 	if err != nil {

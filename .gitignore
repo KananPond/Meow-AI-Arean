@@ -32,5 +32,5 @@ __pycache__/
 /Dev/模板/
 
 # 正式赛构建产物与可重建回放（源码、赛程、结果、成绩仍入库）
-/bots/bin/
-/results/*/回放/
+/war_of_desert/bots/bin/
+/war_of_desert/results/*/回放/

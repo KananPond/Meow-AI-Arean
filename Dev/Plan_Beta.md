@@ -1,8 +1,8 @@
 # Desert Arena 正式版规格与迁移计划 v1.0
 
 > **状态：已生效基线**（2026-11-12）
-> **实施状态**：赛制层 v1.0 已在仓库根目录落地并跑完第 1 季基准赛；引擎仍由冻结 oracle 宿主承载，§6.2 Go 引擎门禁未宣称通过。
-> **路径说明（2026-11-12 目录重排）**：正式赛已移到仓库根目录；`MVP/`、`Docs/`、`Plan_*.md`、历史报告与 `模板/` 已移入 `Dev/`。本文中 `war_desert/` 均指仓库根目录，`MVP/` 均指 `Dev/MVP/`；命令若写 `git -C MVP`，请改 `git -C Dev/MVP`。
+> **实施状态**：赛制层 v1.0 已在 `war_of_desert/` 落地并跑完第 1 季基准赛；引擎仍由冻结 oracle 宿主承载，§6.2 Go 引擎门禁未宣称通过。
+> **路径说明（2026-11-12 目录重排）**：正式赛在 `war_of_desert/`；`MVP/`、`Docs/`、`Plan_*.md`、历史报告与 `模板/` 已移入 `Dev/`。本文中 `war_desert/` 均指 `war_of_desert/`，`MVP/` 均指 `Dev/MVP/`；命令若写 `git -C MVP`，请改 `git -C Dev/MVP`。
 > **取代关系**：本文取代 `Plan_Alpha.md` 与 `MVP_plan.md` 的未完成规划内容；后两者仅保留为历史资料。
 > **冻结预言机**：`MVP/` 自提交 `288db07f164bc6c680a2d878c47153804d3fdcab` 起冻结，作为规则语义、golden trace 与差分对拍的唯一 JS 参考实现。
 > **冻结纪律**：不得为了“顺手修复”改动冻结 MVP。发现疑似缺陷时，先写入本文“已知偏差登记”，再由 Go 正式版按登记结果决定是否复刻或修正。
@@ -229,7 +229,7 @@ v1.0 采用：
 - 覆盖率报告不依赖修改冻结 MVP；行覆盖之外至少包含分支覆盖。
 - 正式比赛配置、地图生成器、视野开关、seed、结果和随机源全部可复现。
 
-**当前口径（2026-11-12）**：上述门禁未全部满足。正式赛使用冻结 oracle 引擎，仓库根目录只落地了赛制与执行链；在 Go 引擎通过全部门禁前，不得宣称可替代 oracle。
+**当前口径（2026-11-12）**：上述门禁未全部满足。正式赛使用冻结 oracle 引擎，`war_of_desert/` 只落地了赛制与执行链；在 Go 引擎通过全部门禁前，不得宣称可替代 oracle。
 
 ---
 
@@ -259,7 +259,7 @@ v1.0 采用：
 
 ### 7.1 已落地：正式赛赛制层（2026-11-12）
 
-仓库根目录已从空骨架变为可开赛的正式版执行链，但这**不等于** Go 引擎迁移完成：
+`war_of_desert/` 已从空骨架变为可开赛的正式版执行链，但这**不等于** Go 引擎迁移完成：
 
 - Go 执行链：`cmd/arena`（build / plan / run / rate / check / selftest）+ `internal/{protocol,engine,judge,schedule,rating,contest}`；
 - 引擎宿主：`engine/oracle_host.js` 在独立进程承载 `MVP@288db07` 只读快照，命令流与 §4 的 `protocol/engine/scoring/io` 边界对齐；
@@ -311,7 +311,7 @@ v1.0 采用：
 
 | 路径 | 当前职责 |
 |---|---|
-| 根目录（`cmd/ internal/ engine/ workspace/ tournament/`） | Go 正式赛执行链、选手包与赛季产物；引擎仍由冻结 oracle 宿主承载，Go 引擎待 §6.2 门禁 |
+| `war_of_desert/`（`cmd/ internal/ engine/ workspace/ tournament/`） | Go 正式赛执行链、选手包与赛季产物；引擎仍由冻结 oracle 宿主承载，Go 引擎待 §6.2 门禁 |
 | `Dev/MVP/` | 冻结 JS 预言机；其已跟踪文件只读，不得修改 |
 | `Dev/MVP/正式比赛测试/` | 独立自包含正式比赛测试环境；新增未跟踪目录，不改变冻结提交 |
 | `Dev/Docs/` | 原作调研、版权与术语资料；不是运行时代码 |

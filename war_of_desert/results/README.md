@@ -16,7 +16,7 @@
 ## 重建
 
 ```bash
-cd 社区比赛__WoD
+cd war_of_desert
 go run ./cmd/arena plan
 go run ./cmd/arena run      # 默认覆盖结果；-resume 可续跑
 go run ./cmd/arena rate

@@ -1,6 +1,6 @@
 # Dev · 开发与历史资料区
 
-> **正式比赛在上一层仓库根目录**：[`../README.md`](../README.md)、[`../赛事手册.md`](../赛事手册.md)。
+> **正式比赛在隔壁目录**：[`../war_of_desert/README.md`](../war_of_desert/README.md)、[`../war_of_desert/赛事手册.md`](../war_of_desert/赛事手册.md)。
 > 本目录只放开发期资料：冻结预言机、原作调研、规格与计划、历次审查证据、第三方参照。
 > 除 `MVP/` 作为规则语义参考外，这些内容**不参与正式赛执行**。
 
@@ -20,11 +20,12 @@
 | `MVP_*修复/审查/评估报告*.md` | 历次审查证据，不作当前规则事实源 |
 | [`模板/`](模板/) | 第三方只读参照（本地克隆，不入库） |
 
-正式赛的代码、选手包与赛季产物在根目录：
+正式赛的代码、选手包与赛季产物在 `../war_of_desert/`：
 
 ```text
-../cmd/ ../internal/ ../engine/ ../tournament/ ../workspace/
-../bots/ ../results/ ../replays/ ../notes/ ../start.py ../开赛.py
+../war_of_desert/cmd/ ../war_of_desert/internal/ ../war_of_desert/engine/ ../war_of_desert/tournament/
+../war_of_desert/workspace/ ../war_of_desert/bots/ ../war_of_desert/results/
+../war_of_desert/start.py ../war_of_desert/开赛.py
 ```
 
 ---
@@ -86,9 +87,9 @@ node arena.js full
 
 ## 赛事计时与收卷（指向根目录）
 
-- 选手自查时间：`python -X utf8 workspace/clock.py`
-- 组织方开赛/暂停/恢复/收卷：`python -X utf8 开赛.py`
+- 选手自查时间：`python -X utf8 war_of_desert/workspace/clock.py`
+- 组织方开赛/暂停/恢复/收卷：`python -X utf8 war_of_desert/开赛.py`
 - 默认 90 分钟目标、120 分钟强制收卷；
-- 权威记录：根目录 `赛务记录.json`；
-- 收卷对象：根目录 `workspace/submission/decide.go`；
+- 权威记录：`war_of_desert/赛务记录.json`；
+- 收卷对象：`war_of_desert/workspace/submission/decide.go`；
 - 详细契约见 [`Plan_Beta.md`](Plan_Beta.md) §3.5。

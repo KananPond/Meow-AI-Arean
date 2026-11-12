@@ -33,4 +33,4 @@
 
 - `Plan_Beta.md` v1.0 中引用原作机制的设定，应能回溯到本目录的事实卡片；明确偏离原作的规则以 v1.0 决策台账为准。
 - `Dev/MVP/` 是冻结 JS 预言机，不属于本资料库，也不是正式运行时代码。
-- 正式赛执行链在仓库根目录（`cmd/arena`、`internal/*`、`engine/*`）；可运行的 JS 规则参考实现只在冻结 `Dev/MVP/` 中。
+- 正式赛执行链在 `war_of_desert/`（`cmd/arena`、`internal/*`、`engine/*`）；可运行的 JS 规则参考实现只在冻结 `Dev/MVP/` 中。
