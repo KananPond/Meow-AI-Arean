@@ -20,6 +20,7 @@ Desert Arena 是面向本地 AI 的 1v1 算法对抗赛：红蓝双方在程序�
 | [Plan_Beta.md](Plan_Beta.md) | **当前唯一正式规格与迁移计划**：规则基线、协议契约、架构边界、验收门禁、偏差登记 |
 | [ORACLE.md](ORACLE.md) | 冻结 MVP 的运行、复现、覆盖率记录和 golden trace 规范 |
 | `MVP/` | 冻结 JS 规则预言机；只读，不得修改 |
+| `MVP/正式比赛测试/` | 自包含正式比赛测试环境：workspace、裁判快照、模板 Bot、runner、计时与收卷 |
 | `war_desert/` | 未来 Go 正式版空骨架；当前无 Go 实现 |
 | `Docs/` | 原作调研、事实卡片、版权与术语资料 |
 | `Plan_Alpha.md` | 历史构想，已归档 |
@@ -35,6 +36,18 @@ npm --prefix MVP test
 ```
 
 期望：HEAD 为 `288db07f164bc6c680a2d878c47153804d3fdcab`；语法检查和 10 个测试套件全部通过。详细口径见 [ORACLE.md](ORACLE.md)。
+
+## 正式比赛测试环境
+
+`MVP/正式比赛测试/` 是在冻结 MVP 之上新增的自包含测试环境，不修改冻结提交中的文件。进入 `MVP/正式比赛测试/workspace/` 后运行：
+
+```bash
+node arena.js check
+node arena.js play
+node arena.js full
+```
+
+默认使用内置 `Tactical Flow` 对模板 `Submission Starter`，600 tick、换边两局；详细说明见 `MVP/正式比赛测试/README.md`。
 
 ## 赛事计时与强制收卷
 
