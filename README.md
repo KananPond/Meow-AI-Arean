@@ -48,13 +48,14 @@ npm --prefix MVP test
 - 五级判定链与八领域加权计分；
 - 视野可配置，但只改变信息集，不改变模拟。
 
-## 当前主要待办
+## 当前基线与待办
 
-1. 将外层基线文档纳入版本控制并打基线提交/tag。
-2. 建立不修改冻结 MVP 的 golden trace 生成与保存流程。
-3. 定义机器可读协议 schema 和 `map.json/replay.json/end` 契约。
-4. 完成 Go `protocol/engine/scoring/io` 的目录边界设计。
-5. 建立独立覆盖率/分支覆盖报告链，替代当前冻结 MVP 内不稳定的插桩门禁。
+已完成：外层迁移基线文档已纳入版本控制，基线提交为 `ee4e6ef`，tag 为 `oracle-baseline-2026-11-12`。
+
+1. 建立不修改冻结 MVP 的 golden trace 生成与保存流程。
+2. 定义机器可读协议 schema 和 `map.json/replay.json/end` 契约。
+3. 完成 Go `protocol/engine/scoring/io` 的目录边界设计。
+4. 建立独立覆盖率/分支覆盖报告链，替代当前冻结 MVP 内不稳定的插桩门禁。
 
 ## 重要纪律
 
