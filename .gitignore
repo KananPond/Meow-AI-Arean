@@ -27,12 +27,10 @@ __pycache__/
 .env.*
 *.local
 
-# MVP 实验产物（不纳入版本控制）
-/MVP/
-
-# 第三方开源参照项目（本地克隆，不纳入版本控制）
-/模板/
+# 开发/历史资料区（MVP 预言机、Docs、计划与审查报告、第三方参照）
+/Dev/MVP/
+/Dev/模板/
 
 # 正式赛构建产物与可重建回放（源码、赛程、结果、成绩仍入库）
-/war_desert/bots/bin/
-/war_desert/results/*/回放/
+/bots/bin/
+/results/*/回放/

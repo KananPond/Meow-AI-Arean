@@ -1,6 +1,6 @@
 {
   "oracleCommit": "288db07f164bc6c680a2d878c47153804d3fdcab",
-  "source": "MVP/referee/",
+  "source": "Dev/MVP/referee/",
   "note": "只读快照：不得修改；规则语义争议以该快照为准",
   "files": {
     "rules.js": {

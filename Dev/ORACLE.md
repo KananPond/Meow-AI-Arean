@@ -8,7 +8,7 @@
 
 ## 1. 角色
 
-`社区比赛__WoD/MVP/` 是只读 JS 规则预言机，用途限定为：
+`Dev/MVP/` 是只读 JS 规则预言机，用途限定为：
 
 1. 规则语义参考；
 2. golden trace 生成；
@@ -22,16 +22,16 @@
 - 禁止直接修改冻结 MVP 的工作区。
 - 禁止为了让覆盖率、lint 或新需求通过而调整 MVP。
 - 发现疑似 bug 时，登记到 `Plan_Beta.md` §11，由 Go 版决定修正或有意复刻。
-- 若必须实验性修改，先复制到 `MVP/` 之外的新目录，并在实验记录中写明来源提交。
+- 若必须实验性修改，先复制到 `Dev/MVP/` 之外的新目录，并在实验记录中写明来源提交。
 
 ## 3. 最小复现步骤
 
 在仓库根目录执行：
 
 ```bash
-git -C MVP rev-parse HEAD
-npm --prefix MVP run check
-npm --prefix MVP test
+git -C Dev/MVP rev-parse HEAD
+npm --prefix Dev/MVP run check
+npm --prefix Dev/MVP test
 ```
 
 要求：

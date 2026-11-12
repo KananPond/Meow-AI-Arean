@@ -21,8 +21,8 @@
 默认时间：90 分钟为目标完成时间，120 分钟为强制收卷。超过 120 分钟仍会冻结
 当前文件以便留档，但记录 accepted=false，正式成绩不计。
 
-目标目录默认是 war_desert/workspace；未来多位选手可放在 war_desert/bots/<名字>/workspace
-或 war_desert/算法赛@<模型>/workspace。赛务记录保存在 war_desert/赛务记录.json。
+目标目录默认是根目录 workspace；未来多位选手可放在 bots/<名字>/workspace
+或 算法赛@<模型>/workspace。赛务记录保存在根目录 赛务记录.json。
 """
 
 from __future__ import annotations
@@ -67,7 +67,7 @@ def born(path: Path) -> float:
 
 
 def find_targets() -> list[Path]:
-    """发现包含 workspace/clock.py 的选手目录；单工作区时返回 war_desert 自身。"""
+    """发现包含 workspace/clock.py 的选手目录；单工作区时返回根目录自身。"""
     found: list[Path] = []
     if (HERE / CLOCK_REL).is_file():
         found.append(HERE)
@@ -117,7 +117,7 @@ class Site:
 
     @property
     def key(self) -> str:
-        return self.target.name if self.target != HERE else "war_desert"
+        return self.target.name if self.target != HERE else "主工作区"
 
     def clock_start(self) -> float:
         entry = load_service_log().get(self.key)

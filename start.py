@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Desert Arena 正式赛 · 组织方菜单。
 
-等价于在 war_desert/ 下逐条执行 go run ./cmd/arena ...；
+等价于在仓库根目录逐条执行 go run ./cmd/arena ...；
 给不熟悉命令行的组织者一个入口，不改变任何执行逻辑。
 """
 from __future__ import annotations

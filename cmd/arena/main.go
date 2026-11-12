@@ -69,7 +69,7 @@ func usage() {
   arena check  [-a <bot.exe>] [-b <bot.exe>] [-seed N] [-config ...]
   arena selftest [-config ...]   验证超时 kill / 崩溃重启 / 非法结构红牌
 
-所有相对路径都以 war_desert/ 为根目录。请在 war_desert/ 下执行。
+所有相对路径都以仓库根目录为基准。请在仓库根目录执行。
 `)
 	os.Exit(2)
 }
