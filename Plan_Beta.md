@@ -1,6 +1,7 @@
 # Desert Arena 正式版规格与迁移计划 v1.0
 
 > **状态：已生效基线**（2026-11-12）
+> **实施状态**：赛制层 v1.0 已在 `war_desert/` 落地并跑完第 1 季基准赛；引擎仍由冻结 oracle 宿主承载，§6.2 Go 引擎门禁未宣称通过。
 > **取代关系**：本文取代 `Plan_Alpha.md` 与 `MVP_plan.md` 的未完成规划内容；后两者仅保留为历史资料。
 > **冻结预言机**：`MVP/` 自提交 `288db07f164bc6c680a2d878c47153804d3fdcab` 起冻结，作为规则语义、golden trace 与差分对拍的唯一 JS 参考实现。
 > **冻结纪律**：不得为了“顺手修复”改动冻结 MVP。发现疑似缺陷时，先写入本文“已知偏差登记”，再由 Go 正式版按登记结果决定是否复刻或修正。
@@ -227,6 +228,8 @@ v1.0 采用：
 - 覆盖率报告不依赖修改冻结 MVP；行覆盖之外至少包含分支覆盖。
 - 正式比赛配置、地图生成器、视野开关、seed、结果和随机源全部可复现。
 
+**当前口径（2026-11-12）**：上述门禁未全部满足。正式赛使用冻结 oracle 引擎，`war_desert/` 只落地了赛制与执行链；在 Go 引擎通过全部门禁前，不得宣称可替代 oracle。
+
 ---
 
 ## 7. P0/P1 执行清单
@@ -244,14 +247,27 @@ v1.0 采用：
 ### P1 · 迁移实现准备
 
 - [ ] 生成并保存 golden trace；冻结 trace 生成器版本。
-- [ ] 定义 `map.json / replay.json / end` 的机器可读 schema。
-- [ ] 完成 Go 目录边界和模块依赖图；先写接口与类型，再写引擎。
+- [ ] 定义 `map.json / replay.json / end` 的机器可读 schema。（Go DTO 已在 `internal/protocol` 落地；独立 JSON Schema 与一致性测试待补）
+- [x] 完成 Go 目录边界和模块依赖图；先写接口与类型，再写引擎。（`internal/{protocol,engine,judge,schedule,rating,contest}` + `cmd/arena`）
 - [ ] 将坡度、通行、视线和弹道公式收敛为单一共享实现。
 - [ ] 设计 256² `hello ≤64 KiB` 的编码或分块方案。
-- [ ] 设计进程 driver 的状态机：hello → tick/actions → end → kill/重启。
-- [ ] 将现有白盒 JS 测试重写成可迁移的黑盒契约测试，并补五级判定、科技树、地图异常/缓存、协议错误分支。
+- [x] 设计进程 driver 的状态机：hello → tick/actions → end → kill/重启。（`internal/judge`，含 `ready` 握手）
+- [ ] 将现有白盒 JS 测试重写成可迁移的黑盒契约测试，并补五级判定、科技树、地图异常/缓存、协议错误分支。（`arena selftest` 已覆盖超时/崩溃/非法结构）
 - [ ] 建立不依赖冻结 MVP 修改的覆盖率、分支覆盖和 CI 报告链。
 - [ ] 对疑似实现缺陷完成修正或“有意复刻”决策，并更新 §11。
+
+### 7.1 已落地：正式赛赛制层（2026-11-12）
+
+`war_desert/` 已从空骨架变为可开赛的正式版执行链，但这**不等于** Go 引擎迁移完成：
+
+- Go 执行链：`cmd/arena`（build / plan / run / rate / check / selftest）+ `internal/{protocol,engine,judge,schedule,rating,contest}`；
+- 引擎宿主：`engine/oracle_host.js` 在独立进程承载 `MVP@288db07` 只读快照，命令流与 §4 的 `protocol/engine/scoring/io` 边界对齐；
+- 进程隔离：Bot 独立进程、120ms 死线、超时 kill、崩溃重启、连续 3 红牌，由 `arena selftest` 三条路径验证；
+- 赛程与评分：换边、seed 冻结、BT + bootstrap、八领域双榜；
+- 选手包：Go 模板、`botkit`、4 个参考 Bot + 1 个模板共 5 名基准选手、RULES / prompt / CONDITIONS；
+- 第 1 季：5 人 / 20 场 / 40 局 / 零故障 / 40/40 确定性复核。
+
+未落地项：Go 引擎本体、golden trace 文件、独立 JSON Schema、覆盖率报告链、共享地形/弹道实现。
 
 ---
 
@@ -286,6 +302,7 @@ v1.0 采用：
 | 10 | 协议体积 | 正式线协议全部 ≤64 KiB；冻结 MVP 的 110 KB hello 是待迁移偏差 |
 | 11 | 跨语言确定性 | 以规范化 golden trace 为准，不沿用 JS 哈希 |
 | 12 | 排名 | 引擎先保留胜负 + 八领域分；BT/Elo 属赛制层，不阻断引擎迁移 |
+| 13 | 赛制层落地 | Go 裁判 + 独立进程 oracle 宿主；Bot 为独立 Go 进程；换引擎不改赛制 |
 
 ---
 
@@ -296,7 +313,7 @@ v1.0 采用：
 | `Docs/` | 原作调研、版权与术语资料；不是运行时代码 |
 | `MVP/` | 冻结 JS 预言机；其已跟踪文件只读，不得修改 |
 | `MVP/正式比赛测试/` | 独立自包含正式比赛测试环境；新增未跟踪目录，不改变冻结提交 |
-| `war_desert/` | 未来 Go 正式版目录；迁移准备阶段保持空骨架 |
+| `war_desert/` | Go 正式赛执行链、选手包与赛季产物；引擎仍由冻结 oracle 宿主承载，Go 引擎待 §6.2 门禁 |
 | `模板/` | 第三方只读参照；不得复制源码或素材 |
 | 根目录审查报告 | 历史评估证据，不作为当前规则事实源 |
 

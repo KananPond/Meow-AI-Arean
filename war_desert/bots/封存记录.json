@@ -1,0 +1,50 @@
+{
+  "generatedAt": "2026-11-12T20:12:31+08:00",
+  "shared": {
+    "workspace/botkit/botkit.go": "e413dc29499fd15d4b9e51dd18a88eec405fd38f5b60cb6fded2c07e6b60e590",
+    "workspace/refbot/refbot.go": "87bc3750fbbe8ae5f262d98f8b6e808bcaa2c7851dc26848fc1c6cd76beacb39"
+  },
+  "entries": [
+    {
+      "name": "Vanguard",
+      "source": "workspace/bots/vanguard",
+      "bin": "bots/bin/vanguard.exe",
+      "files": {
+        "main.go": "fa6f356c314fba21539fc4226586c882566498b8e006238eb0345cfd409457bb"
+      }
+    },
+    {
+      "name": "Bulwark",
+      "source": "workspace/bots/bulwark",
+      "bin": "bots/bin/bulwark.exe",
+      "files": {
+        "main.go": "3c9ee5185c3366f33a2c116d8b97dd744a9b96b60b195c48b7474866da214ecb"
+      }
+    },
+    {
+      "name": "Swarm",
+      "source": "workspace/bots/swarm",
+      "bin": "bots/bin/swarm.exe",
+      "files": {
+        "main.go": "eafc5103917d5590253a3238cf7a3c8818cae6235e98d894c942eeff9eb75e8a"
+      }
+    },
+    {
+      "name": "Nomad",
+      "source": "workspace/bots/nomad",
+      "bin": "bots/bin/nomad.exe",
+      "files": {
+        "main.go": "0e0717f4fb39fe421e8b2f49bf1c446f52372dd0ef76890485f96b04f1544095"
+      }
+    },
+    {
+      "name": "Starter",
+      "source": "workspace/submission",
+      "bin": "bots/bin/submission.exe",
+      "files": {
+        "decide.go": "644cc71b5331c9d93f20a78c5e04e561295241287231b3de3a6cfad9309b26b5"
+      }
+    }
+  ],
+  "note": "封存源码哈希；bin 为编译产物，可随时由 source 重建；shared 为参考 Bot 共用的策略库"
+}

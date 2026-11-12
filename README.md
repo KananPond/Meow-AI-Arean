@@ -1,9 +1,9 @@
 # 社区比赛__WoD · Desert Arena
 
-> **当前阶段：正式版迁移准备**
+> **当前阶段：正式版 v1.0 已落地，引擎仍为冻结 oracle**
 > **当前有效规格**：[Plan_Beta.md](Plan_Beta.md) v1.0
 > **当前规则预言机**：`MVP@288db07f164bc6c680a2d878c47153804d3fdcab`，只读冻结
-> **当前状态**：MVP 常规测试通过；覆盖率采集失败已登记为冻结预言机的已知限制；`war_desert/` 仍保持空骨架，等待 Go 正式版迁移。
+> **正式赛**：[war_desert/](war_desert/README.md) 已跑完第 1 季基准赛：5 名选手、20 场、40 局、零故障、40/40 确定性复核。赛事手册见 [war_desert/赛事手册.md](war_desert/赛事手册.md)。
 
 ---
 
@@ -11,7 +11,7 @@
 
 Desert Arena 是面向本地 AI 的 1v1 算法对抗赛：红蓝双方在程序生成的沙漠地形中争夺 VP 点、保护母舰，并在严格决策预算下提交 Bot 代码。项目同时保留叙事榜方向，但叙事功能不属于当前引擎迁移阻断项。
 
-正式版目标是 Go 标准库实现，采用独立 Bot 进程、真实行分隔 JSON 协议、确定性重放和八领域计分卡。
+正式版执行链已用 Go 标准库落地：独立 Bot 进程、真实行分隔 JSON 协议、120ms 决策死线、连续 3 次红牌、确定性复核、BT 实力值与八领域计分卡。引擎仍由冻结 oracle 的独立进程宿主承载，Go 引擎本体尚未实现。
 
 ## 当前事实源
 
@@ -21,7 +21,7 @@ Desert Arena 是面向本地 AI 的 1v1 算法对抗赛：红蓝双方在程序�
 | [ORACLE.md](ORACLE.md) | 冻结 MVP 的运行、复现、覆盖率记录和 golden trace 规范 |
 | `MVP/` | 冻结 JS 规则预言机；只读，不得修改 |
 | `MVP/正式比赛测试/` | 自包含正式比赛测试环境：workspace、裁判快照、模板 Bot、runner、计时与收卷 |
-| `war_desert/` | 未来 Go 正式版空骨架；当前无 Go 实现 |
+| `war_desert/` | **Go 正式赛执行链**：`cmd/arena`、`internal/*`、选手包、赛程、成绩与回放；引擎仍为冻结 oracle 宿主 |
 | `Docs/` | 原作调研、事实卡片、版权与术语资料 |
 | `Plan_Alpha.md` | 历史构想，已归档 |
 | `MVP_plan.md` | 历史 MVP 计划，已废止 |
@@ -74,16 +74,25 @@ node arena.js full
 
 ## 当前基线与待办
 
-已完成：外层迁移基线文档已纳入版本控制，基线提交为 `ee4e6ef`，tag 为 `oracle-baseline-2026-11-12`。
+已完成：
 
-1. 建立不修改冻结 MVP 的 golden trace 生成与保存流程。
-2. 定义机器可读协议 schema 和 `map.json/replay.json/end` 契约。
-3. 完成 Go `protocol/engine/scoring/io` 的目录边界设计。
-4. 建立独立覆盖率/分支覆盖报告链，替代当前冻结 MVP 内不稳定的插桩门禁。
+- 外层迁移基线文档纳入版本控制，基线提交 `ee4e6ef`，tag `oracle-baseline-2026-11-12`。
+- 正式赛赛制层 v1.0：Go 裁判、行协议引擎宿主、进程隔离、赛程冻结、BT + bootstrap、八领域双榜、选手包与 5 个参考 Bot。
+- 第 1 季基准赛跑通：`selftest` 三条故障路径通过，40 局零故障、40/40 复核。
+
+待办：
+
+1. 生成并保存 golden trace；冻结 trace 生成器版本。
+2. 补独立 JSON Schema 与一致性测试（Go DTO 已在 `internal/protocol` 落地）。
+3. 实现 Go 引擎本体并通过 `Plan_Beta.md` §6.2 门禁，替换 `engine/oracle_host.js`。
+4. 把坡度、通行、视线与弹道公式收敛为单一共享实现。
+5. 将 256² `hello` 从 113 KB 收敛到 64 KiB。
+6. 建立不修改冻结 MVP 的覆盖率/分支覆盖报告链。
 
 ## 重要纪律
 
 - 不修改冻结 MVP。
 - 不把历史计划中的 10 TPS、512²、双资源、人类可玩交互当成当前需求。
+- 正式赛引擎仍是冻结 oracle；Go 引擎通过 §6.2 门禁前，不得宣称已替代 oracle。
 - 不在 Go 正式版中直接照搬 MVP 的 UMD、同进程 driver、JS 哈希或 `Game` God Class。
 - 任何规则变化必须先更新 `Plan_Beta.md`，再更新实现与测试。
