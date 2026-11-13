@@ -2,7 +2,7 @@
 
 > 状态：待执行
 > 目标：把对称 VP 对局改成“一方守擂、一方进攻”的不对称对局；胜负只看母舰是否被摧毁；用梯度 HP 实验找出使摧毁率落在 **20%～45%** 的母舰 HP。
-> 约束：不修改 `Dev/MVP/referee/rules.js` 冻结预言机；新建 `war_of_desert/engine/oracle/rules_siege.js` 作为独立变体，旧赛季继续按 `rulesHash=906f1b14` 复现。
+> 约束：不修改 `Dev/MVP/referee/rules.js`（当时为冻结预言机，2026-11-13 已解冻）；新建 `war_of_desert/engine/oracle/rules_siege.js` 作为独立变体，旧赛季继续按 `rulesHash=906f1b14` 复现。
 
 ---
 

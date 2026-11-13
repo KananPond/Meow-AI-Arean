@@ -2,7 +2,7 @@
 
 > **状态：正式版 v1.0 已落地并跑完第 1 季基准赛**（2026-11-12）
 > **赛事手册**：[`赛事手册.md`](赛事手册.md) ｜ **规则基线**：[`../Dev/Plan_Beta.md`](../Dev/Plan_Beta.md) v1.0
-> **引擎**：冻结 oracle `MVP@288db07f` 的只读快照，由 `engine/oracle_host.js` 在独立进程承载
+> **引擎**：只读快照 `MVP@288db07f`（校验：`python -X utf8 scripts/verify_oracle.py`），由 `engine/oracle_host.js` 在独立进程承载
 > **执行链**：Go 1.27 标准库，零第三方依赖
 
 ---
@@ -14,7 +14,7 @@
 - 选手交一个 Go 程序，官方编译、封存源码哈希；
 - 裁判为每个座位拉起独立进程，执行 120 ms 决策死线、连续 3 次红牌、超时 kill 与重启、换边重开；
 - 赛程先冻结再执行，赛后产出逐局结果、完整回放、确定性复核、BT 实力值与八领域加权总分；
-- 规则语义不另写一份，全部来自冻结 oracle 快照。
+- 规则语义不另写一份，全部来自快照 oracle 快照。
 
 第 1 季基准赛结果：5 名选手、20 场、40 局、零故障、40/40 确定性复核通过。
 
@@ -25,7 +25,7 @@ BT 名次：Nomad → Vanguard（锚）→ Swarm → Bulwark → Starter
 
 两榜不一致是设计目标：胜负与质量是两条独立信号。详见 [`results/formal/成绩.md`](results/formal/成绩.md)。
 
-**开发与历史资料在 [`../Dev/`](../Dev/README.md)**：冻结 MVP 预言机、原作调研、Plan/ORACLE、历次审查报告、第三方参照模板。它们不参与正式赛执行。
+**开发与历史资料在 [`../Dev/`](../Dev/README.md)**：MVP 规则源码（2026-11-13 已解冻）、原作调研、Plan/ORACLE、历次审查报告、第三方参照模板。它们不参与正式赛执行。
 
 ---
 
@@ -70,7 +70,7 @@ v1.0 之外的独立变体：一方守擂、一方进攻，守方有工事、攻
 | tickLimit | 1260（63 s） |
 | 攻方胜率 | 45.0%（80 局）/ 46.0%（100 局），0 故障 |
 
-冻结的 `engine/oracle/rules.js` 未改动；攻守规则在 `engine/oracle/rules_siege.js`（`MANIFEST_siege.json` 记哈希），
+只读快照 `engine/oracle/rules.js` 未改动；攻守规则在 `engine/oracle/rules_siege.js`（`MANIFEST_siege.json` 记哈希），
 旧赛季仍按 `rulesHash=906f1b14` 复现。
 
 ```bash
@@ -130,7 +130,7 @@ go run ./cmd/siegepool -from results/siege/bt_pool.csv -out results/siege/bt_poo
 │   │   ├── rating/          Bradley–Terry（v1.0 单值）+ 攻守双参数
 │   │   └── contest/         配置加载与路径解析
 │   ├── engine/
-│   │   ├── oracle_host.js   宿主：命令流 → 冻结 oracle（可按参数加载规则变体）
+│   │   ├── oracle_host.js   宿主：命令流 → 快照 oracle（可按参数加载规则变体）
 │   │   └── oracle/          只读快照 + MANIFEST.json + rules_siege.js
 │   ├── tournament/formal.json
 │   ├── workspace/           选手包（规则、模板、工具库、参考 Bot、计时器）
@@ -157,7 +157,7 @@ Dev/
 ├── ORACLE.md                 预言机运行与复现规范
 ├── Docs/                     原作调研、事实卡片、版权与术语
 │   └── archive/              已归档：Plan_Alpha、MVP_plan、历次审查/修复/评估报告
-├── MVP/                      冻结 JS 规则预言机（只读，含 正式比赛测试/）
+├── MVP/                      JS 规则预言机源码（已解冻，含 正式比赛测试/）
 └── 模板/                     第三方只读参照
 ```
 

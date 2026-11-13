@@ -16,7 +16,7 @@ Desert Arena 1v1 算法对抗赛：红蓝双方在程序生成的沙漠地形上
 | 目录 | 内容 |
 |---|---|
 | [`war_of_desert/`](war_of_desert/README.md) | **可执行部分**：赛事手册（正式 / 攻守）、Go 执行链、选手包、参考 Bot、赛程、成绩与标定数据 |
-| [`Dev/`](Dev/README.md) | **开发与历史资料**：冻结 MVP 预言机、原作调研、规格与计划、设计审查、归档文档 |
+| [`Dev/`](Dev/README.md) | **开发与历史资料**：MVP 规则源码（已解冻）、原作调研、规格与计划、设计审查、归档文档 |
 
 ## 入口
 
@@ -43,7 +43,9 @@ go run ./cmd/siege -smoke -seed 20261201   # 攻守单局
 
 ## 现状与边界
 
-- v1.0 引擎仍是**冻结 oracle**（Node 承载），Go 引擎未过 `Plan_Beta.md` §6.2 门禁。
+- v1.0 引擎仍是**只读快照 oracle**（Node 承载），Go 引擎未过 `Plan_Beta.md` §6.2 门禁。
+- `Dev/MVP` 已于 2026-11-13 解冻（可继续开发）；语义锚点是 tag `baseline/288db07` 与
+  `war_of_desert/engine/oracle/` 快照，`python -X utf8 war_of_desert/scripts/verify_oracle.py` 可校验。
 - `hello` 113 KB 超出 64 KiB 契约，属已登记偏差。
 - 攻守模式**尚未产品化**：缺选手包、许可、回放查看器与沙箱。
 - 攻守的参考 Bot 有已知组合缺陷（集结门槛固定、廉价单位占满人口），修好后参数需重新标定。

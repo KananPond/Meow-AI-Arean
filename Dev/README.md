@@ -1,8 +1,10 @@
 # Dev · 开发与历史资料区
 
 > **正式比赛在隔壁目录**：[`../war_of_desert/README.md`](../war_of_desert/README.md)。
-> 本目录放开发期资料：冻结预言机、原作调研、规格与计划、审查证据、第三方参照。
-> 除 `MVP/` 作为规则语义参考外，这些内容**不参与正式赛执行**。
+> 本目录放开发期资料：规则预言机源码、原作调研、规格与计划、审查证据、第三方参照。
+> `MVP/` 是可继续开发的规则源码（2026-11-13 解冻）；正式赛的语义锚点是
+> [`../war_of_desert/engine/oracle/`](../war_of_desert/engine/oracle/MANIFEST.json) 的字节快照。
+> 这些内容**不参与正式赛执行**。
 
 ---
 
@@ -26,11 +28,11 @@
 | [`Plan_Beta.md`](Plan_Beta.md) | **v1.0 规则基线**：规则、协议契约、架构边界、验收门禁、偏差登记 | 生效中 |
 | [`Plan_Siege.md`](Plan_Siege.md) | **攻守改造全记录**：规则改动、模式契约、母舰 HP 与工事预算标定、BT 评分 | 生效中 |
 | [`设计审查_正式版v1.0_20261113.md`](设计审查_正式版v1.0_20261113.md) | 最近一次设计审查：单位口径、计分卡、名次统计力、规范一致性 | 现行结论 |
-| [`ORACLE.md`](ORACLE.md) | 冻结 MVP 的运行、复现、覆盖率记录与 golden trace 规范 | 生效中 |
+| [`ORACLE.md`](ORACLE.md) | 快照校验、复现、覆盖率记录与 golden trace 规范 | 生效中 |
 | [`Docs/`](Docs/) | 原作调研、事实卡片、操作映射、术语表、版权与来源 | 参考层 |
 | [`Docs/archive/`](Docs/archive/) | **已归档的历史文档**：被取代的计划、历次审查与修复报告 | 只读，不作事实源 |
-| [`MVP/`](MVP/) | 冻结 JS 规则预言机（`MVP@288db07f`），只读，不得修改 | 冻结 |
-| [`MVP/正式比赛测试/`](MVP/正式比赛测试/) | 冻结 MVP 之上的自包含测试环境：workspace、裁判快照、模板 Bot、runner、计时与收卷 | 冻结 |
+| [`MVP/`](MVP/) | JS 规则预言机源码（**2026-11-13 已解冻**）；v1.0 语义锚点为 tag `baseline/288db07` | 开发中 |
+| [`MVP/正式比赛测试/`](MVP/正式比赛测试/) | `MVP@288db07` 之上的自包含测试环境：workspace、裁判快照、模板 Bot、runner、计时与收卷 | 快照 |
 | [`模板/`](模板/) | 第三方只读参照（本地克隆，不入库） | 参考 |
 
 判断标准很简单：**能据此写规则、跑对局、做标定的，是现行文档；只能用来回溯历史的，进 `Docs/archive/`。**
@@ -45,7 +47,7 @@ Dev/
 ├── Plan_Beta.md              v1.0 规则基线与迁移规格
 ├── Plan_Siege.md             攻守改造与标定记录
 ├── 设计审查_正式版v1.0_20261113.md
-├── ORACLE.md                 冻结预言机运行规范
+├── ORACLE.md                 快照校验与预言机运行规范
 ├── Docs/
 │   ├── README.md             调研资料索引
 │   ├── 01~05_*.md            调研报告、事实卡片、操作映射、术语表、方法
@@ -53,7 +55,7 @@ Dev/
 │   ├── LICENSE.md            CC BY 4.0 声明
 │   ├── sources.json          机器可读来源清单
 │   └── archive/              已归档历史文档（含索引 README.md）
-├── MVP/                      冻结 JS 预言机（独立 git 仓库，外层忽略）
+├── MVP/                      JS 规则预言机源码（独立 git 仓库，外层忽略；已解冻）
 └── 模板/                     第三方只读参照（不入库）
 ```
 
@@ -69,7 +71,7 @@ Dev/
 
 ## 规则快照
 
-### v1.0 正式赛（`engine/oracle/rules.js`，冻结）
+### v1.0 正式赛（`engine/oracle/rules.js`，只读快照）
 
 以 [`Plan_Beta.md`](Plan_Beta.md) §2 为准：
 
@@ -80,7 +82,7 @@ Dev/
 
 ### 攻守实验（`engine/oracle/rules_siege.js`，独立变体）
 
-冻结的 `rules.js` **不改**；攻守是并行变体，`rulesHash` 独立。当前采纳参数：
+只读快照 `rules.js` **不改**；攻守是并行变体，`rulesHash` 独立。当前采纳参数：
 
 | 参数 | 值 |
 |---|---|
@@ -95,22 +97,26 @@ Dev/
 
 ---
 
-## 核对冻结预言机
+## 核对快照与预言机
 
 在**仓库根目录**执行：
 
 ```bash
-git -C Dev/MVP rev-parse HEAD
+python -X utf8 war_of_desert/scripts/verify_oracle.py   # 快照字节 vs MANIFEST
+git -C Dev/MVP rev-parse baseline/288db07^{commit}      # 基线锚点
 npm --prefix Dev/MVP run check
 npm --prefix Dev/MVP test
 ```
 
-期望：HEAD 为 `288db07f164bc6c680a2d878c47153804d3fdcab`；语法检查和 10 个测试套件全部通过。
-详细口径见 [`ORACLE.md`](ORACLE.md)。
+期望：快照校验输出 `ORACLE_SNAPSHOT_OK`；tag 指向 `288db07f164bc6c680a2d878c47153804d3fdcab`；
+语法检查与 10 个测试套件全部通过。
+
+`Dev/MVP` 已解冻，HEAD 不再要求等于 `288db07`——但**语义锚点是快照，不是 HEAD**。
+用 MVP 直接生成 golden trace 时，必须记录当时 HEAD。详细口径见 [`ORACLE.md`](ORACLE.md)。
 
 ## 正式比赛测试环境
 
-`MVP/正式比赛测试/` 是在冻结 MVP 之上新增的自包含测试环境，不修改冻结提交中的文件。进入
+`MVP/正式比赛测试/` 是在 `MVP@288db07` 之上新增的自包含测试环境，不修改其裁判快照。进入
 `Dev/MVP/正式比赛测试/workspace/` 后运行：
 
 ```bash
@@ -133,15 +139,15 @@ node arena.js full
 3. 实现 Go 引擎本体并通过 `Plan_Beta.md` §6.2 门禁，替换 `../war_of_desert/engine/oracle_host.js`。
 4. 把坡度、通行、视线与弹道公式收敛为单一共享实现。
 5. 将 256² `hello` 从 113 KB 收敛到 64 KiB。
-6. 建立不修改冻结 MVP 的覆盖率/分支覆盖报告链。
+6. 建立不依赖修改快照的覆盖率/分支覆盖报告链。
 7. 攻守模式：参考 Bot 的组合缺陷（集结门槛固定 6 台、廉价 LAV 占满人口 24）待修；
    修好后 HP / 工事预算 / tickLimit 需要重新标定。
 
 ## 重要纪律
 
-- 不修改冻结 MVP，也不修改冻结的 `engine/oracle/rules.js`。
+- 不修改 `engine/oracle/` 快照。`MVP/` 可以改（已解冻），但改动不回灌快照；进正式赛必须新出快照 + 新 `rulesHash`。
 - 历史计划中的 10 TPS、512²、双资源、人类可玩交互都不是当前需求。
-- 正式赛引擎仍是冻结 oracle；Go 引擎通过 §6.2 门禁前，不得宣称已替代 oracle。
+- 正式赛引擎仍是只读快照 oracle；Go 引擎通过 §6.2 门禁前，不得宣称已替代 oracle。
 - 不把 MVP 的 UMD、同进程 driver、JS 哈希或 `Game` God Class 照搬进 Go 正式版。
 - 任何规则变化必须先更新 `Plan_Beta.md`（或 `Plan_Siege.md`），再更新实现与测试。
 
