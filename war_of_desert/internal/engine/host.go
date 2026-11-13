@@ -25,6 +25,17 @@ type HostConfig struct {
 	InitMs     int    `json:"initMs"`
 	Vision     bool   `json:"vision"`
 	FrameEvery int    `json:"-"`
+
+	/* 攻守实验（siege）字段；旧模式留零值即可。 */
+	Mode                 string `json:"mode,omitempty"`
+	MothershipHP         int    `json:"mothershipHp,omitempty"`
+	AttackerMothershipHP int    `json:"attackerMothershipHp,omitempty"`
+	FortBudget           int    `json:"fortBudget,omitempty"`
+	PlaceTicks           int    `json:"placeTicks,omitempty"`
+	AttackerCU           int    `json:"attackerCu,omitempty"`
+	DefenderCU           int    `json:"defenderCu,omitempty"`
+	AttackerStartLav     int    `json:"attackerStartLav,omitempty"`
+	DefenderStartLav     int    `json:"defenderStartLav,omitempty"`
 }
 
 // Host 是一个引擎宿主进程。非并发安全，调用方负责串行化。
@@ -58,8 +69,12 @@ type envelope struct {
 }
 
 // Start 启动宿主。script 是 oracle_host.js 的路径；node 从 PATH 取。
-func Start(script string) (*Host, error) {
-	cmd := exec.Command("node", script)
+func Start(script string, rulesPath ...string) (*Host, error) {
+	args := []string{script}
+	if len(rulesPath) > 0 && rulesPath[0] != "" {
+		args = append(args, rulesPath[0])
+	}
+	cmd := exec.Command("node", args...)
 	cmd.Stderr = os.Stderr
 	in, err := cmd.StdinPipe()
 	if err != nil {
@@ -115,7 +130,7 @@ type NewReply struct {
 // New 开一局。调用方必须检查 protoVersion，不匹配就拒绝开赛。
 func (h *Host) New(cfg HostConfig) (*NewReply, error) {
 	var env envelope
-	if err := h.call(map[string]any{
+	req := map[string]any{
 		"cmd":        "new",
 		"seed":       cfg.Seed,
 		"generator":  cfg.Generator,
@@ -125,7 +140,19 @@ func (h *Host) New(cfg HostConfig) (*NewReply, error) {
 		"initMs":     cfg.InitMs,
 		"vision":     cfg.Vision,
 		"frameEvery": cfg.FrameEvery,
-	}, &env); err != nil {
+	}
+	if cfg.Mode != "" {
+		req["mode"] = cfg.Mode
+		req["mothershipHp"] = cfg.MothershipHP
+		req["attackerMothershipHp"] = cfg.AttackerMothershipHP
+		req["fortBudget"] = cfg.FortBudget
+		req["placeTicks"] = cfg.PlaceTicks
+		req["attackerCu"] = cfg.AttackerCU
+		req["defenderCu"] = cfg.DefenderCU
+		req["attackerStartLav"] = cfg.AttackerStartLav
+		req["defenderStartLav"] = cfg.DefenderStartLav
+	}
+	if err := h.call(req, &env); err != nil {
 		return nil, err
 	}
 	return &NewReply{

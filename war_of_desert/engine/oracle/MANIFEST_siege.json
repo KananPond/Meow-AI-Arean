@@ -1,0 +1,8 @@
+{
+  "mode": "siege",
+  "base": "engine/oracle/rules.js",
+  "baseRulesHash": "906f1b14",
+  "sha256": "03b8c224e071fe112883a156aa30e10dac04b406575438dcbde0c87b6c11b44d",
+  "bytes": 110983,
+  "note": "攻守实验规则变体；冻结 rules.js 未修改。改动：矿场替代 VP、守方工事、母舰 HP 变量、攻守胜负。"
+}

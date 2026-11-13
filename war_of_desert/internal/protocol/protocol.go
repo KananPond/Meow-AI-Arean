@@ -172,26 +172,30 @@ type DecideStat struct {
 
 // Result 是 end 段与结果归档的核心字段。
 type Result struct {
-	Winner     int          `json:"winner"`
-	Level      int          `json:"level"`
-	Reason     string       `json:"reason"`
-	Turn       int          `json:"turn"`
-	Turns      int          `json:"turns"`
-	Seed       int          `json:"seed"`
-	Mode       string       `json:"mode"`
-	Players    int          `json:"players"`
-	MapAttempt int          `json:"mapAttempt"`
-	Generator  string       `json:"generator"`
-	Score      []int        `json:"score"`
-	VP         []int        `json:"vp"`
-	Cards      []Card       `json:"cards"`
-	Decide     []DecideStat `json:"decide"`
-	Shots      []int        `json:"shots"`
-	Hits       []int        `json:"hits"`
-	Events     int          `json:"events"`
-	OrderTurns int          `json:"orderTurns"`
-	FrameCount int          `json:"frameCount"`
-	Timing     struct {
+	Winner               int          `json:"winner"`
+	Level                int          `json:"level"`
+	Reason               string       `json:"reason"`
+	Turn                 int          `json:"turn"`
+	MothershipHP         int          `json:"mothershipHp,omitempty"`
+	AttackerMothershipHP int          `json:"attackerMothershipHp,omitempty"`
+	Destroyed            bool         `json:"destroyed,omitempty"`
+	DestroyedAt          int          `json:"destroyedAt,omitempty"`
+	Turns                int          `json:"turns"`
+	Seed                 int          `json:"seed"`
+	Mode                 string       `json:"mode"`
+	Players              int          `json:"players"`
+	MapAttempt           int          `json:"mapAttempt"`
+	Generator            string       `json:"generator"`
+	Score                []int        `json:"score"`
+	VP                   []int        `json:"vp"`
+	Cards                []Card       `json:"cards"`
+	Decide               []DecideStat `json:"decide"`
+	Shots                []int        `json:"shots"`
+	Hits                 []int        `json:"hits"`
+	Events               int          `json:"events"`
+	OrderTurns           int          `json:"orderTurns"`
+	FrameCount           int          `json:"frameCount"`
+	Timing               struct {
 		TickMs       int `json:"tickMs"`
 		DecideMs     int `json:"decideMs"`
 		InitMs       int `json:"initMs"`

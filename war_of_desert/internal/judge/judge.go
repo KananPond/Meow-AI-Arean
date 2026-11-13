@@ -36,6 +36,7 @@ type BotSpec struct {
 // Config 是一场比赛的裁判配置。
 type Config struct {
 	HostScript string
+	RulesPath  string
 	Rules      engine.HostConfig
 	Mirror     bool
 	MaxStrikes int
@@ -229,7 +230,7 @@ func RunMatch(index, seed int, a, b BotSpec, cfg Config) (*MatchRecord, error) {
 	if cfg.MaxStrikes <= 0 {
 		cfg.MaxStrikes = 3
 	}
-	host, err := engine.Start(cfg.HostScript)
+	host, err := engine.Start(cfg.HostScript, cfg.RulesPath)
 	if err != nil {
 		return nil, err
 	}

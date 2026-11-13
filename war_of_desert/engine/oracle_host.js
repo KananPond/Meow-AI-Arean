@@ -29,7 +29,10 @@
 
 const readline = require('readline');
 const path = require('path');
-const R = require(path.join(__dirname, 'oracle', 'rules.js'));
+/* 规则文件可由命令行参数指定：默认旧 rules.js；攻守实验传 rules_siege.js。
+ * 冻结快照本身不改，变体是独立文件。 */
+const RULES_PATH = process.argv[2] ? path.resolve(process.argv[2]) : path.join(__dirname, 'oracle', 'rules.js');
+const R = require(RULES_PATH);
 
 const FRAME_EVERY = 5;      // 回放抽帧间隔（tick）
 let game = null;
@@ -52,7 +55,16 @@ function handle(req) {
         decideMs: req.decideMs,
         initMs: req.initMs,
         generator: req.generator,
-        vision: req.vision === true
+        vision: req.vision === true,
+        mode: req.mode || 'duel',
+        mothershipHp: req.mothershipHp,
+        attackerMothershipHp: req.attackerMothershipHp,
+        fortBudget: req.fortBudget,
+        placeTicks: req.placeTicks,
+        attackerCu: req.attackerCu,
+        defenderCu: req.defenderCu,
+        attackerStartLav: req.attackerStartLav,
+        defenderStartLav: req.defenderStartLav
       });
       pending = [null, null];
       const header = game.header();
@@ -128,7 +140,15 @@ function handle(req) {
         orderLog: game.orderLog,
         frameHashes: game.frameHashes,
         mapAttempt: game.map.attempt || 0,
-        result: game.resultData
+        result: game.resultData,
+        mothershipHp: game.cfg.mothershipHp,
+        attackerMothershipHp: game.cfg.attackerMothershipHp,
+        fortBudget: game.cfg.fortBudget,
+        placeTicks: game.cfg.placeTicks,
+        attackerCu: game.cfg.attackerCu,
+        defenderCu: game.cfg.defenderCu,
+        attackerStartLav: game.cfg.attackerStartLav,
+        defenderStartLav: game.cfg.defenderStartLav
       };
       return { ok: true, verify: R.verifyDeterminism(rec) };
     }
