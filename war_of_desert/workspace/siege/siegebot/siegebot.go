@@ -110,6 +110,7 @@ type Active struct {
 }
 
 type Me struct {
+	Role        string         `json:"role"`
 	CU          float64        `json:"cu"`
 	Pop         int            `json:"pop"`
 	PopMax      int            `json:"popMax"`
@@ -180,6 +181,56 @@ type unitMem struct {
 	x, y  float64
 	stuck int
 	swing int
+}
+
+// Variant 由 -ldflags -X 注入，用来编译出风格不同的参考 Bot。
+// 存在的意义不是「多几个 bot」，而是让 BT 评分有一个真实的选手池可评。
+var Variant = "v1"
+
+// RunDual 让同一条 Bot 按引擎给的角色自动切换攻/守逻辑。
+func RunDual() error {
+	return Run("dual", func(b *Bot, t *Tick) []Action {
+		if t.Me.Role == "attacker" {
+			return Attack(b, t)
+		}
+		return Defend(b, t)
+	})
+}
+
+// assaultNeed 是发起总攻所需的最低战斗单位数。
+// 太大（v3）会等太久、剩余时间不够；太小（v2）会以劣势兵力送人头。
+func assaultNeed() int {
+	switch Variant {
+	case "v2":
+		return 4
+	case "v3":
+		return 8
+	}
+	return 6
+}
+
+func attackBuildOrder() []string {
+	switch Variant {
+	case "v2": // 速攻：只堆轻甲，不出远程
+		return []string{"LAV", "LAV", "LAV", "AAV", "AAV"}
+	case "v3": // 重炮：先攒远程，起手慢
+		return []string{"LAV", "RAILGUN", "ARTILLERY", "AAV", "RAILGUN"}
+	case "v4": // 筑垒：偏装甲与防守
+		return []string{"LAV", "AAV", "AAV", "RAILGUN"}
+	}
+	return []string{"LAV", "LAV", "RAILGUN", "AAV", "RAILGUN", "AAV", "ARTILLERY"}
+}
+
+func defendBuildOrder() []string {
+	switch Variant {
+	case "v2":
+		return []string{"LAV", "LAV", "AAV", "LAV"}
+	case "v3":
+		return []string{"AAV", "AAV", "RAILGUN", "LAV"}
+	case "v4":
+		return []string{"AAV", "LAV", "AAV", "RAILGUN"}
+	}
+	return []string{"LAV", "AAV", "LAV", "AAV", "RAILGUN"}
 }
 
 func Run(role string, decide func(*Bot, *Tick) []Action) error {
@@ -648,7 +699,7 @@ func Attack(b *Bot, t *Tick) []Action {
 	// 军队规模不设固定编制：有 CU 就补，人口/队列满了引擎自然拒绝
 	// 远程单位必须排在前面：炮塔射程 216 px，只有 RAILGUN(228)/ARTILLERY(336)
 	// 能反制；全靠 LAV 冲脸只会被炮塔白打。
-	buildOrder := []string{"LAV", "LAV", "RAILGUN", "AAV", "RAILGUN", "AAV", "ARTILLERY"}
+	buildOrder := attackBuildOrder()
 	if kind := b.ProduceNext(t, buildOrder); kind != "" {
 		acts = append(acts, Action{Type: "produce", Kind: kind})
 	}
@@ -673,7 +724,7 @@ func Attack(b *Bot, t *Tick) []Action {
 			combat++
 		}
 	}
-	assault := combat >= 6
+	assault := combat >= assaultNeed()
 
 	for _, u := range b.Own(t) {
 		switch u.Kind {
@@ -781,10 +832,13 @@ func (b *Bot) fortPlan(t *Tick) []Fort {
 		out = append(out, Fort{Kind: kind, X: x, Y: y})
 	}
 	// 炮塔先放：它是守方唯一能超距压制 LAV 的火力，预算优先给它，
-	// 这样「预算越多 → 火力越强」才是单调的。
-	for i := 0; i < 6; i++ {
-		a := float64(i)*math.Pi/3 + math.Pi/6
-		add("TURRET", m.X+math.Cos(a)*155, m.Y+math.Sin(a)*155)
+	// 这样「预算越多 → 火力越强」才是单调的。v4「筑垒」反过来先堆墙。
+	turretFirst := Variant != "v4"
+	if turretFirst {
+		for i := 0; i < 6; i++ {
+			a := float64(i)*math.Pi/3 + math.Pi/6
+			add("TURRET", m.X+math.Cos(a)*155, m.Y+math.Sin(a)*155)
+		}
 	}
 	// 墙只放一圈（r=130）。旧版预算有剩时会补一圈 r=110 的内墙，
 	// 内墙会把突击单位堵在炮口下 —— 结果 16 点预算比 18 点还难打，
@@ -792,6 +846,12 @@ func (b *Bot) fortPlan(t *Tick) []Fort {
 	for i := 0; i < 12; i++ {
 		a := float64(i) * math.Pi / 6
 		add("WALL", m.X+math.Cos(a)*130, m.Y+math.Sin(a)*130)
+	}
+	if !turretFirst {
+		for i := 0; i < 6; i++ {
+			a := float64(i)*math.Pi/3 + math.Pi/6
+			add("TURRET", m.X+math.Cos(a)*155, m.Y+math.Sin(a)*155)
+		}
 	}
 	return out
 }
@@ -821,7 +881,7 @@ func Defend(b *Bot, t *Tick) []Action {
 		}
 	}
 	// 军队规模不设固定编制：守方靠矿场 + 基础后勤持续补兵
-	defOrder := []string{"LAV", "AAV", "LAV", "AAV", "RAILGUN"}
+	defOrder := defendBuildOrder()
 	if kind := b.ProduceNext(t, defOrder); kind != "" {
 		acts = append(acts, Action{Type: "produce", Kind: kind})
 	}
