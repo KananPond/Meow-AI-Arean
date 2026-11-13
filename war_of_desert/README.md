@@ -58,16 +58,53 @@ go run ./cmd/arena check -seed 20261109
 
 ## 攻守对战（实验）
 
-在 v1.0 之外新增的独立变体：一方守擂、一方进攻，守方有工事，攻方没有；VP 改为矿场，胜负只看母舰是否被摧毁。规则、协议与实验结果见 [`赛事手册_攻守.md`](赛事手册_攻守.md) 和 [`results/siege/结论.md`](results/siege/结论.md)。
+v1.0 之外的独立变体：一方守擂、一方进攻，守方有工事、攻方没有；VP 改为矿场，胜负只看母舰是否被摧毁。
+规则与协议见 [`赛事手册_攻守.md`](赛事手册_攻守.md)，标定过程见 [`results/siege/结论.md`](results/siege/结论.md)。
+
+**当前采纳参数**（40 局/档 + 样本外验证标定）：
+
+| 参数 | 值 |
+|---|---|
+| 母舰 HP | 1250（双方相同） |
+| 守方工事预算 | 16（5 炮塔 + 1 墙） |
+| tickLimit | 1260（63 s） |
+| 攻方胜率 | 45.0%（80 局）/ 46.0%（100 局），0 故障 |
+
+冻结的 `engine/oracle/rules.js` 未改动；攻守规则在 `engine/oracle/rules_siege.js`（`MANIFEST_siege.json` 记哈希），
+旧赛季仍按 `rulesHash=906f1b14` 复现。
 
 ```bash
+# 参考 Bot
 go build -o bots/bin/attacker.exe ./workspace/siege/attacker
 go build -o bots/bin/defender.exe ./workspace/siege/defender
-go run ./cmd/siege -smoke -hp 1250 -seed 20261201
-go run ./cmd/siege -tickLimit 1200 -fortBudget 24 -hps 1250 -seeds 20261201-20261240 -workers 4 -out results/siege/hp1250_clean.csv
+
+# 单局 / 批量标定（默认就是上面的参数）
+go run ./cmd/siege -smoke -seed 20261201
+go run ./cmd/siege -seeds 20261201-20261240 -workers 4 -out results/siege/run.csv
+
+# 契约自检：三模式（obey / neutral / aggressive）的移动与索敌边界
+node engine/oracle/selftest_modes.js
 ```
 
-冻结的 `engine/oracle/rules.js` 未改动；攻守规则在 `engine/oracle/rules_siege.js`，旧赛季仍按 `rulesHash=906f1b14` 复现。
+**BT 评分**：攻守不对称，用攻/守双参数模型，不是单值实力值。
+
+```bash
+# 编一组风格不同的参考 Bot（同一份源码，-ldflags 注入变体）
+for v in v1 v2 v3 v4; do
+  go build -ldflags "-X desertarena/workspace/siege/siegebot.Variant=$v" \
+    -o bots/bin/pool_$v.exe ./workspace/siege/pool
+done
+
+# 循环赛 + 拟合（有序对 × seed 各一局）
+go run ./cmd/siegepool \
+  -pool "v1=bots/bin/pool_v1.exe,v2=bots/bin/pool_v2.exe,v3=bots/bin/pool_v3.exe,v4=bots/bin/pool_v4.exe" \
+  -seeds 20261301-20261316 -workers 4 -out results/siege/bt_pool
+
+# 只重算评分，不重跑对局
+go run ./cmd/siegepool -from results/siege/bt_pool.csv -out results/siege/bt_pool
+```
+
+口径见 [`赛事手册_攻守.md`](赛事手册_攻守.md) §10，结果见 [`results/siege/bt_pool.md`](results/siege/bt_pool.md)。
 
 ---
 
@@ -82,21 +119,25 @@ go run ./cmd/siege -tickLimit 1200 -fortBudget 24 -hps 1250 -seeds 20261201-2026
 │   ├── go.mod
 │   ├── cmd/
 │   │   ├── arena/           build / plan / run / rate / check / selftest
+│   │   ├── siege/           攻守：单局 smoke + 母舰 HP 扫描
+│   │   ├── siegepool/       攻守：循环赛 + 双参数 BT 评分
 │   │   └── faultbot/        自检用故障注入 Bot
 │   ├── internal/
 │   │   ├── protocol/        hello / tick / actions / end 的线上契约与地图解码
 │   │   ├── engine/          引擎宿主客户端（行分隔 JSON）
 │   │   ├── judge/           进程隔离、死线、红牌、重启、回放、确定性复核
 │   │   ├── schedule/        赛程冻结（换边、seed 递增）
-│   │   ├── rating/          Bradley–Terry + bootstrap
+│   │   ├── rating/          Bradley–Terry（v1.0 单值）+ 攻守双参数
 │   │   └── contest/         配置加载与路径解析
 │   ├── engine/
-│   │   ├── oracle_host.js   宿主：命令流 → 冻结 oracle
-│   │   └── oracle/          只读快照 + MANIFEST.json
+│   │   ├── oracle_host.js   宿主：命令流 → 冻结 oracle（可按参数加载规则变体）
+│   │   └── oracle/          只读快照 + MANIFEST.json + rules_siege.js
 │   ├── tournament/formal.json
 │   ├── workspace/           选手包（规则、模板、工具库、参考 Bot、计时器）
+│   │   └── siege/           攻守参考 Bot：siegebot 库 + attacker / defender / pool
 │   ├── bots/                封存记录与编译产物（bin 不入库）
-│   ├── results/formal/      赛程、结果、成绩、回放
+│   ├── results/formal/      第 1 季：赛程、结果、成绩、回放
+│   ├── results/siege/       攻守：HP 扫描、工事预算标定、BT 榜单与结论
 │   ├── replays/             历史赛季归档（预留）
 │   ├── notes/               赛前狠话、赛后复盘（预留）
 │   ├── start.py             组织方菜单
@@ -110,13 +151,13 @@ go run ./cmd/siege -tickLimit 1200 -fortBudget 24 -hps 1250 -seeds 20261201-2026
 ```text
 Dev/
 ├── README.md                 资料区索引
-├── MVP/                      冻结 JS 规则预言机（只读，含 正式比赛测试/）
+├── Plan_Beta.md              v1.0 规则基线与迁移规格
+├── Plan_Siege.md             攻守改造与标定记录
+├── 设计审查_正式版v1.0_20261113.md
+├── ORACLE.md                 预言机运行与复现规范
 ├── Docs/                     原作调研、事实卡片、版权与术语
-├── Plan_Beta.md              当前规则与迁移规格
-├── Plan_Alpha.md             历史构想（归档）
-├── MVP_plan.md               历史 MVP 计划（废止）
-├── ORACLE.md                 oracle 运行与复现规范
-├── MVP_*报告*.md             历次审查/修复/评估证据
+│   └── archive/              已归档：Plan_Alpha、MVP_plan、历次审查/修复/评估报告
+├── MVP/                      冻结 JS 规则预言机（只读，含 正式比赛测试/）
 └── 模板/                     第三方只读参照
 ```
 
@@ -166,6 +207,9 @@ cmd/arena ──► judge ──► engine(宿主客户端) ──► node engin
 3. **视野关闭**。`rules.vision=false`，全图可见；开雾需要另跑一个赛季，不能与本赛季混排。
 4. **参考 Bot 只用于基准**。它们只有流场寻路和简单交战规则，不代表规则上限；第 1 季无人斩舰，属选手强度不足，不是规则问题。
 5. **回放不入库**。`results/*/回放/` 可由 `arena run` 重建；`bots/bin/` 同理。
+6. **攻守模式仍是实验**。规则、协议、标定都齐了，但缺选手包、许可、回放查看器与沙箱，不能直接当正式赛季。
+7. **攻守的 BT 样本偏少**。每对 16 局时头名区间仍有 ±117 分；出正式榜单建议每对 ≥40 局（4 人池约 480 局）。
+8. **参考 Bot 有已知组合缺陷**。集结门槛固定 6 台、廉价 LAV 会占满人口 24 挤掉远程单位；修好后 HP / 工事预算 / tickLimit 需重新标定。
 
 ---
 

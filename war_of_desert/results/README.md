@@ -1,8 +1,12 @@
 # results · 赛事产物
 
-> 结果目录按赛季分：`results/formal/` 是当前正式赛，历史赛季另建目录并保留原始文件。
+> 按规则分目录，两边的文件互不通用：
+> - [`formal/`](formal/)：**v1.0 正式赛**（对称 VP、八领域计分、BT 双榜）
+> - [`siege/`](siege/)：**攻守实验**（矿场、工事、母舰 HP 标定、攻守双参数 BT），索引见 [`siege/README.md`](siege/README.md)
+>
+> 历史赛季另建目录并保留原始文件。
 
-## 文件
+## formal/ 文件
 
 | 文件 | 生产者 | 说明 |
 |---|---|---|
@@ -13,7 +17,7 @@
 | `成绩.json` | `arena rate` | 机器可读的 BT 结果 |
 | `回放/match-NNN.json` | `arena run` | 原始 hello + 每局结果 + 每 5 tick 帧 + 复核 |
 
-## 重建
+## formal/ 重建
 
 ```bash
 cd war_of_desert
@@ -24,7 +28,7 @@ go run ./cmd/arena rate
 
 `回放/` 体积较大且完全可由 `run` 重建，默认不入库；需要归档时整目录打包。
 
-## 审计
+## formal/ 审计
 
 1. `结果.jsonl` 行数 = `赛程.json` 场次数 × 2；
 2. 每行 `verifyOk=true`、`rulesHash` 一致；
