@@ -6,6 +6,19 @@
 
 ---
 
+## 分支
+
+| 分支 | 用途 |
+|---|---|
+| `main` | 投稿/发布快照，只在确认投稿时从 `Dev` 合并 |
+| `Dev` | 唯一开发分支：v1.0 正式赛、攻守实验、审查与方案文档都在这里演进 |
+
+> 本仓库顶层有 `Dev/` 目录，与分支名 `Dev` 同名，`git log Dev` 会报
+> `ambiguous argument`。引用分支时写完整引用 `refs/heads/Dev`（如 `git log refs/heads/Dev --`）；
+> `git switch Dev` / `git status` 不受影响。
+
+---
+
 ## 目录
 
 | 路径 | 作用 |
@@ -14,6 +27,8 @@
 | [`MVP/正式比赛测试/`](MVP/正式比赛测试/) | 冻结 MVP 之上的自包含测试环境：workspace、裁判快照、模板 Bot、runner、计时与收卷 |
 | [`Docs/`](Docs/) | 原作调研、事实卡片、操作映射、术语表、版权与来源 |
 | [`Plan_Beta.md`](Plan_Beta.md) | **当前唯一正式规格与迁移计划**：规则基线、协议契约、架构边界、验收门禁、偏差登记 |
+| [`Plan_Siege.md`](Plan_Siege.md) | **攻守对战改造与母舰 HP 实验方案**：规则改动、HP 梯度、统计方法、执行结果 |
+| [`设计审查_正式版v1.0_20261113.md`](设计审查_正式版v1.0_20261113.md) | 正式版 v1.0 设计审查：单位口径、计分卡、名次、规范一致性 |
 | [`ORACLE.md`](ORACLE.md) | 冻结 MVP 的运行、复现、覆盖率记录与 golden trace 规范 |
 | [`Plan_Alpha.md`](Plan_Alpha.md) | 历史构想，已归档 |
 | [`MVP_plan.md`](MVP_plan.md) | 历史 MVP 计划，已废止 |

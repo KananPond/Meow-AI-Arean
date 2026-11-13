@@ -56,6 +56,21 @@ go run ./cmd/arena check -seed 20261109
 
 ---
 
+## 攻守对战（实验）
+
+在 v1.0 之外新增的独立变体：一方守擂、一方进攻，守方有工事，攻方没有；VP 改为矿场，胜负只看母舰是否被摧毁。规则、协议与实验结果见 [`赛事手册_攻守.md`](赛事手册_攻守.md) 和 [`results/siege/结论.md`](results/siege/结论.md)。
+
+```bash
+go build -o bots/bin/attacker.exe ./workspace/siege/attacker
+go build -o bots/bin/defender.exe ./workspace/siege/defender
+go run ./cmd/siege -smoke -hp 1250 -seed 20261201
+go run ./cmd/siege -tickLimit 1200 -fortBudget 24 -hps 1250 -seeds 20261201-20261240 -workers 4 -out results/siege/hp1250_clean.csv
+```
+
+冻结的 `engine/oracle/rules.js` 未改动；攻守规则在 `engine/oracle/rules_siege.js`，旧赛季仍按 `rulesHash=906f1b14` 复现。
+
+---
+
 ## 目录
 
 ```text
