@@ -49,6 +49,11 @@ npm --prefix Dev/MVP test
 - `Dev/MVP` 的 HEAD **不再要求**等于 `288db07`（已解冻，可前进）；但任何用 MVP 生成
   golden trace 的记录，必须写明当时 `git -C Dev/MVP rev-parse HEAD` 的结果。
 
+> **Windows / `core.autocrlf=true` 注意**：checkout 会把 LF 写成 CRLF，四个快照文件的字节数各多出
+> 「行数」个字节（实测 `rules.js` 101609 → 103347），哈希全错。仓库根 `.gitattributes` 已对
+> `war_of_desert/engine/oracle/*` 标记 `-text`，禁止任何 EOL 转换——**不要删那两行**，也不要
+> 用会改写行尾的编辑器批量保存快照。删了之后，复现性只在“从未重新 checkout 的机器”上成立。
+
 ## 4. 当前已知运行状态
 
 截至 2026-11-12，本机 Node `v22.22.2`、npm `10.9.7` 下：
