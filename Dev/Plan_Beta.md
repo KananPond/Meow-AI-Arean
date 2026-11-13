@@ -3,7 +3,8 @@
 > **状态：已生效基线**（2026-11-12）
 > **实施状态**：赛制层 v1.0 已在 `war_of_desert/` 落地并跑完第 1 季基准赛；引擎仍由冻结 oracle 宿主承载，§6.2 Go 引擎门禁未宣称通过。
 > **路径说明（2026-11-12 目录重排）**：正式赛在 `war_of_desert/`；`MVP/`、`Docs/`、`Plan_*.md`、历史报告与 `模板/` 已移入 `Dev/`。本文中 `war_desert/` 均指 `war_of_desert/`，`MVP/` 均指 `Dev/MVP/`；命令若写 `git -C MVP`，请改 `git -C Dev/MVP`。
-> **取代关系**：本文取代 `Plan_Alpha.md` 与 `MVP_plan.md` 的未完成规划内容；后两者仅保留为历史资料。
+> **取代关系**：本文取代 `Plan_Alpha.md` 与 `MVP_plan.md` 的未完成规划内容；后两者已归档到 `Docs/archive/`，仅作历史资料。
+> **攻守模式**：攻守是不对称变体，规则在 `war_of_desert/engine/oracle/rules_siege.js`，规格与标定见 `Plan_Siege.md`；本文只覆盖 v1.0 对称赛。
 > **冻结预言机**：`MVP/` 自提交 `288db07f164bc6c680a2d878c47153804d3fdcab` 起冻结，作为规则语义、golden trace 与差分对拍的唯一 JS 参考实现。
 > **冻结纪律**：不得为了“顺手修复”改动冻结 MVP。发现疑似缺陷时，先写入本文“已知偏差登记”，再由 Go 正式版按登记结果决定是否复刻或修正。
 
@@ -15,7 +16,7 @@
 
 1. **正式比赛契约**：以本文定义的目标契约、边界和验收门禁为准。
 2. **规则语义预言机**：以冻结 MVP 的实际行为为准，尤其是 `step()` 顺序、数值表、地图收尾、弹道、判定链和计分公式。
-3. **历史文档**：`Plan_Alpha.md`、`MVP_plan.md`、`MVP/referee/README.md` 中与本文件冲突的数值或计划，均视为历史材料。
+3. **历史文档**：`Docs/archive/Plan_Alpha.md`、`Docs/archive/MVP_plan.md`、`MVP/referee/README.md` 中与本文件冲突的数值或计划，均视为历史材料。
 4. **偏差登记**：任何“Go 实现有意不复刻冻结 MVP”的地方，必须登记在 §11，并给出理由、影响和对拍方式。
 
 本文不逐字复制 MVP 的全部代码级常量；那会造成第二份事实源。需要逐字段核对时，以冻结提交下的 `MVP/README.md` 与 `MVP/referee/rules.js` 为准。
