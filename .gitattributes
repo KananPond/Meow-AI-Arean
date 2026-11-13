@@ -1,0 +1,9 @@
+# 规则快照按“字节”管理，禁止任何 EOL 转换。
+# 原因：engine/oracle/MANIFEST.json 记录的是文件内容的 SHA-256。
+# 在 core.autocrlf=true 的 Windows 上，checkout 会把 LF 转成 CRLF，
+# 字节数变化（每条换行 +1），哈希随之失配，第 1 季的复现性就是假的。
+# 用 `python -X utf8 war_of_desert/scripts/verify_oracle.py` 校验。
+war_of_desert/engine/oracle/* -text
+
+# 回放、赛程、成绩等产物按字节留档，同样不做 EOL 转换。
+war_of_desert/results/** -text

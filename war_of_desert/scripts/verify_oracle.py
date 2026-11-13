@@ -42,6 +42,20 @@ def main():
             print("     期望 %7d B  %s" % (meta["bytes"], meta["sha256"][:16]))
             bad += 1
 
+    # 攻守变体是独立文件，哈希记在 MANIFEST_siege.json；同样按字节校验。
+    siege = os.path.join(oracle_dir, "MANIFEST_siege.json")
+    if os.path.exists(siege):
+        with open(siege, encoding="utf-8") as fh:
+            sm = json.load(fh)
+        path = os.path.join(oracle_dir, "rules_siege.js")
+        raw = open(path, "rb").read() if os.path.exists(path) else b""
+        digest = hashlib.sha256(raw).hexdigest()
+        ok = bool(raw) and digest == sm.get("sha256") and len(raw) == sm.get("bytes")
+        print("%s %-14s %7d B  %s" % ("OK  " if ok else "FAIL", "rules_siege.js", len(raw), digest[:16]))
+        if not ok:
+            print("     期望 %7d B  %s" % (sm.get("bytes", -1), str(sm.get("sha256"))[:16]))
+            bad += 1
+
     print()
     if bad:
         print("ORACLE_SNAPSHOT_FAIL (%d 个文件不一致)" % bad)
