@@ -42,7 +42,7 @@
   /* ---------------------- 攻守实验（siege）专用常量 ----------------------
    * 这些常量只在 rules_siege.js 里生效；冻结的 rules.js 不包含它们。
    * 距离/半径统一用世界格（1 世界格 = CELL 像素），与地图坐标一致。 */
-  const SIEGE_TICK_LIMIT = 1350;   // 67.5 s：1200 下攻方平均 1160 才打完，时间不够，双方胜率失衡
+  const SIEGE_TICK_LIMIT = 1260;   // 63 s：80 局实测攻方胜率 45.0%（1200→37.5%、1350→51.2%）
   const MINE_RATE = 0.8;             // 每个矿场每 tick 给占领方的 CU
   const MINE_AMOUNT = 600;           // 每个矿场的 CU 储量
   const MINE_SALVAGE_BONUS = 1.2;    // 矿场内每台 SALVAGER 的额外 CU/tick
