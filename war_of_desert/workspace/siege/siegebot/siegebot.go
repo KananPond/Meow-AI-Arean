@@ -666,6 +666,7 @@ func Attack(b *Bot, t *Tick) []Action {
 		breach = enemyM
 	}
 	// 集结门槛：兵力不够就先在集结点等，不要一台一台送进炮塔火力网。
+	// 试过抬到 9 台 + 必须有远程：更差 —— 等太久，剩下的时间不够打完。
 	combat := 0
 	for _, u := range b.Own(t) {
 		if u.Kind != "MOTHERSHIP" && u.Kind != "SALVAGER" {
