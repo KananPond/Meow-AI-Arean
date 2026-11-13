@@ -1,7 +1,0 @@
-hp,seed,winner,attacker_win,destroyed,destroyed_at,turn,reason,duration_ms,faults,verify_ok,error
-1250,20261201,0,false,false,0,1200,时间到 · 守方守住母舰,3982,0,true,
-1250,20261202,0,false,false,0,1200,时间到 · 守方守住母舰,2873,0,true,
-1250,20261203,0,false,false,0,1200,时间到 · 守方守住母舰,2859,0,true,
-1250,20261204,0,false,false,0,1200,时间到 · 守方守住母舰,2910,0,true,
-1250,20261205,0,false,false,0,1200,时间到 · 守方守住母舰,2606,0,true,
-1250,20261206,0,false,false,0,1200,时间到 · 守方守住母舰,3643,0,true,
