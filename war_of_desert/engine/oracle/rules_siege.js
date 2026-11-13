@@ -42,7 +42,7 @@
   /* ---------------------- 攻守实验（siege）专用常量 ----------------------
    * 这些常量只在 rules_siege.js 里生效；冻结的 rules.js 不包含它们。
    * 距离/半径统一用世界格（1 世界格 = CELL 像素），与地图坐标一致。 */
-  const SIEGE_TICK_LIMIT = 1800;
+  const SIEGE_TICK_LIMIT = 1200;   // 60 s：破防后还要留出斩舰窗口
   const MINE_RATE = 0.8;             // 每个矿场每 tick 给占领方的 CU
   const MINE_AMOUNT = 600;           // 每个矿场的 CU 储量
   const MINE_SALVAGE_BONUS = 1.2;    // 矿场内每台 SALVAGER 的额外 CU/tick
@@ -142,10 +142,17 @@
   const MODES = ['obey', 'neutral', 'aggressive'];
   const DEFAULT_MODE = 'obey';          // 默认 = v0.8 行为：只执行 Bot 指令
   const MODE_RETREAT_CELLS = 2 * SCALE;         // neutral 被高差压制时后撤的距离（格）
+  /* 三种模式的分工（Bot 的任务是完成任务目标，不是逐台点鼠标）：
+   *   obey       —— Bot 逐台微操：引擎不替它做任何移动决策
+   *   neutral    —— 命令为主：沿命令走，射程内停步开火，被高差压制后撤，绝不追击
+   *   aggressive —— 命令只是目标：朝目标推进，途中遇敌边走边打，到达后驻守；
+   *                 没有命令时自主索敌
+   * 开火是独立结算的第 4 步，任何模式只要射程内有可见敌人都能还击；
+   * 模式约束的是「移动」，不是「扣扳机」。 */
   const MODE_DESC = {
-    obey: '服从：只执行 Bot 的 move/attack，不因视野内出现敌人而自行离开位置',
-    neutral: '中间：按 Bot 意图行动，途中遇敌停步开火；被高差压制时后撤脱离，威胁消失后回归',
-    aggressive: '激进：Bot 只给方向，索敌/追击/占位由引擎接管，看得见就压上去打'
+    obey: '服从：Bot 逐台下发 move/attack，引擎不做任何自主移动决策',
+    neutral: '中间：命令为主。沿命令走，射程内停步开火，被高差压制后撤，不追击',
+    aggressive: '激进：命令只是目标。朝目标推进，途中遇敌边走边打，到达后驻守；无命令时自主索敌'
   };
 
   /* ---------------------- 母舰四项分配 ----------------------
@@ -542,7 +549,9 @@
       this.cfg = Object.assign({
         mode: 'siege', tickLimit: SIEGE_TICK_LIMIT, tickMs: TICK_MS, decideMs: DECIDE_MS, initMs: INIT_MS,
         generator: GENERATOR_DEFAULT,
-        mothershipHp: 3000, attackerMothershipHp: 3000,
+        /* 母舰 HP 是攻守平衡的主旋钮：1250 由 40 seed 扫描标定（摧毁率 32.5%）。
+         * 双方同 HP —— 攻方母舰虽然很少被摸到，但「斩舰」必须对两边都成立。 */
+        mothershipHp: 1250, attackerMothershipHp: 1250,
         fortBudget: FORT_BUDGET, placeTicks: PLACE_TICKS,
         attackerCu: 900, defenderCu: 700,
         attackerStartLav: 4, defenderStartLav: 3
@@ -715,16 +724,26 @@
     }
     /* 计算这一拍的行为。返回 {move:{x,y}|null, targetId:number|null}。
      * 只做决策，不改状态 —— 方便单测直接调它看意图。 */
+    /* 把 Bot 的指令翻译成「目标点」。move 直接就是目标；attack 取目标的当前位置，
+     * 这样激进单位会朝敌人压过去，而不是原地空等一个坐标。 */
+    orderGoal(u, order) {
+      if (!order) return null;
+      if (order.type === 'move') return { x: order.x, y: order.y };
+      if (order.type === 'attack' && order.targetId != null) {
+        const e = this.units.find(x => x.id === order.targetId && !x.dead && x.side !== u.side);
+        if (e) return { x: e.x, y: e.y };
+      }
+      return null;
+    }
+    /* 计算这一拍的行为。返回 {move:{x,y}|null, targetId:number|null}。
+     * 只做决策，不改状态 —— 方便单测直接调它看意图。 */
     unitIntent(u) {
       const mode = u.mode || DEFAULT_MODE;
       const order = u.order;
-      const t = TYPES[u.kind];
+      const goal = this.orderGoal(u, order);
       const canFight = this.canFightKind(u.kind);
-      /* SCOUT / SALVAGER 没有武器：三种模式都退化成「服从」，它们本来也不该自己去打 */
-      if (!canFight) {
-        if (order && order.type === 'move') return { move: { x: order.x, y: order.y }, targetId: null };
-        return { move: null, targetId: null };
-      }
+      /* SCOUT / SALVAGER 没有武器：三种模式都退化成「照命令走」，它们本来也不该自己去打 */
+      if (!canFight) return { move: goal, targetId: null };
       if (mode === 'obey') {
         /* 完全执行 Bot：只有显式 move 才移动；显式 attack 才锁定目标。
          * 视野里出现敌人也不会让它离开位置（开火不算移动，射程内照样还击）。 */
@@ -734,21 +753,14 @@
         };
       }
       const foe = this.nearestVisibleEnemy(u);
-      if (!foe) {
-        /* 视野里没有敌人：回归 Bot 的原定指令（neutral 与 aggressive 都是这个收尾） */
-        return {
-          move: (order && order.type === 'move') ? { x: order.x, y: order.y } : null,
-          targetId: null
-        };
-      }
-      const engage = this.inWeaponRange(u, foe.e);
       if (mode === 'neutral') {
-        /* 中间模式：停步开火 + 高差拉扯，但绝不主动追击 */
-        if (engage) {
+        /* 中间：Bot 的命令为主。只在「命令路线附近」做局部调整，绝不追击。 */
+        if (!foe) return { move: goal, targetId: null };
+        if (this.inWeaponRange(u, foe.e)) {
           const myH = terrainHeightAt(this.map, u.x, u.y);
           const hisH = terrainHeightAt(this.map, foe.e.x, foe.e.y);
           if (hisH - myH >= HEIGHT_DIFF_MIN) {
-            /* 自己站在低处被压着打：朝相反方向撤一小段，脱离后靠「回归原指令」复位 */
+            /* 站在低处被压着打：朝相反方向撤一小段，脱离后靠「回归原命令」复位 */
             const dx = u.x - foe.e.x, dy = u.y - foe.e.y;
             const d = Math.hypot(dx, dy) || 1;
             const p = this.clampToWorld(u.x + (dx / d) * MODE_RETREAT_CELLS * CELL,
@@ -758,23 +770,29 @@
           /* 持平或占高：原地开火（停步），不追 */
           return { move: null, targetId: foe.e.id };
         }
-        /* 射程外但在视野内：只做「占高差视野」的原地判断，不前进 */
+        /* 射程外：只有「这个敌人真能威胁到我」才占高不动，否则照命令走。
+         * 原实现拿全图最近的敌人做高差判断 —— 地图另一头的一堵墙也能让
+         * 单位在高地上永久罚站，攻方全体卡死在出生点是它的直接后果。 */
+        const near = foe.d <= TYPES[u.kind].vision;
         return {
-          move: (order && order.type === 'move' && !this.hasHeightAdvantage(u, foe.e))
-            ? { x: order.x, y: order.y } : null,
+          move: (near && this.hasHeightAdvantage(u, foe.e)) ? null : goal,
           targetId: foe.e.id
         };
       }
-      /* aggressive：看见就压上去。打得到就停下打，打不到就追，追出视野就放弃。 */
-      if (engage) return { move: null, targetId: foe.e.id };
-      const vis = TYPES[u.kind].vision + (this.vision.enabled ? HEIGHT_BONUS_CELLS : 0);
-      if (foe.d > vis) {
-        /* 跟丢了（远处那个只是巧合在视野边缘）：回到 Bot 的指令 */
+      /* aggressive：命令只是目标。
+       * 有目标 → 一直朝目标推进，射程内有谁就打谁（边走边打），到点后驻守；
+       * 没目标 → 自主索敌，压到射程边缘再停。 */
+      if (goal) {
+        const atGoal = Math.hypot(goal.x - u.x, goal.y - u.y) <= CELL * 0.75;
         return {
-          move: (order && order.type === 'move') ? { x: order.x, y: order.y } : null,
-          targetId: null
+          move: atGoal ? null : goal,
+          targetId: foe ? foe.e.id : null
         };
       }
+      if (!foe) return { move: null, targetId: null };
+      if (this.inWeaponRange(u, foe.e)) return { move: null, targetId: foe.e.id };
+      const vis = TYPES[u.kind].vision + (this.vision.enabled ? HEIGHT_BONUS_CELLS : 0);
+      if (foe.d > vis) return { move: null, targetId: null };
       /* 停在射程边缘而不是怼到脸上：留出输出距离，也避免和地形死磕 */
       const keep = Math.max(1, TYPES[u.kind].range * 0.8) * CELL;
       const dx = u.x - foe.e.x, dy = u.y - foe.e.y;

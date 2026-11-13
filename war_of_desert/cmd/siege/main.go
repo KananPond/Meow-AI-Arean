@@ -64,11 +64,11 @@ func main() {
 		attacker  = flag.String("attacker", "bots/bin/attacker.exe", "攻方程序")
 		defender  = flag.String("defender", "bots/bin/defender.exe", "守方程序")
 		seeds     = flag.String("seeds", "20261201-20261208", "seed 列表/范围")
-		hps       = flag.String("hps", "3000,1500,800,400", "守方母舰 HP 梯度")
+		hps       = flag.String("hps", "1250", "守方母舰 HP 梯度")
 		workers   = flag.Int("workers", 4, "并行局数")
 		out       = flag.String("out", "results/siege/pilot.csv", "CSV 输出")
 		smoke     = flag.Bool("smoke", false, "只跑一局并打印细节")
-		smokeHP   = flag.Int("hp", 1500, "smoke 用的 HP")
+		smokeHP   = flag.Int("hp", 1250, "smoke 用的 HP")
 		smokeSeed = flag.Int("seed", 20261201, "smoke 用的 seed")
 		tickLim   = flag.Int("tickLimit", 1200, "tick 上限")
 		fortBud   = flag.Int("fortBudget", 24, "守方工事预算")
@@ -101,7 +101,7 @@ func main() {
 			Rules: engine.HostConfig{
 				Seed: seed, Generator: "minecraft",
 				TickLimit: *tickLim, TickMs: 50, DecideMs: 120, InitMs: 2000, Vision: false,
-				Mode: "siege", MothershipHP: hp, AttackerMothershipHP: 3000,
+				Mode: "siege", MothershipHP: hp, AttackerMothershipHP: hp,
 				FortBudget: *fortBud, PlaceTicks: *place,
 				AttackerCU: *attCU, DefenderCU: *defCU,
 				AttackerStartLav: *attLav, DefenderStartLav: *defLav,
@@ -180,7 +180,8 @@ func main() {
 		fail(err)
 	}
 	sums := summarize(all, hpList)
-	md := filepath.Join(filepath.Dir(*out), "sweep.md")
+	// 汇总跟着 CSV 命名，别固定写 sweep.md —— 否则逐 HP 逐预算的试跑会把正式汇总冲掉。
+	md := strings.TrimSuffix(*out, filepath.Ext(*out)) + ".md"
 	if err := writeSummary(md, sums, *tickLim, *fortBud, *attCU, *defCU); err != nil {
 		fail(err)
 	}

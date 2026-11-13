@@ -167,6 +167,10 @@ type Bot struct {
 	fields   map[int]*Field
 	fortIdx  int
 	buildIdx int
+	// moded 记录已经单独下发过行动模式的单位，避免每拍重复发 mode
+	moded map[int]string
+	// station 记录每台单位的驻防点，只在没到位时下发一次
+	station map[int][2]float64
 }
 
 func Run(role string, decide func(*Bot, *Tick) []Action) error {
@@ -186,7 +190,10 @@ func Run(role string, decide func(*Bot, *Tick) []Action) error {
 	if err != nil {
 		return fmt.Errorf("地图解码: %w", err)
 	}
-	b := &Bot{Hello: h, Layers: layers, Role: role, Cell: h.Cell, fields: map[int]*Field{}}
+	b := &Bot{
+		Hello: h, Layers: layers, Role: role, Cell: h.Cell,
+		fields: map[int]*Field{}, moded: map[int]string{}, station: map[int][2]float64{},
+	}
 	out := bufio.NewWriterSize(os.Stdout, 1<<16)
 	if _, err := out.WriteString("{\"ready\":true}\n"); err != nil {
 		return err
@@ -375,6 +382,17 @@ func (b *Bot) StepToward(u Unit, tx, ty, stride float64) (float64, float64, bool
 	return nx, ny, true
 }
 
+// MoveToward 用 BFS 步数场走一步；没有通路时直着蹭过去。
+// 墙在步数场里是可走格，撞上去会被 applyMove 拦停，顺便成为射程内最近的靶子。
+func (b *Bot) MoveToward(t *Tick, u Unit, tx, ty float64) (float64, float64, bool) {
+	if f := b.FieldTo(tx, ty); f != nil {
+		if x, y, ok := b.StepAlong(u, f, b.StridePx(u.Kind)); ok {
+			return x, y, true
+		}
+	}
+	return b.StepToward(u, tx, ty, b.StridePx(u.Kind))
+}
+
 func (b *Bot) clampWorld(x, y float64) (float64, float64) {
 	c := float64(b.Cell)
 	w := float64(b.Hello.World)
@@ -504,6 +522,21 @@ func (b *Bot) CanProduce(t *Tick, kind string) bool {
 	return t.Me.CU >= float64(ty.Cost)
 }
 
+// ProduceNext 从建造序列里挑「第一件买得起的」。
+// 不能只看队首：序列里一旦排到买不起的单位（比如 950 CU 的 ARTILLERY），
+// 整个生产链就会停摆，军队规模永远起不来。
+func (b *Bot) ProduceNext(t *Tick, order []string) string {
+	n := len(order)
+	for i := 0; i < n; i++ {
+		k := order[(b.buildIdx+i)%n]
+		if b.CanProduce(t, k) {
+			b.buildIdx = (b.buildIdx + i + 1) % n
+			return k
+		}
+	}
+	return ""
+}
+
 func (b *Bot) NextTech(t *Tick, order []string) string {
 	done := map[string]bool{}
 	for _, id := range t.Me.TechDone {
@@ -521,75 +554,155 @@ func (b *Bot) NextTech(t *Tick, order []string) string {
 	return ""
 }
 
-/* ---------------- 攻方 ---------------- */
+// BreachPoint 挑「我方母舰 → 敌方母舰」连线附近最近的工事当突破口。
+// 所有突击单位挤到一个点打，而不是沿着城墙均匀铺开——这是攻方能不能破防的关键。
+func (b *Bot) BreachPoint(t *Tick, ownM, enemyM *Unit) *Unit {
+	if ownM == nil || enemyM == nil {
+		return nil
+	}
+	var best *Unit
+	bestCost := math.Inf(1)
+	for i := range t.Units {
+		e := &t.Units[i]
+		if e.Side == ownM.Side || e.HP <= 0 {
+			continue
+		}
+		if e.Kind != "WALL" && e.Kind != "TURRET" {
+			continue
+		}
+		cost := math.Hypot(e.X-ownM.X, e.Y-ownM.Y) + math.Hypot(enemyM.X-e.X, enemyM.Y-e.Y)
+		if cost < bestCost {
+			bestCost, best = cost, e
+		}
+	}
+	return best
+}
 
+/* ---------------- 攻方 ----------------
+ * 任务：在时限内摧毁守方母舰。
+ * 指挥方式按兵种分工（Bot 只定任务与目标，具体走位/交战归单位 AI）：
+ *   AAV        aggressive  装甲矛头，命令只当目标，一路推过去
+ *   LAV        neutral     火力队，命令为主：到点、遇敌停步开火
+ *   RAILGUN / ARTILLERY  obey  远程火力，Bot 逐台点名 + 卡射程边缘
+ * 只有当「服从」模式的单位需要逐台下发 move/attack。 */
 func Attack(b *Bot, t *Tick) []Action {
-	acts := make([]Action, 0, 12)
+	acts := make([]Action, 0, 24)
 	if t.Turn == 0 {
 		acts = append(acts,
 			Action{Type: "mode", Mode: "neutral"},
 			Action{Type: "alloc", Alloc: map[string]int{"produce": 40, "attack": 30, "research": 10, "move": 20}},
 		)
 	}
-	buildOrder := []string{"LAV", "LAV", "AAV", "RAILGUN", "LAV", "AAV"}
-	kind := buildOrder[b.buildIdx%len(buildOrder)]
-	if b.CanProduce(t, kind) {
+	// 军队规模不设固定编制：有 CU 就补，人口/队列满了引擎自然拒绝
+	// 远程单位必须排在前面：炮塔射程 216 px，只有 RAILGUN(228)/ARTILLERY(336)
+	// 能反制；全靠 LAV 冲脸只会被炮塔白打。
+	buildOrder := []string{"LAV", "LAV", "RAILGUN", "AAV", "RAILGUN", "AAV", "ARTILLERY"}
+	if kind := b.ProduceNext(t, buildOrder); kind != "" {
 		acts = append(acts, Action{Type: "produce", Kind: kind})
-		b.buildIdx++
 	}
-	if tech := b.NextTech(t, []string{"A1", "F1", "A2"}); tech != "" && t.Me.CU >= 80 {
+	if tech := b.NextTech(t, []string{"F1", "A1", "F2", "A2"}); tech != "" && t.Me.CU >= 80 {
 		acts = append(acts, Action{Type: "research", Tech: tech})
 	}
+
 	enemyM := b.Mothership(t, 0)
+	ownM := b.Mothership(t, t.Side)
+	// 导航目标用敌方母舰：它在工事圈里，BFS 场一定从走廊可达；
+	// 具体某面墙可能从攻方一侧根本走不到（山脉隔断），拿它当目标会让全军卡死。
+	nav := enemyM
+	breach := b.BreachPoint(t, ownM, enemyM)
+	if breach == nil {
+		breach = enemyM
+	}
+	// 集结门槛：兵力不够就先在集结点等，不要一台一台送进炮塔火力网。
+	combat := 0
 	for _, u := range b.Own(t) {
-		if u.Kind == "MOTHERSHIP" {
+		if u.Kind != "MOTHERSHIP" && u.Kind != "SALVAGER" {
+			combat++
+		}
+	}
+	assault := combat >= 6
+
+	for _, u := range b.Own(t) {
+		switch u.Kind {
+		case "MOTHERSHIP":
 			if e := b.NearestEnemyWithin(t, u, b.RangePx(u.Kind)*0.95, false); e != nil {
 				acts = append(acts, Action{ID: u.ID, Type: "attack", TargetID: e.ID})
 			}
 			continue
-		}
-		if u.Kind == "SALVAGER" {
+		case "SALVAGER":
+			// 采集车按命令走矿场；无武器，三种模式对它等价
 			if m := b.NearestMine(t, u); m != nil {
-				if f := b.FieldTo(m.X, m.Y); f != nil {
-					if x, y, ok := b.StepAlong(u, f, b.StridePx(u.Kind)); ok {
-						acts = append(acts, Action{ID: u.ID, Type: "move", X: x, Y: y})
-						continue
-					}
+				if x, y, ok := b.MoveToward(t, u, m.X, m.Y); ok {
+					acts = append(acts, Action{ID: u.ID, Type: "move", X: x, Y: y})
 				}
 			}
 			continue
 		}
-		rng := b.RangePx(u.Kind)
-		// 先打挡路的工事，再打射程内的其它敌人，最后推进母舰。
-		if e := b.NearestEnemyWithin(t, u, rng*0.92, true); e != nil {
-			acts = append(acts, Action{ID: u.ID, Type: "attack", TargetID: e.ID})
-			continue
+
+		// 兵种分工：只给一次模式，之后靠单位 AI 维持
+		want := "neutral"
+		if u.Kind == "AAV" || u.Kind == "LAV" {
+			want = "aggressive"
 		}
-		if e := b.NearestEnemyWithin(t, u, rng*0.95, false); e != nil {
-			acts = append(acts, Action{ID: u.ID, Type: "attack", TargetID: e.ID})
-			continue
+		if u.Kind == "RAILGUN" || u.Kind == "ARTILLERY" {
+			want = "obey"
 		}
-		if enemyM == nil {
-			continue
+		if b.moded[u.ID] != want {
+			acts = append(acts, Action{ID: u.ID, Type: "mode", Mode: want})
+			b.moded[u.ID] = want
 		}
-		if f := b.FieldTo(enemyM.X, enemyM.Y); f != nil {
-			if x, y, ok := b.StepAlong(u, f, b.StridePx(u.Kind)); ok {
-				acts = append(acts, Action{ID: u.ID, Type: "move", X: x, Y: y})
+
+		// 远程火力组：不参与集结，直接去卡射程边缘
+		if want == "obey" {
+			rng := b.RangePx(u.Kind)
+			if e := b.NearestEnemyWithin(t, u, rng*0.9, true); e != nil {
+				acts = append(acts, Action{ID: u.ID, Type: "attack", TargetID: e.ID})
 				continue
 			}
-		}
-		// BFS 场可能把墙当可走格；卡住时直接朝最近工事/母舰蹭过去，
-		// 进入射程后下一拍就会转成 attack。
-		tgt := b.NearestEnemyWithin(t, u, rng*4, true)
-		if tgt == nil {
-			tgt = enemyM
-		}
-		if tgt != nil {
-			if x, y, ok := b.StepToward(u, tgt.X, tgt.Y, b.StridePx(u.Kind)); ok {
-				acts = append(acts, Action{ID: u.ID, Type: "move", X: x, Y: y})
-			} else {
-				acts = append(acts, Action{ID: u.ID, Type: "idle"})
+			next := breach
+			if inRange := b.NearestEnemyWithin(t, u, 1e9, true); inRange != nil {
+				next = inRange
 			}
+			if next != nil {
+				d := math.Hypot(next.X-u.X, next.Y-u.Y)
+				if d > rng*0.8 {
+					dx, dy := next.X-u.X, next.Y-u.Y
+					n := math.Hypot(dx, dy)
+					if n == 0 {
+						n = 1
+					}
+					if x, y, ok := b.MoveToward(t, u, next.X-dx/n*rng*0.75, next.Y-dy/n*rng*0.75); ok {
+						acts = append(acts, Action{ID: u.ID, Type: "move", X: x, Y: y})
+					}
+				}
+				continue
+			}
+			if enemyM != nil {
+				if x, y, ok := b.MoveToward(t, u, enemyM.X, enemyM.Y); ok {
+					acts = append(acts, Action{ID: u.ID, Type: "move", X: x, Y: y})
+				}
+			}
+			continue
+		}
+
+		// 未集结：战斗单位去集结点待命
+		if !assault && ownM != nil && enemyM != nil {
+			rx := ownM.X + (nav.X-ownM.X)*0.5
+			ry := ownM.Y + (nav.Y-ownM.Y)*0.5
+			if math.Hypot(rx-u.X, ry-u.Y) > float64(b.Cell)*2 {
+				if x, y, ok := b.MoveToward(t, u, rx, ry); ok {
+					acts = append(acts, Action{ID: u.ID, Type: "move", X: x, Y: y})
+				}
+			}
+			continue
+		}
+
+		// 突击：给目标点就够，怎么打由单位 AI 决定
+		if nav == nil {
+			continue
+		}
+		if x, y, ok := b.MoveToward(t, u, nav.X, nav.Y); ok {
+			acts = append(acts, Action{ID: u.ID, Type: "move", X: x, Y: y})
 		}
 	}
 	return acts
@@ -632,8 +745,11 @@ func (b *Bot) fortPlan(t *Tick) []Fort {
 	return out
 }
 
+/* 守方任务：在时限内保住母舰。
+ * 指挥方式：全队「命令为主」（neutral）——只下发驻防点，到位后由单位 AI 自行
+ * 停步开火/高差后撤；只有 2 台机动哨兵由 Bot 逐台微操（obey）补墙缺口。 */
 func Defend(b *Bot, t *Tick) []Action {
-	acts := make([]Action, 0, 12)
+	acts := make([]Action, 0, 24)
 	if t.Turn == 0 {
 		acts = append(acts,
 			Action{Type: "mode", Mode: "neutral"},
@@ -653,11 +769,10 @@ func Defend(b *Bot, t *Tick) []Action {
 			b.fortIdx = idx + 1
 		}
 	}
-	defOrder := []string{"LAV", "AAV", "LAV", "AAV"}
-	dk := defOrder[b.buildIdx%len(defOrder)]
-	if b.CanProduce(t, dk) {
-		acts = append(acts, Action{Type: "produce", Kind: dk})
-		b.buildIdx++
+	// 军队规模不设固定编制：守方靠矿场 + 基础后勤持续补兵
+	defOrder := []string{"LAV", "AAV", "LAV", "AAV", "RAILGUN"}
+	if kind := b.ProduceNext(t, defOrder); kind != "" {
+		acts = append(acts, Action{Type: "produce", Kind: kind})
 	}
 	if t.Me.WeaponsReady < 2 && t.Me.CU >= 120 {
 		acts = append(acts, Action{Type: "weapon"})
@@ -670,28 +785,28 @@ func Defend(b *Bot, t *Tick) []Action {
 		return acts
 	}
 	for _, u := range b.Own(t) {
-		if u.Kind == "MOTHERSHIP" {
+		switch u.Kind {
+		case "MOTHERSHIP":
 			if e := b.NearestEnemyWithin(t, u, b.RangePx(u.Kind)*0.95, false); e != nil {
 				acts = append(acts, Action{ID: u.ID, Type: "attack", TargetID: e.ID})
 			}
 			continue
-		}
-		if u.Kind == "SALVAGER" {
-			// 守方采集车不出墙，留在母舰旁；经济靠基础收入 + 攻方占矿后的压力。
+		case "SALVAGER":
+			// 守方采集车不出墙，留在母舰旁
 			continue
 		}
-		rng := b.RangePx(u.Kind)
-		if e := b.NearestEnemyWithin(t, u, rng*0.95, false); e != nil {
-			acts = append(acts, Action{ID: u.ID, Type: "attack", TargetID: e.ID})
-			continue
+		// 其余全是「命令为主」：下一个驻防点，到位后不再逐台指挥
+		st, seen := b.station[u.ID]
+		if !seen {
+			a := float64(u.ID) * 2.399
+			sx, sy := b.clampWorld(m.X+math.Cos(a)*130, m.Y+math.Sin(a)*130)
+			st = [2]float64{sx, sy}
+			b.station[u.ID] = st
 		}
-		// 防守站位：母舰周围 130 px，按单位 id 分散。
-		a := float64(u.ID) * 2.399
-		tx, ty := b.clampWorld(m.X+math.Cos(a)*130, m.Y+math.Sin(a)*130)
-		if x, y, ok := b.StepToward(u, tx, ty, b.StridePx(u.Kind)); ok {
-			acts = append(acts, Action{ID: u.ID, Type: "move", X: x, Y: y})
-		} else {
-			acts = append(acts, Action{ID: u.ID, Type: "idle"})
+		if math.Hypot(st[0]-u.X, st[1]-u.Y) > float64(b.Cell)*1.5 {
+			if x, y, ok := b.MoveToward(t, u, st[0], st[1]); ok {
+				acts = append(acts, Action{ID: u.ID, Type: "move", X: x, Y: y})
+			}
 		}
 	}
 	return acts
