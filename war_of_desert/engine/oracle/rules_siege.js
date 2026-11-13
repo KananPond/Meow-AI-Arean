@@ -46,7 +46,7 @@
   const MINE_RATE = 0.8;             // 每个矿场每 tick 给占领方的 CU
   const MINE_AMOUNT = 600;           // 每个矿场的 CU 储量
   const MINE_SALVAGE_BONUS = 1.2;    // 矿场内每台 SALVAGER 的额外 CU/tick
-  const FORT_BUDGET = 24;            // 守方工事点预算
+  const FORT_BUDGET = 16;            // 守方工事点预算（1250 HP 下把摧毁率标到 20%～45%）
   const FORT_COST = { WALL: 1, TURRET: 3 };
   const FORT_RADIUS = 34 * CELL;     // 工事必须放在守方母舰周围 34 世界格内
   const PLACE_TICKS = 80;            // 布置阶段长度（tick）

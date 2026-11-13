@@ -71,7 +71,7 @@ func main() {
 		smokeHP   = flag.Int("hp", 1250, "smoke 用的 HP")
 		smokeSeed = flag.Int("seed", 20261201, "smoke 用的 seed")
 		tickLim   = flag.Int("tickLimit", 1200, "tick 上限")
-		fortBud   = flag.Int("fortBudget", 24, "守方工事预算")
+		fortBud   = flag.Int("fortBudget", 16, "守方工事预算")
 		attCU     = flag.Int("attackerCu", 900, "攻方起始 CU")
 		defCU     = flag.Int("defenderCu", 700, "守方起始 CU")
 		attLav    = flag.Int("attackerLav", 4, "攻方初始 LAV")

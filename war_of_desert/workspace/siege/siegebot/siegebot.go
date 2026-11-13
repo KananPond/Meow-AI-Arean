@@ -171,6 +171,15 @@ type Bot struct {
 	moded map[int]string
 	// station 记录每台单位的驻防点，只在没到位时下发一次
 	station map[int][2]float64
+	// mem 记录上一拍位置与卡住计数，用来发现「引擎不认这一步」
+	mem map[int]*unitMem
+}
+
+// unitMem 是逐台单位的移动记忆。
+type unitMem struct {
+	x, y  float64
+	stuck int
+	swing int
 }
 
 func Run(role string, decide func(*Bot, *Tick) []Action) error {
@@ -193,6 +202,7 @@ func Run(role string, decide func(*Bot, *Tick) []Action) error {
 	b := &Bot{
 		Hello: h, Layers: layers, Role: role, Cell: h.Cell,
 		fields: map[int]*Field{}, moded: map[int]string{}, station: map[int][2]float64{},
+		mem: map[int]*unitMem{},
 	}
 	out := bufio.NewWriterSize(os.Stdout, 1<<16)
 	if _, err := out.WriteString("{\"ready\":true}\n"); err != nil {
@@ -391,6 +401,48 @@ func (b *Bot) MoveToward(t *Tick, u Unit, tx, ty float64) (float64, float64, boo
 		}
 	}
 	return b.StepToward(u, tx, ty, b.StridePx(u.Kind))
+}
+
+// Advance 朝目标点推进。连续几拍位置没变就改走侧向。
+// 引擎的 stepAllowed 按「前方半个格」采样，Bot 的 BFS 按格心建模，
+// 个别格子上两者会不一致：BFS 认为能过、引擎过不去，单位就会永久贴住。
+// 侧向绕行是最省事的解法——参考 Bot 不需要完美寻路，只需要不卡死。
+func (b *Bot) Advance(t *Tick, u Unit, tx, ty float64) (float64, float64, bool) {
+	m := b.mem[u.ID]
+	if m == nil {
+		m = &unitMem{x: u.X, y: u.Y}
+		b.mem[u.ID] = m
+	}
+	if math.Hypot(u.X-m.x, u.Y-m.y) < 0.6 {
+		m.stuck++
+	} else {
+		m.stuck = 0
+	}
+	m.x, m.y = u.X, u.Y
+	if m.stuck <= 3 {
+		return b.MoveToward(t, u, tx, ty)
+	}
+	dx, dy := tx-u.X, ty-u.Y
+	d := math.Hypot(dx, dy)
+	if d < 1e-6 {
+		return 0, 0, false
+	}
+	ux, uy := dx/d, dy/d
+	m.swing++
+	sign := 1.0
+	if m.swing%2 == 0 {
+		sign = -1
+	}
+	step := b.StridePx(u.Kind) * 2
+	for _, a := range []float64{math.Pi / 2, math.Pi / 4, math.Pi * 3 / 4} {
+		ang := a * sign
+		nx := u.X + (ux*math.Cos(ang)-uy*math.Sin(ang))*step
+		ny := u.Y + (ux*math.Sin(ang)+uy*math.Cos(ang))*step
+		if x, y, ok := b.StepToward(u, nx, ny, b.StridePx(u.Kind)); ok {
+			return x, y, true
+		}
+	}
+	return 0, 0, false
 }
 
 func (b *Bot) clampWorld(x, y float64) (float64, float64) {
@@ -632,7 +684,7 @@ func Attack(b *Bot, t *Tick) []Action {
 		case "SALVAGER":
 			// 采集车按命令走矿场；无武器，三种模式对它等价
 			if m := b.NearestMine(t, u); m != nil {
-				if x, y, ok := b.MoveToward(t, u, m.X, m.Y); ok {
+				if x, y, ok := b.Advance(t, u, m.X, m.Y); ok {
 					acts = append(acts, Action{ID: u.ID, Type: "move", X: x, Y: y})
 				}
 			}
@@ -671,14 +723,14 @@ func Attack(b *Bot, t *Tick) []Action {
 					if n == 0 {
 						n = 1
 					}
-					if x, y, ok := b.MoveToward(t, u, next.X-dx/n*rng*0.75, next.Y-dy/n*rng*0.75); ok {
+					if x, y, ok := b.Advance(t, u, next.X-dx/n*rng*0.75, next.Y-dy/n*rng*0.75); ok {
 						acts = append(acts, Action{ID: u.ID, Type: "move", X: x, Y: y})
 					}
 				}
 				continue
 			}
 			if enemyM != nil {
-				if x, y, ok := b.MoveToward(t, u, enemyM.X, enemyM.Y); ok {
+				if x, y, ok := b.Advance(t, u, enemyM.X, enemyM.Y); ok {
 					acts = append(acts, Action{ID: u.ID, Type: "move", X: x, Y: y})
 				}
 			}
@@ -690,7 +742,7 @@ func Attack(b *Bot, t *Tick) []Action {
 			rx := ownM.X + (nav.X-ownM.X)*0.5
 			ry := ownM.Y + (nav.Y-ownM.Y)*0.5
 			if math.Hypot(rx-u.X, ry-u.Y) > float64(b.Cell)*2 {
-				if x, y, ok := b.MoveToward(t, u, rx, ry); ok {
+				if x, y, ok := b.Advance(t, u, rx, ry); ok {
 					acts = append(acts, Action{ID: u.ID, Type: "move", X: x, Y: y})
 				}
 			}
@@ -701,7 +753,7 @@ func Attack(b *Bot, t *Tick) []Action {
 		if nav == nil {
 			continue
 		}
-		if x, y, ok := b.MoveToward(t, u, nav.X, nav.Y); ok {
+		if x, y, ok := b.Advance(t, u, nav.X, nav.Y); ok {
 			acts = append(acts, Action{ID: u.ID, Type: "move", X: x, Y: y})
 		}
 	}
@@ -721,26 +773,24 @@ func (b *Bot) fortPlan(t *Tick) []Fort {
 		return nil
 	}
 	out := make([]Fort, 0, 24)
-	// 先放 6 面墙（60° 间隔，r=130），再放 2 座炮（r=155），正好 6*1+2*3=12 点。
-	// 墙留出缺口，攻方可以绕，但会被炮和守军覆盖；想强攻就得拆墙。
 	add := func(kind string, x, y float64) {
 		if x < float64(b.Cell) || y < float64(b.Cell) || x > float64(b.Hello.World-b.Cell) || y > float64(b.Hello.World-b.Cell) {
 			return
 		}
 		out = append(out, Fort{Kind: kind, X: x, Y: y})
 	}
-	for i := 0; i < 8; i++ {
-		a := float64(i) * math.Pi * 2 / 8
-		add("WALL", m.X+math.Cos(a)*130, m.Y+math.Sin(a)*130)
-	}
-	for i := 0; i < 5; i++ {
-		a := float64(i)*math.Pi*2/5 + math.Pi/5
+	// 炮塔先放：它是守方唯一能超距压制 LAV 的火力，预算优先给它，
+	// 这样「预算越多 → 火力越强」才是单调的。
+	for i := 0; i < 6; i++ {
+		a := float64(i)*math.Pi/3 + math.Pi/6
 		add("TURRET", m.X+math.Cos(a)*155, m.Y+math.Sin(a)*155)
 	}
-	// 预算有剩（部分候选被地形拒绝）时继续补墙。
-	for i := 0; i < 10; i++ {
-		a := float64(i)*math.Pi*2/10 + 0.1
-		add("WALL", m.X+math.Cos(a)*110, m.Y+math.Sin(a)*110)
+	// 墙只放一圈（r=130）。旧版预算有剩时会补一圈 r=110 的内墙，
+	// 内墙会把突击单位堵在炮口下 —— 结果 16 点预算比 18 点还难打，
+	// 预算与强度的关系直接翻转，没法用来标定。
+	for i := 0; i < 12; i++ {
+		a := float64(i) * math.Pi / 6
+		add("WALL", m.X+math.Cos(a)*130, m.Y+math.Sin(a)*130)
 	}
 	return out
 }
@@ -804,7 +854,7 @@ func Defend(b *Bot, t *Tick) []Action {
 			b.station[u.ID] = st
 		}
 		if math.Hypot(st[0]-u.X, st[1]-u.Y) > float64(b.Cell)*1.5 {
-			if x, y, ok := b.MoveToward(t, u, st[0], st[1]); ok {
+			if x, y, ok := b.Advance(t, u, st[0], st[1]); ok {
 				acts = append(acts, Action{ID: u.ID, Type: "move", X: x, Y: y})
 			}
 		}
