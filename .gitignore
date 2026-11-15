@@ -36,8 +36,5 @@ __pycache__/
 /war_of_desert/bots/bin/
 /war_of_desert/results/*/回放/
 
-# 本地测试区（50 轮主项目测试：赛程、dump、明细与报告，不入库）
+# 本地测试区（主项目测试：赛程、dump、明细与报告，不入库）
 /war_of_desert/测试/
-
-# 本地安全扫描工具状态
-.mimosa/
