@@ -10,9 +10,11 @@ import (
 
 func main() {
 	err := refbot.Run(refbot.Strategy{
-		Alloc:      map[string]int{"produce": 45, "attack": 30, "research": 5, "move": 20},
-		Build:      []string{"LAV", "LAV", "SCOUT", "LAV"},
-		Techs:      []string{"F1", "F2", "F3"},
+		Alloc: map[string]int{"armour": 15, "repair": 15, "attack": 40, "range": 30},
+		// v1.1 基础收入为 0：没有 SALVAGER 采 cu，开局 500 CU 花完后经济死、队列冻结。
+		// 先上采集车供血，再铺轻甲海（阵容全 0 RU，不派车去 ru 节点）。
+		Build:      []string{"SALVAGER", "LAV", "LAV", "SCOUT", "LAV"},
+		Techs:      []string{"I1", "F1", "I3a", "F2", "F3", "I4"},
 		Aggression: 1.6,
 		Push:       true,
 		Weapons:    2,

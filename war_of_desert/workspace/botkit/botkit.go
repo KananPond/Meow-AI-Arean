@@ -12,9 +12,11 @@ import (
 	"os"
 
 	"desertarena/internal/protocol"
+	"desertarena/internal/sim"
 )
 
-// Type 是 hello.rules.types 里的单位属性（speed / range / vision 已是像素口径）。
+// Type 是 hello.rules.types 里的单位属性。
+// 注意：speed / range / vision 的单位是**世界格**（不是像素）；像素距离要除以 Hello.Cell。
 type Type struct {
 	HP     float64 `json:"hp"`
 	Speed  float64 `json:"speed"`
@@ -25,6 +27,7 @@ type Type struct {
 	Arc    string  `json:"arc"`
 	Armor  string  `json:"armor"`
 	Cost   float64 `json:"cost"`
+	RU     int     `json:"ru"` // v1.1：高阶单位兼耗 RU（AAV 30 / RAILGUN 60 / ARTILLERY 250 / CARRIER 100）
 	Build  float64 `json:"build"`
 	Pop    int     `json:"pop"`
 }
@@ -80,6 +83,7 @@ type Res struct {
 	ID     int     `json:"id"`
 	X      float64 `json:"x"`
 	Y      float64 `json:"y"`
+	Kind   string  `json:"kind"` // "cu" | "ru"：cu 回 CU、ru 回 RU
 	Amount int     `json:"amount"`
 }
 
@@ -93,6 +97,7 @@ type SideScore struct {
 // Me 是本方私有信息。
 type Me struct {
 	CU          float64        `json:"cu"`
+	RU          float64        `json:"ru"` // v1.1：只能靠 SALVAGER 采 ru 节点获得
 	Pop         int            `json:"pop"`
 	PopMax      int            `json:"popMax"`
 	Alloc       map[string]int `json:"alloc"`
@@ -106,6 +111,7 @@ type Me struct {
 	} `json:"slots"`
 	WeaponSlots  float64  `json:"weaponSlots"`
 	WeaponsReady int      `json:"weaponsReady"`
+	WeaponQueue  []int    `json:"weaponQueue"` // 各排队炮的剩余 tick（自查占用，避免白发被拒的 weapon）
 	SpeedMul     float64  `json:"speedMul"`
 	TechDone     []string `json:"techDone"`
 	TechDoing    []struct {
@@ -141,6 +147,7 @@ type Action struct {
 	X        float64        `json:"x"`
 	Y        float64        `json:"y"`
 	TargetID int            `json:"targetId,omitempty"`
+	ResID    *int           `json:"resId,omitempty"` // harvest 指派（v1.1 运输线）
 	Kind     string         `json:"kind,omitempty"`
 	Tech     string         `json:"tech,omitempty"`
 	Mode     string         `json:"mode,omitempty"`
@@ -305,13 +312,14 @@ func (b *Bot) StepToward(u Unit, tx, ty, stride float64) (float64, float64) {
 	return u.X, u.Y
 }
 
-// Stride 是每拍最大位移。按单位速度给两拍余量即可：多给没用，引擎会按速度裁。
+// Stride 是每拍最大位移（像素）。TYPES.speed 是世界格/s，时间基准取共享
+// sim 包的 TICK_MS/1000（v1.1 = 0.05s；Plan_Beta §4.1：公式只此一份，禁止复制）。
 func (b *Bot) Stride(u Unit) float64 {
 	t, ok := b.Rules.Types[u.Kind]
 	if !ok || t.Speed <= 0 {
-		return 20
+		return 1
 	}
-	return math.Max(6, t.Speed*2)
+	return math.Max(1, t.Speed*float64(b.Hello.Cell)*(sim.TickMS/1000.0))
 }
 
 // Own 返回本方存活单位。
@@ -381,6 +389,26 @@ func NearestRes(st *State, x, y float64) *Res {
 			bd = d
 			best = &st.Res[i]
 		}
+	}
+	return best
+}
+
+// NearestResKind 返回指定类型（"cu" | "ru"）的最近资源点；该类型已采空时回退任意最近点。
+func NearestResKind(st *State, x, y float64, kind string) *Res {
+	var best *Res
+	bd := math.Inf(1)
+	for i := range st.Res {
+		if st.Res[i].Kind != kind || st.Res[i].Amount <= 0 {
+			continue
+		}
+		d := math.Hypot(st.Res[i].X-x, st.Res[i].Y-y)
+		if d < bd {
+			bd = d
+			best = &st.Res[i]
+		}
+	}
+	if best == nil {
+		return NearestRes(st, x, y)
 	}
 	return best
 }

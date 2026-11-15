@@ -30,7 +30,14 @@ __pycache__/
 # 开发/历史资料区（MVP 预言机、Docs、计划与审查报告、第三方参照）
 /Dev/MVP/
 /Dev/模板/
+/Dev/reference/
 
 # 正式赛构建产物与可重建回放（源码、赛程、结果、成绩仍入库）
 /war_of_desert/bots/bin/
 /war_of_desert/results/*/回放/
+
+# 本地测试区（50 轮主项目测试：赛程、dump、明细与报告，不入库）
+/war_of_desert/测试/
+
+# 本地安全扫描工具状态
+.mimosa/
