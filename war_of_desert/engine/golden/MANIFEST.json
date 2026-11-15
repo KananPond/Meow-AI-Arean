@@ -1,0 +1,13 @@
+{
+ "files": {
+  "MANIFEST.json": "23577226374dfdbfb59b904cf52a5ab0ad05f1cf4a05b891d953121a29480483",
+  "duel-geomorphic-20261109.json": "38b5a8a3e6793e1dba3e72c23127eebf47dd8f6671d859370f76716fd30924c3",
+  "duel-geomorphic-7.json": "c169d3da4891faef93c394b861c2c9a31b6e22d5a600ca2fca051b6a82e7af20",
+  "duel-minecraft-20261109.json": "724f4bb1971d5804919ae467c9ed2a150367c1981ac786ce318639c165552913",
+  "duel-minecraft-7.json": "86f7dd8fb112112b74718b440a3fcb775670370aaa11565c56669f8b3f1a420e",
+  "siege-minecraft-20261109.json": "e3279bdc306e83a43d61c3731cbfa841355912e89d2582481fc3375779bb0b1f",
+  "siege-minecraft-7.json": "c3ee146863f4f7423dc9cb4a6780d187c813d179f8eff63175cd445cab061ca4"
+ },
+ "generated": "go run ./cmd/tracegen",
+ "note": "golden trace：Go 引擎自确定性回归基准（Plan_Beta §5.2）。sim 包任何改动必须重放全对；重生成用 go run ./cmd/tracegen"
+}

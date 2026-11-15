@@ -1,7 +1,9 @@
 // Package botkit 是选手包自带的工具库：协议读写、地图解码、常用查询与一步寻路。
 //
-// 它不是「必须用」的框架。选手可以完全不用它，自己读写 stdin/stdout；
-// 它只是把每个人都要重写一遍的东西（读 hello、解地图、朝目标走一步）先写好。
+// 版本：v1.2-beta（Desert Arena 正式赛 · 选手包）。
+// 功能：hello/tick/end 行协议读写、地图三层解码、单位/VP/资源查询、
+// 流场寻路；它不是「必须用」的框架——选手可以完全不用它，
+// 自己读写 stdin/stdout，这里只是把人人都要写的东西先写好。
 package botkit
 
 import (
@@ -16,7 +18,9 @@ import (
 )
 
 // Type 是 hello.rules.types 里的单位属性。
-// 注意：speed / range / vision 的单位是**世界格**（不是像素）；像素距离要除以 Hello.Cell。
+//
+// 注意：speed / range / vision 的单位是**世界格**（不是像素）；
+// 像素距离要除以 Hello.Cell。
 type Type struct {
 	HP     float64 `json:"hp"`
 	Speed  float64 `json:"speed"`
@@ -27,12 +31,15 @@ type Type struct {
 	Arc    string  `json:"arc"`
 	Armor  string  `json:"armor"`
 	Cost   float64 `json:"cost"`
-	RU     int     `json:"ru"` // v1.1：高阶单位兼耗 RU（AAV 30 / RAILGUN 60 / ARTILLERY 250 / CARRIER 100）
-	Build  float64 `json:"build"`
-	Pop    int     `json:"pop"`
+	// v1.1：高阶单位兼耗 RU
+	RU    int     `json:"ru"`
+	Build float64 `json:"build"`
+	Pop   int     `json:"pop"`
 }
 
 // Tech 是科技节点。
+//
+// 前置/互斥/花费由引擎在 decode 校验，选手侧用于自查。
 type Tech struct {
 	Tree   string   `json:"tree"`
 	Tier   int      `json:"tier"`
@@ -46,11 +53,15 @@ type Tech struct {
 
 // Rules 是 hello.rules 中选手真正会用到的部分。
 type Rules struct {
-	Types   map[string]Type `json:"types"`
-	Techs   map[string]Tech `json:"techs"`
+	Types map[string]Type `json:"types"`
+	Techs map[string]Tech `json:"techs"`
+	// 经济参数：开局资源、基础收入、RU 收入与人口上限
 	Economy struct {
-		StartCU float64 `json:"startCu"`
-		PopMax  int     `json:"popMax"`
+		StartCU  float64 `json:"startCu"`
+		StartRU  float64 `json:"startRu"`
+		Income   float64 `json:"income"`
+		RuIncome float64 `json:"ruIncome"`
+		PopMax   int     `json:"popMax"`
 	} `json:"economy"`
 	Alloc struct {
 		Keys []string `json:"keys"`
@@ -80,11 +91,12 @@ type VP struct {
 
 // Res 是资源点。
 type Res struct {
-	ID     int     `json:"id"`
-	X      float64 `json:"x"`
-	Y      float64 `json:"y"`
-	Kind   string  `json:"kind"` // "cu" | "ru"：cu 回 CU、ru 回 RU
-	Amount int     `json:"amount"`
+	ID int     `json:"id"`
+	X  float64 `json:"x"`
+	Y  float64 `json:"y"`
+	// "cu" | "ru"：cu 回 CU、ru 回 RU
+	Kind   string `json:"kind"`
+	Amount int    `json:"amount"`
 }
 
 // SideScore 是双方公开比分。
@@ -97,7 +109,7 @@ type SideScore struct {
 // Me 是本方私有信息。
 type Me struct {
 	CU          float64        `json:"cu"`
-	RU          float64        `json:"ru"` // v1.1：只能靠 SALVAGER 采 ru 节点获得
+	RU          float64        `json:"ru"`
 	Pop         int            `json:"pop"`
 	PopMax      int            `json:"popMax"`
 	Alloc       map[string]int `json:"alloc"`
@@ -109,12 +121,13 @@ type Me struct {
 		AttackSlots float64 `json:"attackSlots"`
 		AttackCap   int     `json:"attackCap"`
 	} `json:"slots"`
-	WeaponSlots  float64  `json:"weaponSlots"`
-	WeaponsReady int      `json:"weaponsReady"`
-	WeaponQueue  []int    `json:"weaponQueue"` // 各排队炮的剩余 tick（自查占用，避免白发被拒的 weapon）
-	SpeedMul     float64  `json:"speedMul"`
-	TechDone     []string `json:"techDone"`
-	TechDoing    []struct {
+	WeaponSlots  float64 `json:"weaponSlots"`
+	WeaponsReady int     `json:"weaponsReady"`
+	// 各排队炮的剩余 tick（自查占用，避免白发被拒的 weapon）
+	WeaponQueue []int    `json:"weaponQueue"`
+	SpeedMul    float64  `json:"speedMul"`
+	TechDone    []string `json:"techDone"`
+	TechDoing   []struct {
 		ID     string `json:"id"`
 		Remain int    `json:"remain"`
 	} `json:"techDoing"`
@@ -125,7 +138,7 @@ type Me struct {
 	} `json:"active"`
 }
 
-// State 是一行 tick。
+// State 是一行 tick（选手的完整输入）。
 type State struct {
 	Type      string            `json:"type"`
 	Turn      int               `json:"turn"`
@@ -140,14 +153,16 @@ type State struct {
 	Events    []json.RawMessage `json:"events"`
 }
 
-// Action 是一条动作。零值字段会被 omitempty 去掉。
+// Action 是一条动作。
+//
+// 零值字段会被 omitempty 去掉；ResID 用于 harvest 指派（v1.1 运输线）。
 type Action struct {
 	ID       int            `json:"id,omitempty"`
 	Type     string         `json:"type"`
 	X        float64        `json:"x"`
 	Y        float64        `json:"y"`
 	TargetID int            `json:"targetId,omitempty"`
-	ResID    *int           `json:"resId,omitempty"` // harvest 指派（v1.1 运输线）
+	ResID    *int           `json:"resId,omitempty"`
 	Kind     string         `json:"kind,omitempty"`
 	Tech     string         `json:"tech,omitempty"`
 	Mode     string         `json:"mode,omitempty"`
@@ -164,8 +179,10 @@ type Bot struct {
 	fields map[int]*Field
 }
 
-// Load 读 hello、解地图、回报 ready。任何一步失败都直接退出：
-// 带病开跑只会得到一串故障，不如在开局就说清楚。
+// Load 读 hello、解地图、回报 ready。
+//
+// 任何一步失败都直接退出：带病开跑只会得到一串故障，
+// 不如在开局就说清楚。
 func Load() (*Bot, error) {
 	in := bufio.NewReaderSize(os.Stdin, 1<<20)
 	line, err := in.ReadString('\n')
@@ -199,7 +216,9 @@ func Load() (*Bot, error) {
 	return b, nil
 }
 
-// Next 读下一行。type=end 时返回 ok=false。
+// Next 读下一行 tick。
+//
+// type=end 时返回 ok=false，主循环应正常收尾退出。
 func (b *Bot) Next() (st State, ok bool, err error) {
 	line, err := b.in.ReadString('\n')
 	if err != nil {
@@ -221,6 +240,8 @@ func (b *Bot) Next() (st State, ok bool, err error) {
 }
 
 // Send 交回本拍动作。
+//
+// 一行 JSON（{"actions":[...]}），写完立刻 Flush。
 func (b *Bot) Send(actions []Action) error {
 	raw, err := json.Marshal(map[string]any{"actions": actions})
 	if err != nil {
@@ -233,6 +254,8 @@ func (b *Bot) Send(actions []Action) error {
 }
 
 // Run 是标准主循环：Load → 每拍调用 decide → Send。
+//
+// decide 返回什么就发什么；end 或读错误时结束进程。
 func Run(decide func(*Bot, *State) []Action) error {
 	b, err := Load()
 	if err != nil {
@@ -257,6 +280,8 @@ func Run(decide func(*Bot, *State) []Action) error {
 /* ------------------------------------------------------------------ */
 
 // CellOf 返回世界坐标所在格。
+//
+// 越界一律夹回边界内，调用方无需预判。
 func (b *Bot) CellOf(x, y float64) (int, int) {
 	gx := int(x / float64(b.Hello.Cell))
 	gy := int(y / float64(b.Hello.Cell))
@@ -275,7 +300,9 @@ func (b *Bot) CellOf(x, y float64) (int, int) {
 	return gx, gy
 }
 
-// Mountain 判断某格是否绝对不可通行（base=3）。
+// Mountain 判断某格是否绝对不可通行。
+//
+// base 层值 3 即山脉。
 func (b *Bot) Mountain(x, y float64) bool {
 	gx, gy := b.CellOf(x, y)
 	return b.Layers.Base[gy*b.Hello.W+gx] == 3
@@ -290,8 +317,10 @@ func (b *Bot) Walkable(x, y float64) bool {
 	return !b.Mountain(x, y)
 }
 
-// StepToward 返回朝目标走一步的落点。遇到山脉时按 ±23°/±46°/±69°/±92° 试探，
-// 全被挡住就原地不动。它不保证最优路径，只保证「不会主动撞山」。
+// StepToward 返回朝目标走一步的落点。
+//
+// 遇到山脉时按 ±23°/±46°/±69°/±92° 试探，全被挡住就原地不动。
+// 它不保证最优路径，只保证「不会主动撞山」。
 func (b *Bot) StepToward(u Unit, tx, ty, stride float64) (float64, float64) {
 	dx, dy := tx-u.X, ty-u.Y
 	d := math.Hypot(dx, dy)
@@ -312,8 +341,10 @@ func (b *Bot) StepToward(u Unit, tx, ty, stride float64) (float64, float64) {
 	return u.X, u.Y
 }
 
-// Stride 是每拍最大位移（像素）。TYPES.speed 是世界格/s，时间基准取共享
-// sim 包的 TICK_MS/1000（v1.1 = 0.05s；Plan_Beta §4.1：公式只此一份，禁止复制）。
+// Stride 是每拍最大位移（像素）。
+//
+// TYPES.speed 是世界格/s，时间基准取共享 sim 包的 TICK_MS/1000
+// （v1.1 = 0.05s；Plan_Beta §4.1：公式只此一份，禁止复制）。
 func (b *Bot) Stride(u Unit) float64 {
 	t, ok := b.Rules.Types[u.Kind]
 	if !ok || t.Speed <= 0 {
@@ -333,7 +364,9 @@ func Own(st *State, side int) []Unit {
 	return out
 }
 
-// Enemies 返回可见敌方单位（视野关闭时即全图）。
+// Enemies 返回可见敌方单位。
+//
+// 视野关闭（v1.1 正式赛口径）时即全图。
 func Enemies(st *State, side int) []Unit {
 	out := make([]Unit, 0, len(st.Units))
 	for _, u := range st.Units {
@@ -358,7 +391,9 @@ func Nearest(list []Unit, x, y float64) *Unit {
 	return best
 }
 
-// NearestVP 返回最近的目标点；preferNeutral=true 时优先未占领/争夺中的点。
+// NearestVP 返回最近的目标点。
+//
+// preferNeutral=true 时优先未占领/争夺中的点；一个都没有则回退全部。
 func NearestVP(st *State, x, y float64, side int, preferNeutral bool) *VP {
 	var best *VP
 	bd := math.Inf(1)
@@ -379,7 +414,7 @@ func NearestVP(st *State, x, y float64, side int, preferNeutral bool) *VP {
 	return best
 }
 
-// NearestRes 返回最近资源点。
+// NearestRes 返回最近资源点（不分类型）。
 func NearestRes(st *State, x, y float64) *Res {
 	var best *Res
 	bd := math.Inf(1)
@@ -393,7 +428,9 @@ func NearestRes(st *State, x, y float64) *Res {
 	return best
 }
 
-// NearestResKind 返回指定类型（"cu" | "ru"）的最近资源点；该类型已采空时回退任意最近点。
+// NearestResKind 返回指定类型（"cu" | "ru"）的最近资源点。
+//
+// 该类型已全部采空时回退任意最近点。
 func NearestResKind(st *State, x, y float64, kind string) *Res {
 	var best *Res
 	bd := math.Inf(1)
@@ -427,14 +464,19 @@ func (b *Bot) HomeVP(st *State, side int) *VP {
 /* 流场寻路                                                            */
 /* ------------------------------------------------------------------ */
 
-// Field 是一张「到某个目标格的最短步数」图。目标固定（VP / 资源点）时，
-// 一张图全队共用，比每台单位每拍各跑一次 A* 便宜得多。
+// Field 是一张「到某个目标格的最短步数」图。
+//
+// 目标固定（VP / 资源点）时，一张图全队共用，
+// 比每台单位每拍各跑一次 A* 便宜得多。
 type Field struct {
 	W, H int
-	Dist []int32 // -1 表示不可达
+	// -1 表示不可达
+	Dist []int32
 }
 
-// FieldTo 生成（或复用）到目标世界坐标的流场。目标格不可达时返回 nil。
+// FieldTo 生成（或复用）到目标世界坐标的流场。
+//
+// 目标格不可达时返回 nil；同目标格的图全队复用。
 func (b *Bot) FieldTo(x, y float64) *Field {
 	gx, gy := b.CellOf(x, y)
 	key := gy*b.Hello.W + gx
@@ -475,7 +517,10 @@ func (b *Bot) FieldTo(x, y float64) *Field {
 	return f
 }
 
-// StepAlong 沿着流场走一步。到达目标格附近时返回 ok=false，调用方应改为待命。
+// StepAlong 沿着流场走一步。
+//
+// 到达目标格附近时返回 ok=false，调用方应改为待命；
+// 斜穿需两个相邻格都可通行，落点是山也原地不动。
 func (b *Bot) StepAlong(u Unit, f *Field, stride float64) (float64, float64, bool) {
 	if f == nil {
 		return u.X, u.Y, false
@@ -522,7 +567,9 @@ func (b *Bot) StepAlong(u Unit, f *Field, stride float64) (float64, float64, boo
 	return tx, ty, true
 }
 
-// EnemyVP 返回离敌方出生点最近的 VP，用于「压进去打」的策略。
+// EnemyVP 返回离敌方出生点最近的 VP。
+//
+// 用于「压进去打」的 Push 策略。
 func (b *Bot) EnemyVP(st *State, side int) *VP {
 	enemy := 1 - side
 	if enemy < 0 || enemy >= len(b.Hello.Spawns) {

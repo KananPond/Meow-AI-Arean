@@ -118,7 +118,7 @@ go build -o bots/bin/submission.exe ./workspace/submission
 | `idle` | `id` | 原地待命 |
 | `harvest` | `id,resId` | **采集车专用**：指派运输线资源点，引擎托管「装载→回程→卸货」；`resId:null` 取消。**只发一次**——每拍重发会把状态机打回 toResource。采 `kind:"cu"` 节点回本方 CU、`kind:"ru"` 节点回本方 RU |
 | `alloc` | `alloc` | 母舰四子系统分配（armour/repair/attack/range），整数、和必须 100，每拍最多 1 条 |
-| `produce` | `kind` | 入生产队列；生产线数量由工业科技决定（1→I1→I3a/I3b 共 3 条）；`by` 可指定自己的运载舰代造小单位。**队列严格先进先出**：只有队首出队，队首 CU/RU 不足时**整队等待、不丢单、不可取消**——下单前先看 `me.cu`/`me.ru`，高阶单位务必排在 SALVAGER 之后 |
+| `produce` | `kind` | 入生产队列；生产线数量由工业科技决定（1→I1→I3a/I3b 共 3 条）；`by` 可指定自己的运载舰代造小单位。**队列按序出队**（v1.2-beta）：每拍从队首找第一个 CU/RU 付得起的单位出队，付不起的项原地保留（不丢单、不改相对次序），整队都付不起才等待 |
 | `research` | `tech` | 开始研究；前置、互斥、槽位（固定 2）、CU 由引擎校验 |
 | `weapon` | — | 造一门母舰主炮，独立队列（炮位上限固定 5） |
 | `mode` | `mode` | 不带 `id` 改全队与后续新造单位；带 `id` 只改一台 |
@@ -199,7 +199,8 @@ go run ./cmd/arena check -config tournament/formal_v11.json -a bots/bin/submissi
 - `alloc` 和必须正好 100；每次最多改 5 个百分点。生产/研究**不再由分配驱动**：
   生产线 = 1 + 工业科技（I1→2 条、I3a/I3b→3 条，封顶 3），研究槽固定 2，炮位固定 5。
 - 高阶单位兼耗 **RU**（AAV 30 / RAILGUN 60 / ARTILLERY 250 / CARRIER 100），
-  RU 只来自 `kind:"ru"` 的资源点；没有 RU 就只能造 LAV/SALVAGER/SCOUT。
+  RU 来自 `kind:"ru"` 的资源点 + 母舰微量基础收入（**v1.2-beta**：0.05/tick，1200 tick 约 60 RU）；
+  没有 RU 就只能造 LAV/SALVAGER/SCOUT。
 - **生产队列是死板的 FIFO**：队首付不起（CU 或 RU）时整队冻结，且**没有取消/改序手段**。
   把 AAV 排在 SALVAGER 前面、或让一个永远付不起的单位卡在队首，后面全部陪葬
   （50 轮实测：某参考 Bot 因此 1200 tick 零制造，重单位全场 0 下线）。

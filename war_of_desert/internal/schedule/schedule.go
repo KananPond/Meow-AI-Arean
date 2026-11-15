@@ -1,4 +1,8 @@
 // Package schedule 冻结赛程：每对选手在每张地图上换边各打一局。
+//
+// 版本：v1.2-beta（Desert Arena 正式赛执行链）。
+// 功能：赛程的生成/保存/读取；冻结后再执行是正式赛纪律——
+// run 只认 赛程.json，不现场决定对阵。
 package schedule
 
 import (

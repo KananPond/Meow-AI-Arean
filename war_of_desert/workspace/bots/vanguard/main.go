@@ -1,4 +1,8 @@
 // Vanguard · 正面推进：重甲开路，火力优先。
+//
+// 版本：v1.2-beta（官方参考 Bot）。
+// 功能：交战半径 1.4×、先经济后轻甲、AAV 垫后等 RU 到账；
+// 造 3 门母舰主炮。策略参数见 refbot.Strategy。
 package main
 
 import (

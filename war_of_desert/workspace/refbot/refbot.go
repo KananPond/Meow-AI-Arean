@@ -1,8 +1,9 @@
 // Package refbot 是官方参考 Bot 的共用策略库。
 //
-// 它刻意保持「能打但不神」：拿 VP、造兵、研究、开火，四件事都做，但寻路只有一步贪心。
-// 目的不是当最强对手，而是给正式赛提供一批可复现、风格不同的基准选手，
-// 让 BT 拟合与平衡回归有东西可测。
+// 版本：v1.2-beta（Desert Arena 正式赛）。
+// 功能：提供「能打但不神」的标准策略——拿 VP、造兵、研究、开火四件事都做，
+// 寻路只有一步贪心；目的不是当最强对手，而是给正式赛提供一批
+// 可复现、风格不同的基准选手，让 BT 拟合与平衡回归有东西可测。
 package refbot
 
 import (
@@ -12,26 +13,40 @@ import (
 )
 
 // Strategy 是一支队伍的性格。
+//
+// 各字段由 bots/*/main.go 注入，同一份源码不同性格。
 type Strategy struct {
-	Alloc      map[string]int // 母舰四项分配目标
-	Build      []string       // 生产循环
-	Techs      []string       // 研究优先级
-	Aggression float64        // 交战半径 = 自身射程 × 该系数
-	HoldVP     bool           // 母舰是否前出占点
-	Push       bool           // 战斗单位是否直插敌方半场（制造交战）
-	Weapons    int            // 目标炮数
+	// 母舰四项分配目标
+	Alloc map[string]int
+	// 生产循环
+	Build []string
+	// 研究优先级
+	Techs []string
+	// 交战半径 = 自身射程 × 该系数
+	Aggression float64
+	// 母舰是否前出占点
+	HoldVP bool
+	// 战斗单位是否直插敌方半场
+	Push bool
+	// 目标炮数
+	Weapons int
 }
 
 // Run 启动标准主循环。
+//
+// 每拍产出：阵营动作（分配/模式/生产/研究/造炮）+ 逐单位动作；
+// 生产带跳过轮转与 RU 自查，harvest 只指派一次。
 func Run(s Strategy) error {
 	buildIdx := 0
-	harvestN := 0               // 已指派的采集车数（决定采 cu 还是 ru）
-	harvested := map[int]bool{} // v1.1 运输线：harvest 只指派一次，重发会重置 hstate
+	// 已指派的采集车数
+	harvestN := 0
+	// harvest 只指派一次，重发会重置 hstate
+	harvested := map[int]bool{}
 	return botkit.Run(func(b *botkit.Bot, st *botkit.State) []botkit.Action {
 		side := st.Side
 		acts := make([]botkit.Action, 0, len(st.Units)+4)
 
-		// 生产循环里有没有吃 RU 的高阶单位？有才值得派一台采集车去 ru 节点。
+		// 生产表里有没有吃 RU 的高阶单位
 		needsRU := false
 		for _, k := range s.Build {
 			if t, ok := b.Rules.Types[k]; ok && t.RU > 0 {
@@ -74,9 +89,8 @@ func Run(s Strategy) error {
 			t, _ := b.Rules.Types[u.Kind]
 			switch u.Kind {
 			case "SALVAGER":
-				// v1.1：采集车由引擎托管运输线。harvest 指派一次即可——
-				// 每 tick 重发会在指令绑定阶段把 hstate 重置回 toResource，
-				// 装载循环永远走不完（这与引擎语义一致，见 sim.stepSalvagers）。
+				// 采集车由引擎托管运输线，harvest 指派一次即可：
+				// 每 tick 重发会把 hstate 重置回 toResource，装载循环永远走不完。
 				// 目标节点按指派序分流：第 1 台采 cu（基础收入 0，CU 全靠采集）；
 				// 生产表里真有高阶单位时，第 2 台采 ru 解锁，其余全回 cu——
 				// 纯轻单位阵容（RU 需求为 0）不去 ru，别浪费 CU 采集力。
@@ -140,6 +154,9 @@ func Run(s Strategy) error {
 	})
 }
 
+// sameAlloc 比较当前分配与目标分配是否一致。
+//
+// alloc 动作每拍最多 1 条，一致就不重发。
 func sameAlloc(have map[string]int, want map[string]int) bool {
 	for k, v := range want {
 		if have[k] != v {
@@ -149,6 +166,10 @@ func sameAlloc(have map[string]int, want map[string]int) bool {
 	return true
 }
 
+// canProduce 判断当前拍能否下单生产该单位。
+//
+// 检查人口、队列上限与 CU；v1.1 起兼查 RU——
+// 引擎队列付不起只会整队冻结（不丢单也不可取消），排了就是自堵。
 func canProduce(b *botkit.Bot, st *botkit.State, kind string) bool {
 	t, ok := b.Rules.Types[kind]
 	if !ok {
@@ -160,16 +181,19 @@ func canProduce(b *botkit.Bot, st *botkit.State, kind string) bool {
 	if len(st.Me.Queue)+len(st.Me.Active) >= 4 {
 		return false
 	}
-	// v1.1 运输线经济：高阶单位兼耗 RU。RU 不够就绝不下单——
-	// 引擎队列付不起只会整队冻结（不丢单也不可取消），排了就是自堵。
 	if float64(t.RU) > st.Me.RU {
 		return false
 	}
 	return st.Me.CU >= t.Cost
 }
 
+// nextTech 按优先级挑一个本拍可启动的科技。
+//
+// 前置只认已完成（在研不算，否则引擎会以 missing prereq 拒掉）；
+// 槽满本拍直接不发；互斥在研的也跳过。
 func nextTech(b *botkit.Bot, st *botkit.State, order []string) string {
-	done := map[string]bool{} // 真正研究完成（前置只认它）
+	// 真正研究完成的集合（前置只认它）
+	done := map[string]bool{}
 	doing := map[string]bool{}
 	for _, id := range st.Me.TechDone {
 		done[id] = true
@@ -177,7 +201,7 @@ func nextTech(b *botkit.Bot, st *botkit.State, order []string) string {
 	for _, d := range st.Me.TechDoing {
 		doing[d.ID] = true
 	}
-	// 槽满（me.slots.research，固定 2）就本拍不发——引擎会拒，白发还要挨记。
+	// 槽满（固定 2）就本拍不发，白发还要挨记
 	if len(doing) >= st.Me.Slots.Research {
 		return ""
 	}
@@ -189,7 +213,6 @@ func nextTech(b *botkit.Bot, st *botkit.State, order []string) string {
 		if !ok || st.Me.CU < t.CU {
 			continue
 		}
-		// 前置只认已完成：在研不算——否则引擎会以 missing prereq 拒掉，每拍重发空转。
 		okReq := true
 		for _, r := range t.Req {
 			if !done[r] {
@@ -220,7 +243,9 @@ func nextTech(b *botkit.Bot, st *botkit.State, order []string) string {
 	return ""
 }
 
-// moveAlong 用流场走到固定目标（VP / 资源点）。到达或不可达时待命。
+// moveAlong 用流场走到固定目标（VP / 资源点）。
+//
+// 到达或不可达时返回 idle，保证每台单位每拍恰一条动作。
 func moveAlong(b *botkit.Bot, u botkit.Unit, x, y float64) botkit.Action {
 	if nx, ny, ok := b.StepAlong(u, b.FieldTo(x, y), b.Stride(u)); ok {
 		return botkit.Action{ID: u.ID, Type: "move", X: nx, Y: ny}

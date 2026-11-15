@@ -1,6 +1,8 @@
 // Command faultbot 是正式赛自检专用的故障注入 Bot。
 //
-// 它故意违反协议，用来验证裁判的硬保证：超时 kill、崩溃重启、非法结构红牌。
+// 版本：v1.2-beta（Desert Arena 正式赛执行链自检工具）。
+// 功能：故意违反协议，验证裁判的硬保证——
+// 超时 kill、崩溃重启、非法结构红牌。
 // 由 arena selftest 编译并驱动，不参加正式赛。
 package main
 
@@ -33,9 +35,11 @@ func main() {
 		}
 		switch mode {
 		case "timeout":
-			time.Sleep(600 * time.Millisecond) // 远超 120ms 预算
+			// 远超 120ms 预算
+			time.Sleep(600 * time.Millisecond)
 		case "crash":
-			os.Exit(3) // 直接消失，模拟段错误/被外部杀掉
+			// 直接消失，模拟段错误/被外部杀掉
+			os.Exit(3)
 		case "badjson":
 			fmt.Println(`{"actions":"nope"}`)
 			continue

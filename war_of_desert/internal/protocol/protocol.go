@@ -1,7 +1,10 @@
 // Package protocol 定义 Desert Arena 正式赛的线上契约。
 //
-// 只放「线上真的会出现的东西」：hello / tick / actions / end 的字段形状、
-// 地图层编解码、规则常量的读取口径。裁判、引擎宿主与选手工具共用这一份定义。
+// 版本：v1.2-beta（Desert Arena 正式赛执行链）。
+// 功能：hello / tick / actions / end 的字段形状、地图层编解码、
+// 规则常量的读取口径；裁判、引擎宿主与选手工具共用这一份定义。
+//
+// 只放「线上真的会出现的东西」。
 package protocol
 
 import (
@@ -18,7 +21,7 @@ const (
 	ProtoVersion = 5
 
 	// MaxLine 是单行上限（UTF-8 字节）。tick / actions 都必须满足。
-	MaxLine = 64 * 1024
+	MaxLine = 128 * 1024
 
 	// Grid / Cell / World 是 v1.0 固定地图口径：256×256 格，1 格 = 6 像素，
 	// 像素世界 1536×1536；物理尺度上 1 格 = 10 m，即全图 2.56 km。

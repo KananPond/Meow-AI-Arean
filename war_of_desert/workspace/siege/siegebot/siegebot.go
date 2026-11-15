@@ -1,12 +1,15 @@
 // Package siegebot 是攻守实验用的最小 Bot 框架。
 //
+// 版本：v1.2-beta（攻守变体，-ldflags 注入 v1..v4 风格）。
+// 功能：攻/守双参数 BT 评分用的可变体 Bot。
+//
 // 它刻意不依赖 workspace/botkit：旧 botkit 把 rules.types.range 当像素用，
 // 而引擎实际按“世界格”判定射程（d/CELL <= range）。这里统一用：
 //
 //	rangePx = type.Range * hello.Cell
-//	stride  = type.Speed * hello.Cell * 0.1   // 引擎移动积分当前用 0.1s/tick
+//	stride  = type.Speed * hello.Cell * 0.1
 //
-// 这样 Bot 看到的世界和引擎一致。
+// （引擎移动积分当前用 0.1s/tick）这样 Bot 看到的世界和引擎一致。
 package siegebot
 
 import (
@@ -211,11 +214,14 @@ func assaultNeed() int {
 
 func attackBuildOrder() []string {
 	switch Variant {
-	case "v2": // 速攻：只堆轻甲，不出远程
+	case "v2":
+		// 速攻：只堆轻甲，不出远程
 		return []string{"LAV", "LAV", "LAV", "AAV", "AAV"}
-	case "v3": // 重炮：先攒远程，起手慢
+	case "v3":
+		// 重炮：先攒远程，起手慢
 		return []string{"LAV", "RAILGUN", "ARTILLERY", "AAV", "RAILGUN"}
-	case "v4": // 筑垒：偏装甲与防守
+	case "v4":
+		// 筑垒：偏装甲与防守
 		return []string{"LAV", "AAV", "AAV", "RAILGUN"}
 	}
 	return []string{"LAV", "LAV", "RAILGUN", "AAV", "RAILGUN", "AAV", "ARTILLERY"}
@@ -332,7 +338,8 @@ func (b *Bot) slopeOK(gx, gy, nx, ny int) bool {
 	if d < 0 {
 		d = -d
 	}
-	return d <= 104 // UNIT_SLOPE = 26 * SCALE
+	// UNIT_SLOPE = 26 * SCALE
+	return d <= 104
 }
 
 // FieldTo 从目标点做 BFS，得到全图到目标的步数场。目标不可走时退到最近可走格。

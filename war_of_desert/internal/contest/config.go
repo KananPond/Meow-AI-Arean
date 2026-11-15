@@ -1,11 +1,18 @@
 // Package contest 读取正式赛配置并解析相对路径。
+//
+// 版本：v1.2-beta（Desert Arena 正式赛执行链）。
+// 功能：tournament/*.json 的结构定义与校验、引擎宿主路径解析
+// （kind=native 时构建 enginehost）、输出目录约束在仓库根内。
 package contest
 
 import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
+	"strings"
 
 	"desertarena/internal/schedule"
 )
@@ -82,6 +89,28 @@ func (c *Config) ScheduleConfig() schedule.Config {
 // HostPath 返回引擎宿主脚本的绝对路径。
 func (c *Config) HostPath(root string) string {
 	return filepath.Join(root, filepath.FromSlash(c.Engine.Host))
+}
+
+// EngineHostPath 返回引擎宿主：kind=native 时构建 Go 原生 enginehost
+// 二进制（go build 有缓存，重复调用开销小），否则走 oracle_host.js。
+func (c *Config) EngineHostPath(root string) (string, error) {
+	if c.Engine.Kind != "native" {
+		return c.HostPath(root), nil
+	}
+	bin := filepath.Join(root, "bots", "bin", "enginehost"+exeSuffix())
+	build := exec.Command("go", "build", "-o", bin, "./cmd/enginehost")
+	build.Dir = root
+	if out, err := build.CombinedOutput(); err != nil {
+		return "", fmt.Errorf("构建 enginehost 失败: %s", strings.TrimSpace(string(out)))
+	}
+	return bin, nil
+}
+
+func exeSuffix() string {
+	if runtime.GOOS == "windows" {
+		return ".exe"
+	}
+	return ""
 }
 
 // OutDir 返回赛事目录的绝对路径。

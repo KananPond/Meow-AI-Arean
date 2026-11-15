@@ -1,8 +1,8 @@
 {
-  "generatedAt": "2026-11-15T09:16:37+08:00",
+  "generatedAt": "2026-11-15T12:12:02+08:00",
   "shared": {
-    "workspace/botkit/botkit.go": "6fceb8970da5398e0700e74f2e9c4a55f54ec55aa08de0c9aa05e15a865825a7",
-    "workspace/refbot/refbot.go": "08363a3bca2e24ed0182abbc65016a1ea11fa7b78cc399f88b65af46a535c7ae"
+    "workspace/botkit/botkit.go": "c3de441132866383eee01c7420492dd86bc0e8d50a636a723c05d49280d2b2f8",
+    "workspace/refbot/refbot.go": "0723af0062190ba0c3d299dea8147195950cfc99550c1ade1d1982268c874f81"
   },
   "entries": [
     {
@@ -10,7 +10,7 @@
       "source": "workspace/bots/vanguard",
       "bin": "bots/bin/vanguard.exe",
       "files": {
-        "main.go": "df4606a906ac4ed87cd863f80aff286ae69d1f2ec67ed902c0afeaf5ec60ac92"
+        "main.go": "3df8687d45395fc48aaa6eafd5a727b890c7e6ed4d634941eba73a1b6880c86d"
       }
     },
     {
@@ -18,7 +18,7 @@
       "source": "workspace/bots/bulwark",
       "bin": "bots/bin/bulwark.exe",
       "files": {
-        "main.go": "2bb472389a887108812f097cbd82d8a3b68363465a54fea42a0c3b396836d09d"
+        "main.go": "ee875f2ab017456faf77c5cbd8afb8e4a9fae52b7b907ec87d978d142560966c"
       }
     },
     {
@@ -26,7 +26,7 @@
       "source": "workspace/bots/swarm",
       "bin": "bots/bin/swarm.exe",
       "files": {
-        "main.go": "1eaeed0cb6c72b9c06fdbfc923e15805091d57d98c151d41ab5744e659bfacaa"
+        "main.go": "058ec22e5d8e7ad764516b5060ba9ff37a08274652b8e8de83952dec50f5e44c"
       }
     },
     {
@@ -34,7 +34,7 @@
       "source": "workspace/bots/nomad",
       "bin": "bots/bin/nomad.exe",
       "files": {
-        "main.go": "5b20b0769018458c0933cb40e134f3ae48dd605ff23088d578c5129d28b9b0e1"
+        "main.go": "15bd0ee22782cc81ddd850791e3afce8ac8ead904d30e0693e957418e6de101c"
       }
     },
     {
@@ -42,7 +42,7 @@
       "source": "workspace/submission",
       "bin": "bots/bin/submission.exe",
       "files": {
-        "decide.go": "1bad3d2f906961fd8fdfda8d5d07eca22e75166ee3a8f6e5d3eeeb62cd350825"
+        "decide.go": "ec4dd112582bddf0adaed090d72bea22ace9b9c32e12a2185610d1ea212e0d77"
       }
     }
   ],

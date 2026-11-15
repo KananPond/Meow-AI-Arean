@@ -1,5 +1,8 @@
 // Package rating 实现 Bradley–Terry 实力值拟合。
 //
+// 版本：v1.2-beta（Desert Arena 正式赛执行链）。
+// 功能：对称赛单参数 BT、bootstrap 95% 区间、加权总分。
+//
 // 口径与 UP 主原版 arena/bt.js 一致：基准锚定 0，差 400 分约等于 10:1；
 // 每对选手加一局虚拟平局抑制全胜/全败导致的最大似然发散；
 // 95% 区间按「对局整块」重抽样（bootstrap），不做单局独立假设。

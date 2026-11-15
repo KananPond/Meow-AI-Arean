@@ -1,7 +1,11 @@
 // Package engine 负责与「规则引擎宿主」通信。
 //
-// 正式赛的规则来自冻结 oracle 快照，由独立 Node 进程承载；本包只认行分隔 JSON
-// 命令协议，不认识任何游戏规则。未来换成 Go 引擎时，替换宿主脚本即可。
+// 版本：v1.2-beta（Desert Arena 正式赛执行链）。
+// 功能：宿主进程拉起（.js 走 node、二进制直启）、行 JSON 命令流的
+// 请求/应答封装；本包只认协议，不认识任何游戏规则。
+//
+// 正式赛的规则来自冻结 oracle 快照，由独立 Node 进程承载；
+// 未来换成 Go 引擎时，替换宿主脚本即可。
 package engine
 
 import (
@@ -68,13 +72,19 @@ type envelope struct {
 	Verify       json.RawMessage `json:"verify"`
 }
 
-// Start 启动宿主。script 是 oracle_host.js 的路径；node 从 PATH 取。
+// Start 启动宿主。script 以 .js 结尾时用 node 承载（oracle_host.js），
+// 否则视为可执行文件直接拉起（Go 原生 enginehost）。
 func Start(script string, rulesPath ...string) (*Host, error) {
-	args := []string{script}
-	if len(rulesPath) > 0 && rulesPath[0] != "" {
-		args = append(args, rulesPath[0])
+	var cmd *exec.Cmd
+	if strings.HasSuffix(script, ".js") {
+		args := []string{script}
+		if len(rulesPath) > 0 && rulesPath[0] != "" {
+			args = append(args, rulesPath[0])
+		}
+		cmd = exec.Command("node", args...)
+	} else {
+		cmd = exec.Command(script)
 	}
-	cmd := exec.Command("node", args...)
 	cmd.Stderr = os.Stderr
 	in, err := cmd.StdinPipe()
 	if err != nil {

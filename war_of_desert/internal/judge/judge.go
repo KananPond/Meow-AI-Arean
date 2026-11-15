@@ -1,8 +1,9 @@
 // Package judge 是正式赛的唯一执行者。
 //
-// 它负责：拉起引擎宿主、为每个座位拉起独立 Bot 进程、按 hello→ready→tick→actions→end
-// 收发真实 UTF-8 行分隔 JSON、执行 120ms 决策死线、连续 3 次故障红牌、超时 kill 与重启、
-// 换边重开、回放抽帧归档、逐局确定性复核。
+// 版本：v1.2-beta（Desert Arena 正式赛执行链）。
+// 功能：拉起引擎宿主、为每个座位拉起独立 Bot 进程、按 hello→ready→tick→actions→end
+// 收发真实 UTF-8 行分隔 JSON、执行 120ms 决策死线、连续 3 次故障红牌、
+// 超时 kill 与重启、换边重开、回放抽帧归档、逐局确定性复核。
 //
 // 它不负责：规则语义（引擎宿主）、计分公式（引擎宿主）、赛程与评分（上层）。
 package judge
@@ -42,7 +43,8 @@ type Config struct {
 	MaxStrikes int
 	StrikeMode string
 	Verify     bool
-	Env        []string // 附加环境变量（自检用的故障注入）
+	// 附加环境变量（自检用的故障注入）
+	Env []string
 }
 
 // Fault 是一条故障记录。

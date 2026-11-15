@@ -1,29 +1,36 @@
-# Desert Arena · 正式版
+# Desert Arena · 正式赛事（Go 执行链 + Go 原生引擎）
 
-> **状态：正式版 v1.0 已落地并跑完第 1 季基准赛**（2026-11-12）
-> **赛事手册**：[`赛事手册.md`](赛事手册.md) ｜ **规则基线**：[`../Dev/Plan_Beta.md`](../Dev/Plan_Beta.md) v1.0
-> **引擎**：只读快照 `MVP@288db07f`（校验：`python -X utf8 scripts/verify_oracle.py`），由 `engine/oracle_host.js` 在独立进程承载
-> **执行链**：Go 1.27 标准库，零第三方依赖
+> **状态：β 测试**（v1.0 第 1 季 / v1.1 第 2 季已完赛；v1.2-beta 语义 = 队列跳过 + 母舰 RU 基础收入）。
+>
+> **AI 参与声明**：本仓库的引擎移植、参考 Bot、测试与文档由 AI（ZCode 智能体）在人类指导下参与编写；
+> 规则设计、赛制与验收由人类主导，全部对局结果均经引擎内置的确定性复核门禁（golden trace + orderLog 重放）。
+>
+> **赛事手册**：[`赛事手册.md`](赛事手册.md) ｜ **规则基线（v1.0 历史）**：[`../Dev/Plan_Beta.md`](../Dev/Plan_Beta.md) 快照
+> **引擎双轨**：`engine.kind` 二选一——`oracle`（只读快照 `MVP@288db07f`，`engine/oracle_host.js` 承载，校验 `python -X utf8 scripts/verify_oracle.py`）
+> 或 `native`（**Go 原生引擎**：规则语义在 `internal/sim`，宿主 `cmd/enginehost`，第 2 季配置 [`tournament/formal_v11.json`](tournament/formal_v11.json)）
+> **执行链**：Go 标准库，零第三方依赖。第 2 季规则 = MVP 合并版（v1.1：四子系统分配 / CU-RU 运输线经济 / 1200 tick / 七领域计分）
 
 ---
 
-## 这个仓库是什么
+## 这个目录是什么
 
-`war_of_desert/` 就是**正式比赛的执行目录**：能开赛、能判罚、能出成绩，不再只是空骨架。
+`war_of_desert/` 是正式赛事所在目录：能开赛、能判罚、能出成绩。
 
 - 选手交一个 Go 程序，官方编译、封存源码哈希；
 - 裁判为每个座位拉起独立进程，执行 120 ms 决策死线、连续 3 次红牌、超时 kill 与重启、换边重开；
 - 赛程先冻结再执行，赛后产出逐局结果、完整回放、确定性复核、BT 实力值与八领域加权总分；
-- 规则语义不另写一份，全部来自快照 oracle 快照。
+- v1.0 赛季的规则语义来自冻结快照 oracle；**v1.1 起规则引擎为 Go 原生**
+  （移植自 MVP 合并版，golden trace 回归：`engine/golden/` + `internal/sim/golden_test.go`）。
 
 第 1 季基准赛结果：5 名选手、20 场、40 局、零故障、40/40 确定性复核通过。
 
 ```text
-BT 名次：Nomad → Vanguard（锚）→ Swarm → Bulwark → Starter
-加权总分：Nomad → Swarm → Starter → Vanguard → Bulwark
+第 1 季（oracle，600 tick）BT：Nomad → Vanguard（锚）→ Swarm → Bulwark → Starter
+第 2 季（native，1200 tick）BT：Nomad → Vanguard（锚）→ Bulwark → Starter → Swarm
 ```
 
-两榜不一致是设计目标：胜负与质量是两条独立信号。详见 [`results/formal/成绩.md`](results/formal/成绩.md)。
+两季 Nomad 都是 BT 第一；v1.1 运输线经济重置环境后 Swarm 从第 3 跌到第 5。
+两榜不一致是设计目标：胜负与质量是两条独立信号。详见 [`LEADERBOARD.md`](LEADERBOARD.md)。
 
 **开发与历史资料在 [`../Dev/`](../Dev/README.md)**：MVP 规则源码（2026-11-13 已解冻）、原作调研、Plan/ORACLE、历次审查报告、第三方参照模板。它们不参与正式赛执行。
 
@@ -48,11 +55,15 @@ go run ./cmd/arena run         # 跑完 20 场 / 40 局 → 结果.jsonl + 回�
 go run ./cmd/arena rate        # BT + 加权总分 → 成绩.md / 成绩_加权总分.md / 成绩.json
 ```
 
+```bash
 单项自检（选手包默认入口）：
 
 ```bash
 go run ./cmd/arena check -seed 20261109
 ```
+
+观赛：把 `results/*/回放/match-NNN.json` 拖进 [`回放查看器.html`](回放查看器.html)
+（零依赖单文件，浏览器直接打开；地形 / 单位 / VP / 记分 / 终局复核徽标）。
 
 ---
 
@@ -115,7 +126,8 @@ go run ./cmd/siegepool -from results/siege/bt_pool.csv -out results/siege/bt_poo
 ├── war_of_desert/            ← 正式比赛（本文件所在目录）
 │   ├── README.md            本文件
 │   ├── 赛事手册.md           正式赛制、流程、判罚、申诉、运营清单
-│   ├── LEADERBOARD.md       第 1 季榜单与读法
+│   ├── LEADERBOARD.md       两季榜单与读法
+│   ├── 回放查看器.html       零依赖回放播放器（拖入 match-NNN.json 观赛）
 │   ├── go.mod
 │   ├── cmd/
 │   │   ├── arena/           build / plan / run / rate / check / selftest
@@ -151,14 +163,14 @@ go run ./cmd/siegepool -from results/siege/bt_pool.csv -out results/siege/bt_poo
 ```text
 Dev/
 ├── README.md                 资料区索引
-├── Plan_Beta.md              v1.0 规则基线与迁移规格
-├── Plan_Siege.md             攻守改造与标定记录
-├── 设计审查_正式版v1.0_20261113.md
+├── Plan_Beta.md              v1.1 规则基线与迁移规格
+├── 实验/Plan_Siege.md        攻守改造与标定记录
+├── 审查/设计审查_正式版v1.0_20261113.md
 ├── ORACLE.md                 预言机运行与复现规范
 ├── Docs/                     原作调研、事实卡片、版权与术语
 │   └── archive/              已归档：Plan_Alpha、MVP_plan、历次审查/修复/评估报告
-├── MVP/                      JS 规则预言机源码（已解冻，含 正式比赛测试/）
-└── 模板/                     第三方只读参照
+├── MVP/                      JS 规则实现（正式版，含 正式比赛测试/）
+└── reference/模板/           第三方只读参照
 ```
 
 ---
@@ -179,10 +191,9 @@ cmd/arena ──► judge ──► engine(宿主客户端) ──► node engin
 
 ### 与 `Plan_Beta.md` 的关系
 
-- 规则、协议字段、计分口径遵循 [`../Dev/Plan_Beta.md`](../Dev/Plan_Beta.md) v1.0；
-- 引擎迁移门禁（§6.2）**尚未宣称通过**：本季仍是 oracle 引擎；
-- `hello` 113 KB 超 64 KiB 是 §11 已登记偏差，本季沿用；
-- 赛制层（BT、赛程、收卷、榜单）已落地，属于 §1.2 所说“不阻断引擎迁移”的部分。
+- 引擎迁移验收（§5.2/§6.2）三件套已就位并通过：Go 自确定性（裁判逐局重放复核，第 2 季 40/40）、golden trace 回归（`engine/golden/` + `internal/sim/golden_test.go`）、绝对锚点与 JS 契约测试（`internal/sim/sim_contract_test.go` / `game_test.go`）；
+- 第 1 季的 `hello` 113 KB 超 64 KiB 是 §11 已登记偏差，v1.1 原生引擎的 hello 是否收窄见 `internal/protocol`；
+- 赛制层（BT、赛程、收卷、榜单）两季均已落地。
 
 ---
 
@@ -202,7 +213,7 @@ cmd/arena ──► judge ──► engine(宿主客户端) ──► node engin
 
 ## 已知边界
 
-1. **引擎仍是 JS oracle**。Go 引擎尚未实现，`../Dev/Plan_Beta.md` §6.2 门禁未过；正式成绩依赖 Node 运行时。
+1. **两代引擎并存**。第 1 季成绩由 JS oracle 引擎产出，复现需 Node 运行时；第 2 季起 `engine.kind=native`（Go 原生，`internal/sim`），oracle 仅作 v1.0 历史复现与对照。
 2. **hello 113 KB**。协议契约仍是 64 KiB，本季按已登记偏差执行。
 3. **视野关闭**。`rules.vision=false`，全图可见；开雾需要另跑一个赛季，不能与本赛季混排。
 4. **参考 Bot 只用于基准**。它们只有流场寻路和简单交战规则，不代表规则上限；第 1 季无人斩舰，属选手强度不足，不是规则问题。

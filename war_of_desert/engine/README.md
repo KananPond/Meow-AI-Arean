@@ -31,13 +31,32 @@
 - 不修改 `oracle/`。发现疑似缺陷登记到 `../../Dev/Plan_Beta.md` §11，由 Go 引擎决定修正或有意复刻。
 - 唯一输出通道是 stdout 单行 JSON；任何调试输出都会破坏协议。
 
-## 替换为 Go 引擎
+## 替换为 Go 引擎（已完成 · 2026-11-14）
 
-满足 `../../Dev/Plan_Beta.md` §6.2 门禁后：
+1. ✅ `cmd/enginehost` 实现同一套命令流（`new/encode/apply/step/note/forfeit/end/result/verify/bye`），
+   规则语义在 `internal/sim`（从 MVP 合并版 b9643b0+v0.11 移植，v1.1 规则）；
+2. ✅ 配置层落实 `engine.kind`：`oracle`（本目录快照，走 Node）| `native`（enginehost 二进制）。
+   第 2 季配置 `tournament/formal_v11.json` 已用 `native`；
+3. ✅ golden trace：`engine/golden/`（6 条冻结 trace + MANIFEST）+ `internal/sim/golden_test.go`
+   回归门禁；重生成用 `go run ./cmd/tracegen`；
+4. ✅ 选手包、裁判、赛程、成绩契约不动（judge 只在 `host.go:Start` 加了
+   「.js 走 node、否则直接拉起二进制」一个分支）。
 
-1. 新引擎实现同一套命令流（`new/encode/apply/step/note/forfeit/end/result/verify`）；
-2. `formal.json` 的 `engine.host` 指向新程序；
-3. 用同一批 seed 与 golden trace 对拍；
-4. 选手包、裁判、赛程、成绩契约不动。
+对拍口径按 `../../Dev/Plan_Beta.md` §5.2：Go 自确定性 + golden trace + 绝对锚点，
+不与 JS 逐位对拍（规则版本分叉 + 超越函数 ulp 双重不可行）。移植基线与
+JS 行为指纹见 `engine/parity/BASELINE.md`。攻守引擎（rules_siege.js 的移植）
+也在 `internal/sim/siege.go`，`cmd/siege -engine native` 可切换。
 
 这就是把引擎放在独立进程里的收益：换引擎不需要改赛制。
+
+## 内部口径备忘（2026-11-15，阶段 1 观测增强）
+
+- **被拒指令（Rejected）**：上限 **200 条/局**，超出静默丢弃；`turn` 记该指令
+  **本应生效的 tick**（= orderLog 的 `t`，解码发生在 N 拍 step 之后、指令原定
+  N+1 拍生效），与 orderLog 逐拍对照不错位。Game 与 SiegeGame 同口径。
+- **帧（Frame）**：新增 `waitingQueue [2][]string`（等待队列）与
+  `queueBlocked [2]bool`（队首 CU/RU 付不起、与 stepProduction 的等待条件一致）。
+  `queue` 字段继续表示生产中（Active）队列。帧内容变化 → 帧哈希全变，
+  golden trace 已重生成；旧赛季回放的逐帧哈希与新引擎不再逐位可比
+  （rulesHash 不含帧格式，赛季存档的 rulesHash 不受影响）。
+- JS 活引擎（Dev/MVP referee/rules.js）已同步以上两点。

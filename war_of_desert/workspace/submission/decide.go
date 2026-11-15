@@ -1,4 +1,8 @@
-// Desert Arena 正式赛 · 选手提交模板
+// Desert Arena 正式赛 · 选手提交模板。
+//
+// 版本：v1.2-beta（选手包 Starter）。
+// 功能：「能跑通、不犯错」的基线——占点、造兵、研究、开火各做一点；
+// 生产带 RU 自查与跳过轮转，harvest 按节点类型分流。
 //
 // 你只需要改这个文件（以及你愿意加的自己的包），把它编译成独立程序交上来：
 //
@@ -10,8 +14,8 @@
 //	· 每收到一行 tick，回一行 {"actions":[...]}
 //	· 收到 {"type":"end",...} 后自行退出
 //
-// 下面这份实现是「能跑通、不犯错」的基线：占点、造兵、研究、开火各做一点。
-// 它不追求强度，追求你读得懂、改得动。botkit 里的注释写清了每个字段的含义。
+// 下面这份实现不追求强度，追求你读得懂、改得动。
+// botkit 里的注释写清了每个字段的含义。
 package main
 
 import (
@@ -34,8 +38,12 @@ var techOrder = []string{"I1", "A1", "F1", "I3a", "A2", "F2"}
 var alloc = map[string]int{"armour": 25, "repair": 25, "attack": 30, "range": 20}
 
 var buildIdx int
-var harvested = map[int]bool{} // 采集车指派过就不再重发（重发会重置运输线状态机）
-var harvestN int               // 已指派采集车数：第 1 台 cu、第 2 台（需要 RU 时）ru
+
+// 采集车指派过就不再重发（重发会重置运输线状态机）
+var harvested = map[int]bool{}
+
+// 已指派采集车数：第 1 台 cu、第 2 台（需要 RU 时）ru
+var harvestN int
 
 func main() {
 	if err := botkit.Run(decide); err != nil {
@@ -176,7 +184,8 @@ func nextBuild(b *botkit.Bot, st *botkit.State) (string, bool) {
 }
 
 func nextTech(b *botkit.Bot, st *botkit.State) string {
-	done := map[string]bool{} // 真正研究完成（前置只认它）
+	// 真正研究完成（前置只认它）
+	done := map[string]bool{}
 	doing := map[string]bool{}
 	for _, id := range st.Me.TechDone {
 		done[id] = true

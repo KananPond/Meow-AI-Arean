@@ -1,9 +1,13 @@
 // Command arena 是 Desert Arena 正式赛的唯一入口。
 //
+// 版本：v1.2-beta（Desert Arena 正式赛执行链）。
+// 功能：build / plan / run / rate / check / selftest / season 全流程；
+// 引擎双轨（oracle 快照 | Go 原生 enginehost）。
+//
 //	arena build  编译选手包并封存源码哈希
 //	arena plan   冻结赛程
 //	arena run    按冻结赛程跑完所有对局
-//	arena rate   出 BT 实力值、95% 区间、八领域加权总分
+//	arena rate   出 BT 实力值、95% 区间、计分卡加权总分
 //	arena check  单场自检（选手包默认用它）
 package main
 
@@ -64,8 +68,8 @@ func usage() {
 
   arena build  [-config tournament/formal.json]
   arena plan   [-config tournament/formal.json]
-  arena run    [-config tournament/formal.json] [-dir results/formal] [-resume] [-limit N]
-  arena rate   [-config tournament/formal.json] [-dir results/formal]
+	arena run    [-config tournament/formal.json] [-resume] [-limit N]
+	arena rate   [-config tournament/formal.json]
   arena check  [-a <bot.exe>] [-b <bot.exe>] [-seed N] [-config ...]
   arena selftest [-config ...]   验证超时 kill / 崩溃重启 / 非法结构红牌
 
@@ -230,10 +234,30 @@ type gameLine struct {
 	DurationMS int64       `json:"durationMs"`
 }
 
+// resolveOutDir 解析结果目录：默认取配置 output，-dir 可覆盖；强制留在仓库根内，
+// 防止 `-dir ../…` 把赛果写到仓库之外。
+func resolveOutDir(root, dirFlag, def string) (string, error) {
+	outDir := filepath.Join(root, filepath.FromSlash(def))
+	if dirFlag != "" {
+		outDir = filepath.Join(root, filepath.FromSlash(dirFlag))
+	}
+	absDir, err := filepath.Abs(outDir)
+	if err != nil {
+		return "", err
+	}
+	absRoot, err := filepath.Abs(root)
+	if err != nil {
+		return "", err
+	}
+	if absDir != absRoot && !strings.HasPrefix(absDir, absRoot+string(os.PathSeparator)) {
+		return "", fmt.Errorf("结果目录必须在仓库目录内: %s", dirFlag)
+	}
+	return outDir, nil
+}
+
 func cmdRun(args []string) error {
 	fs := flag.NewFlagSet("run", flag.ExitOnError)
 	cfgPath := fs.String("config", "tournament/formal.json", "赛事配置")
-	dirFlag := fs.String("dir", "", "赛事目录（默认取配置 output）")
 	resume := fs.Bool("resume", false, "跳过 结果.jsonl 中已完成的对阵")
 	limit := fs.Int("limit", 0, "最多再跑 N 场（0 = 不限）")
 	_ = fs.Parse(args)
@@ -242,9 +266,9 @@ func cmdRun(args []string) error {
 	if err != nil {
 		return err
 	}
-	outDir := cfg.OutDir(root)
-	if *dirFlag != "" {
-		outDir = filepath.Join(root, filepath.FromSlash(*dirFlag))
+	outDir, err := resolveOutDir(root, "", cfg.Output)
+	if err != nil {
+		return err
 	}
 	plan, err := schedule.Load(filepath.Join(outDir, "赛程.json"))
 	if err != nil {
@@ -287,8 +311,12 @@ func cmdRun(args []string) error {
 		return err
 	}
 
+	hostScript, err := cfg.EngineHostPath(root)
+	if err != nil {
+		return err
+	}
 	judgeCfg := judge.Config{
-		HostScript: cfg.HostPath(root),
+		HostScript: hostScript,
 		Rules: engine.HostConfig{
 			Generator: cfg.Rules.Generator,
 			TickLimit: cfg.Rules.TickLimit,
@@ -416,16 +444,15 @@ type standing struct {
 func cmdRate(args []string) error {
 	fs := flag.NewFlagSet("rate", flag.ExitOnError)
 	cfgPath := fs.String("config", "tournament/formal.json", "赛事配置")
-	dirFlag := fs.String("dir", "", "赛事目录")
 	_ = fs.Parse(args)
 
 	cfg, root, err := contest.Load(*cfgPath)
 	if err != nil {
 		return err
 	}
-	outDir := cfg.OutDir(root)
-	if *dirFlag != "" {
-		outDir = filepath.Join(root, filepath.FromSlash(*dirFlag))
+	outDir, err := resolveOutDir(root, "", cfg.Output)
+	if err != nil {
+		return err
 	}
 	plan, err := schedule.Load(filepath.Join(outDir, "赛程.json"))
 	if err != nil {
@@ -449,6 +476,19 @@ func cmdRate(args []string) error {
 	if len(lines) == 0 {
 		return fmt.Errorf("结果.jsonl 为空，先跑 arena run")
 	}
+
+	// 计分域数从结果行推导（v1.0 八领域 / v1.1 七领域），标签不再硬编码。
+	domains := 0
+	for _, l := range lines {
+		if len(l.Fields) > 0 {
+			domains = len(l.Fields[0])
+			break
+		}
+	}
+	if domains == 0 {
+		domains = 7
+	}
+	domainLabel := fmt.Sprintf("%d领域", domains)
 
 	table := map[string]*standing{}
 	get := func(n string) *standing {
@@ -528,7 +568,7 @@ func cmdRate(args []string) error {
 	fmt.Fprintf(&b, "# %s · 正式赛成绩\n\n", cfg.Name)
 	fmt.Fprintf(&b, "> 赛季：%s ｜ 规则指纹：%s ｜ 局数：%d ｜ 基准 seed：%v（逐场按序递增）\n", cfg.Season, lines[0].RulesHash, len(lines), cfg.Schedule.Seeds)
 	fmt.Fprintf(&b, "> 评分口径：%s；%s。\n\n", bt.Method, bt.Scale)
-	fmt.Fprintf(&b, "| 名次 | 选手 | 实力值 | 95%% 区间 | 胜/平/负 | 局数 | 八领域总分 |\n|---:|---|---:|---|---:|---:|---:|\n")
+	fmt.Fprintf(&b, "| 名次 | 选手 | 实力值 | 95%% 区间 | 胜/平/负 | 局数 | %s总分 |\n|---:|---|---:|---|---:|---:|---:|\n", domainLabel)
 	for i, r := range rows {
 		iv := "—"
 		if r.Intervals {
@@ -538,14 +578,14 @@ func cmdRate(args []string) error {
 			i+1, r.Name, r.R, iv, r.St.Wins, r.St.Draws, r.St.Losses, r.St.Played, r.St.Total)
 	}
 	fmt.Fprintf(&b, "\n基准锚：%s = 0；共 %d 局；bootstrap %d 次。\n", bt.Anchor, bt.Games, bt.Bootstrap)
-	fmt.Fprintf(&b, "\n> 胜负标签与八领域加权总分是两条独立信号：本表按胜负拟合实力值，加权总分单列。\n")
+	fmt.Fprintf(&b, "\n> 胜负标签与%s加权总分是两条独立信号：本表按胜负拟合实力值，加权总分单列。\n", domainLabel)
 	fmt.Fprintf(&b, "> 区间按对局整块重抽样；全胜/全败时区间会退化，属统计口径而非成绩异常。\n")
 	if err := os.WriteFile(filepath.Join(outDir, "成绩.md"), []byte(b.String()), 0o644); err != nil {
 		return err
 	}
 
 	var t strings.Builder
-	fmt.Fprintf(&t, "# 八领域加权总分\n\n| 名次 | 选手 | 合计 | 场均 | 故障 |\n|---:|---|---:|---:|---:|\n")
+	fmt.Fprintf(&t, "# %s加权总分\n\n| 名次 | 选手 | 合计 | 场均 | 故障 |\n|---:|---|---:|---:|---:|\n", domainLabel)
 	byTotal := make([]*standing, 0, len(table))
 	for _, s := range table {
 		byTotal = append(byTotal, s)
@@ -596,8 +636,12 @@ func cmdCheck(args []string) error {
 			return fmt.Errorf("找不到程序 %s（先跑 arena build 或 go build）", p)
 		}
 	}
+	hostScript, err := cfg.EngineHostPath(root)
+	if err != nil {
+		return err
+	}
 	jcfg := judge.Config{
-		HostScript: cfg.HostPath(root),
+		HostScript: hostScript,
 		Rules: engine.HostConfig{
 			Generator: cfg.Rules.Generator,
 			TickLimit: cfg.Rules.TickLimit,
@@ -676,8 +720,12 @@ func cmdSelftest(args []string) error {
 		return fmt.Errorf("编译 faultbot 失败: %w", err)
 	}
 
+	hostScript, err := cfg.EngineHostPath(root)
+	if err != nil {
+		return err
+	}
 	base := judge.Config{
-		HostScript: cfg.HostPath(root),
+		HostScript: hostScript,
 		Rules: engine.HostConfig{
 			Generator: cfg.Rules.Generator,
 			TickLimit: cfg.Rules.TickLimit,

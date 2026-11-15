@@ -1,7 +1,9 @@
 // Command siegepool 跑攻守模式的循环赛，并用双参数 Bradley–Terry 给选手池评分。
 //
-// 每个选手（同一份 Bot）既当攻方也当守方：所有有序对 (攻方 i, 守方 j) × 每个地图 seed 各打一局，
-// 然后拟合「攻方实力 A_i / 守方实力 D_j」，避免把攻强守弱和攻弱守强平均成同一个数。
+// 版本：v1.2-beta（Desert Arena 攻守变体评分工具）。
+// 功能：所有有序对（攻方 i, 守方 j）× 每个地图 seed 各打一局，
+// 然后拟合「攻方实力 A_i / 守方实力 D_j」，
+// 避免把攻强守弱和攻弱守强平均成同一个数。
 //
 //	go run ./cmd/siegepool \
 //	  -pool "v1=bots/bin/pool_v1.exe,v2=bots/bin/pool_v2.exe,..." \
@@ -14,6 +16,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -123,20 +126,21 @@ func loadGames(path string) ([]oneGame, error) {
 
 func main() {
 	var (
-		pool      = flag.String("pool", "", "选手池，形如 v1=bots/bin/pool_v1.exe,v2=...")
-		seeds     = flag.String("seeds", "20261301-20261310", "地图 seed 列表/范围")
-		workers   = flag.Int("workers", 4, "并行局数")
-		out       = flag.String("out", "results/siege/bt", "输出前缀：写 <out>.csv / .json / .md")
-		bootstrap = flag.Int("bootstrap", 1000, "bootstrap 次数（按 seed 整块重抽样）")
-		hp        = flag.Int("hp", 1250, "守方与攻方母舰 HP")
-		tickLim   = flag.Int("tickLimit", 1260, "tick 上限")
-		fortBud   = flag.Int("fortBudget", 16, "守方工事预算")
-		attCU     = flag.Int("attackerCu", 900, "攻方起始 CU")
-		defCU     = flag.Int("defenderCu", 700, "守方起始 CU")
-		attLav    = flag.Int("attackerLav", 4, "攻方初始 LAV")
-		defLav    = flag.Int("defenderLav", 3, "守方初始 LAV")
-		place     = flag.Int("placeTicks", 80, "布置阶段 tick")
-		from      = flag.String("from", "", "不从零跑：直接读已有的 games.csv 重算评分")
+		pool       = flag.String("pool", "", "选手池，形如 v1=bots/bin/pool_v1.exe,v2=...")
+		seeds      = flag.String("seeds", "20261301-20261310", "地图 seed 列表/范围")
+		workers    = flag.Int("workers", 4, "并行局数")
+		out        = flag.String("out", "results/siege/bt", "输出前缀：写 <out>.csv / .json / .md")
+		bootstrap  = flag.Int("bootstrap", 1000, "bootstrap 次数（按 seed 整块重抽样）")
+		hp         = flag.Int("hp", 1250, "守方与攻方母舰 HP")
+		tickLim    = flag.Int("tickLimit", 1260, "tick 上限")
+		fortBud    = flag.Int("fortBudget", 16, "守方工事预算")
+		attCU      = flag.Int("attackerCu", 900, "攻方起始 CU")
+		defCU      = flag.Int("defenderCu", 700, "守方起始 CU")
+		attLav     = flag.Int("attackerLav", 4, "攻方初始 LAV")
+		defLav     = flag.Int("defenderLav", 3, "守方初始 LAV")
+		place      = flag.Int("placeTicks", 80, "布置阶段 tick")
+		from       = flag.String("from", "", "不从零跑：直接读已有的 games.csv 重算评分")
+		engineKind = flag.String("engine", "oracle", "规则引擎：oracle | native")
 	)
 	flag.Parse()
 
@@ -155,11 +159,22 @@ func main() {
 	}
 	host := filepath.Join(root, "engine", "oracle_host.js")
 	rules := filepath.Join(root, "engine", "oracle", "rules_siege.js")
-	if _, err := os.Stat(host); err != nil {
-		fail(fmt.Errorf("找不到宿主 %s", host))
-	}
-	if _, err := os.Stat(rules); err != nil {
-		fail(fmt.Errorf("找不到规则变体 %s", rules))
+	if *engineKind == "native" {
+		bin := filepath.Join(root, "bots", "bin", "enginehost.exe")
+		build := exec.Command("go", "build", "-o", bin, "./cmd/enginehost")
+		build.Dir = root
+		if out, err := build.CombinedOutput(); err != nil {
+			fail(fmt.Errorf("构建 enginehost 失败: %s", strings.TrimSpace(string(out))))
+		}
+		host = bin
+		rules = ""
+	} else {
+		if _, err := os.Stat(host); err != nil {
+			fail(fmt.Errorf("找不到宿主 %s", host))
+		}
+		if _, err := os.Stat(rules); err != nil {
+			fail(fmt.Errorf("找不到规则变体 %s", rules))
+		}
 	}
 	for _, b := range bots {
 		if _, err := os.Stat(b.Path); err != nil {
