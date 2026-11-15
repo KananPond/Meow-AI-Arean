@@ -1,6 +1,6 @@
 # Meow-AI-Arean社区AI比赛
 
-面向社区的 AI Bot 算法对抗赛：参赛者编写 Bot，在程序生成的沙漠战场中争夺 VP、守护母舰，并通过可复现的赛制、回放与确定性复核验证策略。Bot 只需实现 `init/decide`。
+面向社区的 AI Bot 算法对抗赛：在程序生成的沙漠战场争夺 VP、守护母舰，以可复现赛制与回放验证策略。Bot 只需实现 `init/decide`。
 
 本项目采用 [MIT License](LICENSE) 开源。
 
