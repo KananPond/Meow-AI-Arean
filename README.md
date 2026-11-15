@@ -1,6 +1,8 @@
-# 社区比赛__WoD
+# Meow-AI-Arean社区AI比赛
 
-Desert Arena 1v1 算法对抗赛：红蓝双方在程序生成的沙漠地形上争夺 VP、保护/摧毁母舰，Bot 只写 `init/decide`。
+面向社区的 AI Bot 算法对抗赛：参赛者编写 Bot，在程序生成的沙漠战场中争夺 VP、守护母舰，并通过可复现的赛制、回放与确定性复核验证策略。Bot 只需实现 `init/decide`。
+
+本项目采用 [MIT License](LICENSE) 开源。
 
 > **当前阶段：β 测试**（正式版 v1.2-beta 语义：生产队列跳过式出队 + 母舰 RU 基础收入）。
 >
