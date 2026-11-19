@@ -39,11 +39,19 @@ except ModuleNotFoundError:  # 精简版 Python 常常不带 tk
     )
     raise SystemExit(2)
 
+import importlib.util
+
 APP_DIR = Path(__file__).resolve().parent
 ENGINE = APP_DIR / "war_of_desert"
 DEFAULT_CONTEST_ROOT = APP_DIR / "算法赛"
-STAGE_ROOT = ENGINE / "workspace" / "contestants"
+STAGE_ROOT = ENGINE / "workspace" / "_contestants"
 REF_BOTS = ["Vanguard", "Bulwark", "Swarm", "Nomad", "Sapper"]
+
+# 赛务（发卷 / 开赛 / 暂停 / 收卷）与裁判台同目录。用路径加载，
+# 避免模块名含中文时在某些 Python 上 import 失败。
+_spec = importlib.util.spec_from_file_location("wod_service", APP_DIR / "赛务.py")
+service = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(service)
 
 PROGRESS_RE = re.compile(r"\[(\d+)\s*/\s*(\d+)\]")
 ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
@@ -77,7 +85,7 @@ def detect_source(ws: Path):
     判定看整个 .go 文件而不是开头若干行：选手包模板的许可证/说明注释很长，
     按前缀截断会把合法的 decide.go 判成「没有 package main」。
     """
-    for c in (ws, ws / "submission", ws / "src"):
+    for c in (ws, ws / "submission", ws / "workspace" / "submission", ws / "src", ws / "workspace"):
         if not c.is_dir():
             continue
         for f in sorted(c.glob("*.go")):
@@ -87,7 +95,10 @@ def detect_source(ws: Path):
             except OSError:
                 continue
             if "package main" in src_text and "func main(" in src_text:
-                return ("." if c == ws else c.name), "入口 %s" % f.name
+                # 必须返回相对工作区的完整路径：workspace/submission 只取
+                # c.name 会得到 "submission"，暂存后按这个子路径找源码就找错了。
+                rel = "." if c == ws else c.relative_to(ws).as_posix()
+                return rel, "入口 %s" % f.name
     if not go_files(ws):
         return None, "没有 .go 文件（空工作区？）"
     return None, "没找到 package main"
@@ -148,6 +159,7 @@ class RefereeDesk(tk.Tk):
         self.reload_configs()
         self.scan_workspaces()
         self.after(80, self._drain_log)
+        self.after(1000, self._tick)
 
     # ---------------- 样式 ----------------
     def _build_styles(self):
@@ -272,6 +284,22 @@ class RefereeDesk(tk.Tk):
             side="left", padx=6)
         ttk.Button(bar, text="打开评测结果", command=self.open_contest_results).pack(
             side="left", padx=8)
+
+        srv = tk.Frame(tab, bg=BG)
+        srv.pack(fill="x", padx=12, pady=(0, 4))
+        tk.Label(srv, text="赛务", bg=BG, fg=MUTED).pack(side="left")
+        for text, fn in (("发卷并开赛", self.issue_start),
+                         ("暂停", self.pause_timer),
+                         ("恢复", self.resume_timer),
+                         ("收卷", self.freeze_timer),
+                         ("刷新状态", self.scan_workspaces)):
+            ttk.Button(srv, text=text, command=fn).pack(side="left", padx=(8, 0))
+        self.clock_lbl = tk.Label(srv, text="选中一个工作区查看计时", bg=BG, fg=MUTED)
+        self.clock_lbl.pack(side="right")
+
+        tk.Label(tab, text="「发卷并开赛」会把选手包铺进 <工作区>/workspace 并开始计时"
+                           "（90 分钟目标 / 120 分钟收卷）；目录为空也可以直接开赛。",
+                 bg=BG, fg=MUTED, font=(None, 9)).pack(anchor="w", padx=12, pady=(0, 8))
         return tab
 
     # ---------------- 赛季 ----------------
@@ -370,13 +398,18 @@ class RefereeDesk(tk.Tk):
         for d in dirs:
             src, note = detect_source(d)
             label = d.name
+            try:
+                srv = service.describe(d)
+            except Exception:  # noqa: BLE001
+                srv = "—"
             if src is None:
-                self.lst.insert("end", "%-42s  × %s" % (label, note))
+                self.lst.insert("end", "%-38s  × %-16s  %s" % (label, note, srv))
                 self.lst.itemconfig("end", foreground="#8a8f98")
                 self.workspaces.append((d, label, None, note))
             else:
                 n = len(go_files(d))
-                self.lst.insert("end", "%-42s  ✓ %s，%d 个 .go" % (label, note, n))
+                self.lst.insert("end", "%-38s  ✓ %-16s  %s  （%d 个 .go）"
+                                % (label, note, srv, n))
                 self.workspaces.append((d, label, src, note))
         ok = sum(1 for w in self.workspaces if w[2])
         self.status.set("扫描到 %d 个，可用 %d 个" % (len(self.workspaces), ok))
@@ -410,6 +443,80 @@ class RefereeDesk(tk.Tk):
 
     def select_none(self):
         self.lst.selection_clear(0, "end")
+
+    def selected_one(self):
+        """当前选中的单个工作区（允许还是空的——发卷就是给空目录用的）。"""
+        idx = self.lst.curselection()
+        if len(idx) != 1:
+            return None
+        i = idx[0]
+        return self.workspaces[i] if i < len(self.workspaces) else None
+
+    def _need_one(self, action: str):
+        w = self.selected_one()
+        if w is None:
+            messagebox.showwarning("裁判台", "%s：先在列表里选中一个工作区" % action)
+            return None
+        return w
+
+    def issue_start(self):
+        if self.running:
+            return
+        w = self._need_one("发卷并开赛")
+        if not w:
+            return
+        ws, label = w[0], w[1]
+        st = service.status(ws)
+        if st["state"] != "未开赛":
+            if not messagebox.askokcancel(
+                    "重置计时", "%s 已经开赛（%s）。\n重新开赛会把计时起点重置为现在，确认？"
+                    % (label, service.describe(ws))):
+                return
+        try:
+            if not st["issued"]:
+                got = service.issue(ws)
+                self._log("发卷 %s：%s\n" % (label, "、".join(got) if got else "已存在"), "dim")
+            service.start(ws)
+        except Exception as e:  # noqa: BLE001
+            messagebox.showerror("裁判台", "开赛失败：%s" % e)
+            return
+        self._log("开赛 %s：90 分钟目标 / 120 分钟收卷\n" % label, "ok")
+        self.scan_workspaces()
+
+    def pause_timer(self):
+        w = self._need_one("暂停")
+        if not w:
+            return
+        service.pause(w[0], "裁判台手动暂停")
+        self._log("暂停 %s：已用 %.1f 分钟\n" % (w[1], service.elapsed_seconds(w[0]) / 60), "dim")
+        self.scan_workspaces()
+
+    def resume_timer(self):
+        w = self._need_one("恢复")
+        if not w:
+            return
+        service.resume(w[0])
+        self._log("恢复 %s：已用 %.1f 分钟\n" % (w[1], service.elapsed_seconds(w[0]) / 60), "dim")
+        self.scan_workspaces()
+
+    def freeze_timer(self):
+        w = self._need_one("收卷")
+        if not w:
+            return
+        st = service.status(w[0])
+        if not st["has_submission"]:
+            if not messagebox.askokcancel("收卷", "%s 没有 decide.go，会记为未提交。继续？" % w[1]):
+                return
+        elif not messagebox.askokcancel("收卷", "%s 已用 %.1f 分钟。\n收卷后 submission 里的改动不再进入成绩，确认？"
+                                        % (w[1], st["used_min"])):
+            return
+        info = service.freeze(w[0])
+        if info["missing_submission"]:
+            self._log("收卷 %s：没有 decide.go，记为未提交\n" % w[1], "err")
+        else:
+            self._log("收卷 %s：%d 字节，用 %.1f 分钟，sha256=%s\n"
+                      % (w[1], info["bytes"], info["used_minutes"], info["sha256"][:16]), "ok")
+        self.scan_workspaces()
 
     def picked(self):
         return [self.workspaces[i] for i in self.lst.curselection()
@@ -458,6 +565,13 @@ class RefereeDesk(tk.Tk):
                 shutil.rmtree(stage)
             shutil.copytree(path, stage,
                             ignore=shutil.ignore_patterns("bin", "*.exe", ".git", "__pycache__"))
+            # 有收卷副本就以收卷副本为准：评的必须是冻结那一刻的代码
+            frozen = stage / "交卷" / "decide.go"
+            if frozen.is_file() and src:
+                dst = stage if src == "." else stage / src
+                dst.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(frozen, dst / "decide.go")
+                self._emit(("line", "     使用收卷副本 交卷/decide.go", "dim"))
             digest = tree_digest(stage)
             self._emit(("line", "暂存 %-24s ← %s" % (slug, path)))
             self._emit(("line", "     源码摘要 %s" % digest[:16]))
@@ -485,9 +599,10 @@ class RefereeDesk(tk.Tk):
             cfg["entries"].append({"name": bot, "author": "官方参考 Bot",
                                    "source": "workspace/bots/%s" % bot.lower(),
                                    "bin": "bots/bin/%s.exe" % bot.lower()})
+        stage_rel = STAGE_ROOT.relative_to(ENGINE).as_posix()
         for slug in names:
             cfg["entries"].append({"name": slug, "author": "选手工作区",
-                                   "source": "workspace/contestants/%s" % slug,
+                                   "source": "%s/%s" % (stage_rel, slug),
                                    "bin": "bots/bin/%s.exe" % slug})
 
         cfg_rel = "tournament/_desk_%s.json" % stamp
@@ -566,6 +681,23 @@ class RefereeDesk(tk.Tk):
             self.proc.terminate()
             self.status.set("已中止")
             self._log("\n— 已中止（已完成的对局保留在 结果.jsonl）—\n", "err")
+
+    def _tick(self):
+        w = self.selected_one()
+        if w is None:
+            self.clock_lbl.config(text="选中一个工作区查看计时", fg=MUTED)
+        else:
+            try:
+                st = service.status(w[0])
+                color = MUTED
+                if st["state"] == "进行中":
+                    color = OK if st["used_min"] < 90 else BAD
+                elif st["state"].startswith("已超时"):
+                    color = BAD
+                self.clock_lbl.config(text="%s：%s" % (w[1], service.describe(w[0])), fg=color)
+            except Exception:  # noqa: BLE001
+                pass
+        self.after(1000, self._tick)
 
     def _drain_log(self):
         dirty = False
