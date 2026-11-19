@@ -2,7 +2,7 @@
 // （Phase 2/3 起补全的）地图生成器与规则引擎。引擎与选手包共用这一份实现，
 // 公式禁止复制（Plan_Beta §4.1）。
 //
-// 版本：v1.2-beta（队列跳过 + RU 基础收入，详见 engine/README.md 口径备忘）。
+// 版本：v1.2（队列跳过 + RU 基础收入，详见 engine/README.md 口径备忘）。
 // 移植基线：Dev/MVP 工作树（b9643b0 + v0.11 收尾），见 engine/parity/BASELINE.md。
 // 对拍口径：Plan_Beta §5.2 —— 自确定性 + golden trace + 绝对锚点，不与 JS 逐位对拍。
 package sim

@@ -1,14 +1,14 @@
 # Desert Arena · 正式赛事（Go 执行链 + Go 原生引擎）
 
-> **状态：β 测试**（v1.0 第 1 季 / v1.1 第 2 季已完赛；v1.2-beta 语义 = 队列跳过 + 母舰 RU 基础收入）。
+> **状态：可开赛**（当前 = **v1.3 · 第 4 季**：对称经济 + 脱战自愈 + 攻坚对舰倍率 + 进程沙箱；v1.0 第 1 季 / v1.1 第 2 季 / v1.3 第 4 季已完赛，见 [`LEADERBOARD.md`](LEADERBOARD.md)）。
 >
 > **AI 参与声明**：本仓库的引擎移植、参考 Bot、测试与文档由 AI（ZCode 智能体）在人类指导下参与编写；
 > 规则设计、赛制与验收由人类主导，全部对局结果均经引擎内置的确定性复核门禁（golden trace + orderLog 重放）。
 >
 > **赛事手册**：[`赛事手册.md`](赛事手册.md) ｜ **规则基线（v1.0 历史）**：[`../Dev/Plan_Beta.md`](../Dev/Plan_Beta.md) 快照
 > **引擎双轨**：`engine.kind` 二选一——`oracle`（只读快照 `MVP@288db07f`，`engine/oracle_host.js` 承载，校验 `python -X utf8 scripts/verify_oracle.py`）
-> 或 `native`（**Go 原生引擎**：规则语义在 `internal/sim`，宿主 `cmd/enginehost`，第 2 季配置 [`tournament/formal_v11.json`](tournament/formal_v11.json)）
-> **执行链**：Go 标准库，零第三方依赖。第 2 季规则 = MVP 合并版（v1.1：四子系统分配 / CU-RU 运输线经济 / 1200 tick / 七领域计分）
+> 或 `native`（**Go 原生引擎**：规则语义在 `internal/sim`，宿主 `cmd/enginehost`，当前赛季配置 [`tournament/formal_v13.json`](tournament/formal_v13.json)）
+> **执行链**：Go 标准库，零第三方依赖。当前规则 = **v1.3**（四子系统分配 / CU-RU 运输线经济 / 1200 tick / 七领域计分 / 队列跳过 / 母舰 RU 基础收入 / 资源成对同类 / 脱战自愈）
 
 ---
 
@@ -18,7 +18,7 @@
 
 - 选手交一个 Go 程序，官方编译、封存源码哈希；
 - 裁判为每个座位拉起独立进程，执行 120 ms 决策死线、连续 3 次红牌、超时 kill 与重启、换边重开；
-- 赛程先冻结再执行，赛后产出逐局结果、完整回放、确定性复核、BT 实力值与八领域加权总分；
+- 赛程先冻结再执行，赛后产出逐局结果、完整回放、确定性复核、BT 实力值与七领域加权总分；
 - v1.0 赛季的规则语义来自冻结快照 oracle；**v1.1 起规则引擎为 Go 原生**
   （移植自 MVP 合并版，golden trace 回归：`engine/golden/` + `internal/sim/golden_test.go`）。
 
@@ -27,6 +27,7 @@
 ```text
 第 1 季（oracle，600 tick）BT：Nomad → Vanguard（锚）→ Swarm → Bulwark → Starter
 第 2 季（native，1200 tick）BT：Nomad → Vanguard（锚）→ Bulwark → Starter → Swarm
+第 4 季（native，v1.3，6 人）BT：Nomad → Bulwark → Sapper → Starter → Swarm → Vanguard（锚）
 ```
 
 两季 Nomad 都是 BT 第一；v1.1 运输线经济重置环境后 Swarm 从第 3 跌到第 5。
@@ -48,18 +49,18 @@ python -X utf8 start.py season   # 整季流水线：build → plan → run → 
 在 **`war_of_desert/`** 执行：
 
 ```bash
-go run ./cmd/arena selftest    # 验证超时 kill / 崩溃重启 / 非法结构红牌
-go run ./cmd/arena build       # 编译 5 名选手 + 封存源码哈希
-go run ./cmd/arena plan        # 冻结赛程 → results/formal/赛程.json
-go run ./cmd/arena run         # 跑完 20 场 / 40 局 → 结果.jsonl + 回放
-go run ./cmd/arena rate        # BT + 加权总分 → 成绩.md / 成绩_加权总分.md / 成绩.json
+CFG=tournament/formal_v13.json   # 当前赛季（v1.3）
+go run ./cmd/arena selftest -config $CFG   # 验证超时 kill / 崩溃重启 / 非法结构红牌
+go run ./cmd/arena build    -config $CFG   # 编译 5 名选手 + 封存源码哈希
+go run ./cmd/arena plan     -config $CFG   # 冻结赛程 → results/formal-v13/赛程.json
+go run ./cmd/arena run      -config $CFG   # 跑完 45 场 / 90 局 → 结果.jsonl + 回放（开赛前校验封存）
+go run ./cmd/arena rate     -config $CFG   # BT + 加权总分 → 成绩.md / 成绩_加权总分.md / 成绩.json
 ```
 
-```bash
 单项自检（选手包默认入口）：
 
 ```bash
-go run ./cmd/arena check -seed 20261109
+go run ./cmd/arena check -config tournament/formal_v13.json -seed 20261109
 ```
 
 观赛：把 `results/*/回放/match-NNN.json` 拖进 [`回放查看器.html`](回放查看器.html)
@@ -144,8 +145,12 @@ go run ./cmd/siegepool -from results/siege/bt_pool.csv -out results/siege/bt_poo
 │   ├── engine/
 │   │   ├── oracle_host.js   宿主：命令流 → 快照 oracle（可按参数加载规则变体）
 │   │   └── oracle/          只读快照 + MANIFEST.json + rules_siege.js
-│   ├── tournament/formal.json
+│   ├── tournament/formal.json       第 1 季（v1.0，历史）
+│   ├── tournament/formal_v11.json   第 2 季（v1.1，历史）
+│   ├── tournament/formal_v12.json   第 3 季（v1.2，赛程作废）
+│   ├── tournament/formal_v13.json   第 4 季（v1.3，当前）
 │   ├── workspace/           选手包（规则、模板、工具库、参考 Bot、计时器）
+│   │   ├── bots/sapper/     攻坚参考 Bot（RAILGUN 拆舰，v1.3 新增）
 │   │   └── siege/           攻守参考 Bot：siegebot 库 + attacker / defender / pool
 │   ├── bots/                封存记录与编译产物（bin 不入库）
 │   ├── results/formal/      第 1 季：赛程、结果、成绩、回放
@@ -199,14 +204,16 @@ cmd/arena ──► judge ──► engine(宿主客户端) ──► node engin
 
 ## 产物契约
 
+以当前赛季目录 `results/formal-v13/` 为例（历史赛季目录结构相同，v1.0 为八领域）：
+
 | 文件 | 内容 |
 |---|---|
-| `results/formal/赛程.json` | 冻结的选手、场次、seed、规则与判罚口径 |
-| `results/formal/结果.jsonl` | 每局一行：场次、座位、胜者、层级、VP、八领域总分、故障、确定性、规则指纹 |
-| `results/formal/成绩.md` | BT 实力值、95% 区间、胜平负、总分 |
-| `results/formal/成绩_加权总分.md` | 八领域合计与场均 |
-| `results/formal/成绩.json` | 机器可读的 BT 结果 |
-| `results/formal/回放/match-NNN.json` | 原始 hello + 逐局终局 + 每 5 tick 帧 + 复核结果 |
+| `results/formal-v13/赛程.json` | 冻结的选手、场次、seed、规则与判罚口径 |
+| `results/formal-v13/结果.jsonl` | 每局一行：场次、座位、胜者、层级、VP、七领域总分、故障、确定性、规则指纹 |
+| `results/formal-v13/成绩.md` | BT 实力值、95% 区间、胜平负、总分 |
+| `results/formal-v13/成绩_加权总分.md` | 七领域合计与场均 |
+| `results/formal-v13/成绩.json` | 机器可读的 BT 结果 |
+| `results/formal-v13/回放/match-NNN.json` | 原始 hello + 逐局终局 + 每 5 tick 帧 + 复核结果 |
 | `bots/封存记录.json` | 选手源码与共用库的 SHA-256、编译产物路径 |
 
 ---
@@ -214,15 +221,15 @@ cmd/arena ──► judge ──► engine(宿主客户端) ──► node engin
 ## 已知边界
 
 1. **两代引擎并存**。第 1 季成绩由 JS oracle 引擎产出，复现需 Node 运行时；第 2 季起 `engine.kind=native`（Go 原生，`internal/sim`），oracle 仅作 v1.0 历史复现与对照。
-2. **hello 113 KB**。协议契约仍是 64 KiB，本季按已登记偏差执行。
+2. **hello 约 110 KB**。v1.3 契约单行上限 128 KiB，hello 实测约 110 KB，在契约内。
 3. **视野关闭**。`rules.vision=false`，全图可见；开雾需要另跑一个赛季，不能与本赛季混排。
-4. **参考 Bot 只用于基准**。它们只有流场寻路和简单交战规则，不代表规则上限；第 1 季无人斩舰，属选手强度不足，不是规则问题。
+4. **参考 Bot 只用于基准**。它们只有流场寻路和简单交战规则，不代表规则上限；第 1–4 季无人斩舰，属选手强度不足，不是规则问题。v1.3 起「斩舰」在数值上可达（`internal/sim/victory_test.go` 用 3 台 RAILGUN 在 25 格距离验证），但参考 Bot 的推进仍会在基地口被地形卡住。
 5. **回放不入库**。`results/*/回放/` 可由 `arena run` 重建；`bots/bin/` 同理。
 6. **攻守模式仍是实验**。规则、协议、标定都齐了，但缺选手包、许可、回放查看器与沙箱，不能直接当正式赛季。
 7. **攻守的 BT 样本偏少**。每对 16 局时头名区间仍有 ±117 分；出正式榜单建议每对 ≥40 局（4 人池约 480 局）。
-8. **参考 Bot 有已知组合缺陷**。集结门槛固定 6 台、廉价 LAV 会占满人口 24 挤掉远程单位；修好后 HP / 工事预算 / tickLimit 需重新标定。
-
----
+8. **参考 Bot 的攻坚能力仍然很弱**。v1.3 修掉了「出生即被困」（出兵点不校验可通行）与「建造轮转饿死高价兵」（SALVAGER 无限下单、付不起就跳项）两个缺陷，Sapper 也能稳定造出 RAILGUN，但它的推进仍可能被基地周边地形卡住。斩舰要成为赛季常态，还需要选手侧的真实攻坚打法。
+9. **沙箱只覆盖进程层**。Windows Job Object 挡住子进程派生、内存爆炸与孤儿进程，工作目录是一次性临时目录；**文件读权限与出网没有隔离**，需要独立低权账户或容器。手册 §3.2 已写明这一点。
+10. **规则指纹=规则身份**。改动任何影响对局语义的代码都必须递增 `sim.RulesVersion`，否则 `rulesHash` 不会变，历史成绩就失去可区分性。
 
 ## 禁止事项
 

@@ -1,6 +1,6 @@
 // 规则常数表（rules.js:58-236 的移植，v1.1 合并版语义）。
 //
-// 版本：v1.2-beta（Desert Arena · Go 原生引擎 internal/sim）。
+// 版本：v1.2（Desert Arena · Go 原生引擎 internal/sim）。
 // 功能：单位/弹种/克制/模式/科技/经济全部常数与表格。
 // 所有表在初始化后视为只读；wire 上的键名与 JS 保持一致。
 package sim
@@ -95,11 +95,16 @@ var (
 )
 
 // RPS 兵种克制表（8×8；SCOUT/SALVAGER 行显式全 0，取值用存在性判断不用兜底 1）。
+//
+// v1.3 调整：RAILGUN/ARTILLERY 对母舰的倍率 0.8 → 2.5 / 2.0。
+// 原倍率下「斩舰」在真实经济里不可达（母舰射程 7 格，只有这两种兵够得着；
+// 单台 railgun 净输出 ~1.2 HP/tick，打穿 3000 HP 需要 2500 拍，而单局只有 1200 拍）。
+// 现在攻坚兵真正承担拆舰角色：LAV/AAV 依旧啃不动母舰，必须换兵种。
 var RPS = map[string]map[string]float64{
 	"LAV":        {"LAV": 1.0, "AAV": 0.6, "RAILGUN": 1.8, "ARTILLERY": 1.6, "SALVAGER": 1.3, "SCOUT": 1.2, "MOTHERSHIP": 0.8, "CARRIER": 1.0},
 	"AAV":        {"LAV": 1.8, "AAV": 1.0, "RAILGUN": 0.7, "ARTILLERY": 0.9, "SALVAGER": 1.6, "SCOUT": 1.4, "MOTHERSHIP": 0.8, "CARRIER": 1.2},
-	"RAILGUN":    {"LAV": 0.6, "AAV": 1.8, "RAILGUN": 1.0, "ARTILLERY": 1.2, "SALVAGER": 0.9, "SCOUT": 0.8, "MOTHERSHIP": 0.8, "CARRIER": 1.3},
-	"ARTILLERY":  {"LAV": 0.8, "AAV": 1.1, "RAILGUN": 1.3, "ARTILLERY": 1.0, "SALVAGER": 1.0, "SCOUT": 1.4, "MOTHERSHIP": 0.8, "CARRIER": 1.1},
+	"RAILGUN":    {"LAV": 0.6, "AAV": 1.8, "RAILGUN": 1.0, "ARTILLERY": 1.2, "SALVAGER": 0.9, "SCOUT": 0.8, "MOTHERSHIP": 2.5, "CARRIER": 1.3},
+	"ARTILLERY":  {"LAV": 0.8, "AAV": 1.1, "RAILGUN": 1.3, "ARTILLERY": 1.0, "SALVAGER": 1.0, "SCOUT": 1.4, "MOTHERSHIP": 2.0, "CARRIER": 1.1},
 	"SALVAGER":   {"LAV": 0, "AAV": 0, "RAILGUN": 0, "ARTILLERY": 0, "SALVAGER": 0, "SCOUT": 0, "MOTHERSHIP": 0, "CARRIER": 0},
 	"SCOUT":      {"LAV": 0, "AAV": 0, "RAILGUN": 0, "ARTILLERY": 0, "SALVAGER": 0, "SCOUT": 0, "MOTHERSHIP": 0, "CARRIER": 0},
 	"MOTHERSHIP": {"LAV": 1.2, "AAV": 1.0, "RAILGUN": 1.0, "ARTILLERY": 1.0, "SALVAGER": 1.2, "SCOUT": 1.3, "MOTHERSHIP": 1.0, "CARRIER": 1.1},
@@ -130,6 +135,9 @@ const (
 	ResearchSlots = 2
 	ArmourReduce  = 0.5
 	MSRepairRate  = 2
+	// MSRepairDelay 母舰自愈的脱战门槛（tick）。
+	// v1.3：持续挨打时不自愈——否则「斩舰」在数值上不可达（实测单局最多掉 87 点即回满）。
+	MSRepairDelay = 60
 	AttackDmgBase = 0.5
 	RangeMulBase  = 0.7
 	RangeMulSpan  = 0.6
@@ -146,8 +154,10 @@ const (
 	StartCU    = 500
 	StartRU    = 0
 	BaseIncome = 0
-	// v1.2-beta：母舰 RU 基础收入
-	RUBaseIncome     = 0.05
+	// v1.2：母舰 RU 基础收入；v1.3 由 0.05 提到 0.20。
+	// 0.05 时单局只能攒 60 RU，正好等于一台 RAILGUN 的价钱，等于把攻坚兵锁到第 1200 拍，
+	// 「斩舰」在经济上不可达。0.20 让第一台攻坚兵约在第 300 拍解锁，仍远慢于轻甲。
+	RUBaseIncome     = 0.20
 	SalvageRate      = 3.0
 	SalvagerCapacity = 200.0
 	ResAmount        = 3000.0
@@ -259,28 +269,41 @@ const (
 	ProtoVersion = 5
 )
 
+// RulesVersion 规则语义版本。
+//
+// 任何会改变对局语义的改动都必须递增——不只是数值常量，也包括代码逻辑
+// （例如队列出队方式、索敌平局判定）。它参与 RulesHash，从而保证
+// 「同一指纹 = 同一套规则」，审计时不必再靠版本号自证。
+const RulesVersion = "1.3"
+
 // SpeedMulOf 已废弃（母舰固定慢速），保留导出兼容。
 func SpeedMulOf(pct int) float64 {
 	return 0.4 + (1.6-0.4)*Clamp(float64(pct), 0, 100)/100
 }
 
-// RulesHash 规则指纹：与 JS 同构（fnv1a 覆盖全部影响胜负的常量），值不必与
-// JS 相同（JSON 细节口径不同）——它只承诺「任何常量改动都会换指纹」。
+// RulesHash 规则指纹：fnv1a 覆盖 RulesVersion + 全部影响胜负的常量。
+//
+// 契约（v1.3 收紧）：
+//   - 任何数值常量改动 → 指纹变；
+//   - 任何语义改动 → 必须递增 RulesVersion，指纹随之变。
+//
+// 历史缺陷：v1.1→v1.2 新增 RUBaseIncome 与队列跳过式出队，但拼串漏了
+// RUBaseIncome，两版共用 9874da0a，导致「按指纹审计」形同虚设。
 func RulesHash(tickLimit int, vision Vision) string {
 	body := fmt.Sprintf(
-		"proto:%s.%d|grid:%d,%d,%d|slopes:%d,%d,%d,%d|vp:%.4f|tickLimit:%d|timing:%d,%d,%d,%d|"+
+		"ver:%s|proto:%s.%d|grid:%d,%d,%d|slopes:%d,%d,%d,%d|vp:%.4f|tickLimit:%d|timing:%d,%d,%d,%d|"+
 			"weights:%v|fields:%v|"+
-			"alloc:%d,%d,%d,%d,%d,%v|economy:%v,%v,%v,%v,%v,%v,%d|"+
-			"weapon:%d,%d,%d|repair:%v,%d|modes:%v,%s,%d|"+
+			"alloc:%d,%d,%d,%d,%d,%v|economy:%v,%v,%v,%v,%v,%v,%d,%v|"+
+			"weapon:%d,%d,%d|repair:%v,%d,%d|modes:%v,%s,%d|"+
 			"ballistics:%v,%v,%v,%v,%v,%v|shells:%v|"+
 			"types:%v|rps:%v|producible:%v,%v|techs:%v|vision:%v",
-		ProtoName, ProtoVersion, Grid, Cell, World,
+		RulesVersion, ProtoName, ProtoVersion, Grid, Cell, World,
 		UnitSlope, CarrierSlope, MothershipSlope, PlatformSlope,
 		VPRadius, tickLimit, TickMS, DecideMS, InitMS, OrderLatency,
 		Weights, FieldNames,
 		AllocStep, SlotStep, MaxSlots, MaxWeapons, ResearchSlots, startAlloc(),
-		float64(StartCU), float64(StartRU), BaseIncome, SalvageRate, SalvagerCapacity, ResAmount, PopMax,
-		WeaponCost, WeaponBuild, WeaponQueueMax, RepairRadius, RepairRate,
+		float64(StartCU), float64(StartRU), BaseIncome, SalvageRate, SalvagerCapacity, ResAmount, PopMax, RUBaseIncome,
+		WeaponCost, WeaponBuild, WeaponQueueMax, RepairRadius, RepairRate, MSRepairDelay,
 		Modes, DefaultMode, ModeRetreatCells,
 		AirK, GravityG, MPerCell, ElevM, MountainH, HitRM,
 		shellFingerprint(), Types, rpsFingerprint(), Producible, SmallProducible,

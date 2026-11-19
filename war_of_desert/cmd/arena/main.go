@@ -1,6 +1,6 @@
 // Command arena 是 Desert Arena 正式赛的唯一入口。
 //
-// 版本：v1.2-beta（Desert Arena 正式赛执行链）。
+// 版本：v1.2（Desert Arena 正式赛执行链）。
 // 功能：build / plan / run / rate / check / selftest / season 全流程；
 // 引擎双轨（oracle 快照 | Go 原生 enginehost）。
 //
@@ -32,6 +32,7 @@ import (
 	"desertarena/internal/protocol"
 	"desertarena/internal/rating"
 	"desertarena/internal/schedule"
+	"desertarena/internal/sim"
 )
 
 func main() {
@@ -192,6 +193,9 @@ func cmdPlan(args []string) error {
 	}
 	outDir := cfg.OutDir(root)
 	plan := schedule.Build(cfg.Entries, cfg.Schedule.Seeds, cfg.Schedule.Mirror, cfg.ScheduleConfig())
+	plan.RulesVersion = sim.RulesVersion
+	plan.RulesHash = sim.RulesHash(cfg.Rules.TickLimit, sim.NormalizeVision(sim.Vision{Enabled: cfg.Rules.Vision, Fog: cfg.Rules.Vision, LOS: cfg.Rules.Vision}))
+	plan.Engine = cfg.Engine.Kind
 	if err := os.MkdirAll(outDir, 0o755); err != nil {
 		return err
 	}
@@ -260,11 +264,27 @@ func cmdRun(args []string) error {
 	cfgPath := fs.String("config", "tournament/formal.json", "赛事配置")
 	resume := fs.Bool("resume", false, "跳过 结果.jsonl 中已完成的对阵")
 	limit := fs.Int("limit", 0, "最多再跑 N 场（0 = 不限）")
+	skipSeal := fs.Bool("skip-seal", false, "跳过封存校验（仅限演练，正式赛禁用）")
 	_ = fs.Parse(args)
 
 	cfg, root, err := contest.Load(*cfgPath)
 	if err != nil {
 		return err
+	}
+	// 开赛硬门槛：源码哈希必须与封存记录一致，否则赛后无法自证跑的是收卷那份代码。
+	if !*skipSeal {
+		seal, err := contest.LoadSeal(root)
+		if err != nil {
+			return err
+		}
+		names := make([]string, 0, len(cfg.Entries))
+		for _, e := range cfg.Entries {
+			names = append(names, e.Name)
+		}
+		bad := append(seal.Verify(root), seal.CheckEntryCoverage(names)...)
+		if len(bad) > 0 {
+			return fmt.Errorf("封存校验未通过（先跑 arena build）:\n  %s", strings.Join(bad, "\n  "))
+		}
 	}
 	outDir, err := resolveOutDir(root, "", cfg.Output)
 	if err != nil {
@@ -566,7 +586,8 @@ func cmdRate(args []string) error {
 
 	var b strings.Builder
 	fmt.Fprintf(&b, "# %s · 正式赛成绩\n\n", cfg.Name)
-	fmt.Fprintf(&b, "> 赛季：%s ｜ 规则指纹：%s ｜ 局数：%d ｜ 基准 seed：%v（逐场按序递增）\n", cfg.Season, lines[0].RulesHash, len(lines), cfg.Schedule.Seeds)
+	fmt.Fprintf(&b, "> 赛季：%s ｜ 规则 %s ｜ 引擎 %s ｜ 规则指纹：%s ｜ 局数：%d ｜ 基准 seed：%v（逐场按序递增）\n",
+		cfg.Season, versionOr(plan.RulesVersion), valueOr(plan.Engine, cfg.Engine.Kind), lines[0].RulesHash, len(lines), cfg.Schedule.Seeds)
 	fmt.Fprintf(&b, "> 评分口径：%s；%s。\n\n", bt.Method, bt.Scale)
 	fmt.Fprintf(&b, "| 名次 | 选手 | 实力值 | 95%% 区间 | 胜/平/负 | 局数 | %s总分 |\n|---:|---|---:|---|---:|---:|---:|\n", domainLabel)
 	for i, r := range rows {
@@ -764,4 +785,18 @@ func cmdSelftest(args []string) error {
 	}
 	fmt.Println("SELFTEST_OK：超时 kill、崩溃重启、非法结构三种路径都按连续 3 次红牌收局。")
 	return nil
+}
+
+func versionOr(v string) string {
+	if v == "" {
+		return "（未记录）"
+	}
+	return v
+}
+
+func valueOr(v, fallback string) string {
+	if v == "" {
+		return fallback
+	}
+	return v
 }

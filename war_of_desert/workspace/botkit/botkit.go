@@ -1,6 +1,6 @@
 // Package botkit 是选手包自带的工具库：协议读写、地图解码、常用查询与一步寻路。
 //
-// 版本：v1.2-beta（Desert Arena 正式赛 · 选手包）。
+// 版本：v1.2（Desert Arena 正式赛 · 选手包）。
 // 功能：hello/tick/end 行协议读写、地图三层解码、单位/VP/资源查询、
 // 流场寻路；它不是「必须用」的框架——选手可以完全不用它，
 // 自己读写 stdin/stdout，这里只是把人人都要写的东西先写好。
@@ -391,6 +391,16 @@ func Nearest(list []Unit, x, y float64) *Unit {
 	return best
 }
 
+// EnemyMothership 返回敌方母舰（斩舰路线的目标），没有则 nil。
+func EnemyMothership(st *State, side int) *Unit {
+	for i := range st.Units {
+		if st.Units[i].Side != side && st.Units[i].Kind == "MOTHERSHIP" && st.Units[i].HP > 0 {
+			return &st.Units[i]
+		}
+	}
+	return nil
+}
+
 // NearestVP 返回最近的目标点。
 //
 // preferNeutral=true 时优先未占领/争夺中的点；一个都没有则回退全部。
@@ -479,6 +489,13 @@ type Field struct {
 // 目标格不可达时返回 nil；同目标格的图全队复用。
 func (b *Bot) FieldTo(x, y float64) *Field {
 	gx, gy := b.CellOf(x, y)
+	// 目标格落在山格上时（母舰/矿点常骑在地形边缘），BFS 从山格出发会
+	// 让整张图 Dist 全 -1，全队原地冻结。就近挑一个可通行格当起点。
+	if b.Layers.Base[gy*b.Hello.W+gx] == 3 {
+		if nx, ny, ok := b.nearestOpen(gx, gy, 4); ok {
+			gx, gy = nx, ny
+		}
+	}
 	key := gy*b.Hello.W + gx
 	if b.fields == nil {
 		b.fields = map[int]*Field{}
@@ -578,4 +595,33 @@ func (b *Bot) EnemyVP(st *State, side int) *VP {
 	ex := float64(b.Hello.Spawns[enemy][0]*b.Hello.Cell) + float64(b.Hello.Cell)/2
 	ey := float64(b.Hello.Spawns[enemy][1]*b.Hello.Cell) + float64(b.Hello.Cell)/2
 	return NearestVP(st, ex, ey, side, false)
+}
+
+// nearestOpen 从 (gx,gy) 起按切比雪夫半径逐圈找第一个非山格。
+func (b *Bot) nearestOpen(gx, gy, maxR int) (int, int, bool) {
+	w, h := b.Hello.W, b.Hello.H
+	for r := 1; r <= maxR; r++ {
+		for dy := -r; dy <= r; dy++ {
+			for dx := -r; dx <= r; dx++ {
+				if absInt(dx) != r && absInt(dy) != r {
+					continue
+				}
+				nx, ny := gx+dx, gy+dy
+				if nx < 0 || ny < 0 || nx >= w || ny >= h {
+					continue
+				}
+				if b.Layers.Base[ny*w+nx] != 3 {
+					return nx, ny, true
+				}
+			}
+		}
+	}
+	return gx, gy, false
+}
+
+func absInt(v int) int {
+	if v < 0 {
+		return -v
+	}
+	return v
 }

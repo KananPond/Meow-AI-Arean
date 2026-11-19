@@ -1,6 +1,6 @@
 // enginehost —— Go 原生规则引擎宿主。
 //
-// 版本：v1.2-beta（与 Go 原生引擎 internal/sim 同步）。
+// 版本：v1.2（与 Go 原生引擎 internal/sim 同步）。
 // 功能：与 oracle_host.js 实现同一套行 JSON 命令流（new/encode/apply/step/note/
 // forfeit/end/result/verify/bye），语义逐命令对齐（engine/README.md:12-26）。
 //

@@ -1,6 +1,6 @@
 // 生成收尾层（mapgen.js:880-1464）。
 //
-// 版本：v1.2-beta（Desert Arena · Go 原生引擎 internal/sim）。
+// 版本：v1.2（Desert Arena · Go 原生引擎 internal/sim）。
 // 功能：出生点搜索、工程平台、VP/资源点搜索、finalize 组装、
 // runGenerate 重试驱动；与生成算法无关，两个生成器共用。
 package sim

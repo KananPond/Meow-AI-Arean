@@ -13,6 +13,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 ARENA = ["go", "run", "./cmd/arena"]
+CONFIG = "tournament/formal_v12.json"
+OUT_DIR = "results/formal-v12"
 
 MENU = [
     ("1", "build", "编译选手并封存源码哈希"),
@@ -26,8 +28,9 @@ MENU = [
 
 
 def run(args: list[str]) -> int:
-    print("$", " ".join(ARENA + args), flush=True)
-    return subprocess.call(ARENA + args, cwd=ROOT)
+    full = ARENA + [args[0], "-config", CONFIG] + args[1:]
+    print("$", " ".join(full), flush=True)
+    return subprocess.call(full, cwd=ROOT)
 
 
 def season() -> int:
@@ -36,7 +39,7 @@ def season() -> int:
         if code != 0:
             print(f"流水线在 {cmd} 阶段中止（退出码 {code}）")
             return code
-    print("整季完成：结果在 results/formal/", flush=True)
+    print(f"整季完成：结果在 {OUT_DIR}/", flush=True)
     return 0
 
 
@@ -47,7 +50,7 @@ def status() -> None:
     else:
         data = json.loads(record.read_text(encoding="utf-8"))
         print("赛务记录：", json.dumps(data, ensure_ascii=False, indent=2)[:800])
-    result = ROOT / "results" / "formal" / "结果.jsonl"
+    result = ROOT / "results" / "formal-v12" / "结果.jsonl"
     if result.exists():
         lines = result.read_text(encoding="utf-8").strip().splitlines()
         print(f"对局：{len(lines)} 局已记录")

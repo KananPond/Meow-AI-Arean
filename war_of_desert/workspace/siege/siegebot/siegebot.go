@@ -1,6 +1,6 @@
 // Package siegebot 是攻守实验用的最小 Bot 框架。
 //
-// 版本：v1.2-beta（攻守变体，-ldflags 注入 v1..v4 风格）。
+// 版本：v1.2（攻守变体，-ldflags 注入 v1..v4 风格）。
 // 功能：攻/守双参数 BT 评分用的可变体 Bot。
 //
 // 它刻意不依赖 workspace/botkit：旧 botkit 把 rules.types.range 当像素用，

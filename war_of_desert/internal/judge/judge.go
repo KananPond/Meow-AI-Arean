@@ -1,6 +1,6 @@
 // Package judge 是正式赛的唯一执行者。
 //
-// 版本：v1.2-beta（Desert Arena 正式赛执行链）。
+// 版本：v1.2（Desert Arena 正式赛执行链）。
 // 功能：拉起引擎宿主、为每个座位拉起独立 Bot 进程、按 hello→ready→tick→actions→end
 // 收发真实 UTF-8 行分隔 JSON、执行 120ms 决策死线、连续 3 次故障红牌、
 // 超时 kill 与重启、换边重开、回放抽帧归档、逐局确定性复核。
@@ -101,25 +101,61 @@ type botProc struct {
 	stop  sync.Once
 	errMu sync.Mutex
 	err   bytes.Buffer
+	// sb 是操作系统级沙箱（Windows: Job Object）；workDir 是本次进程独占的临时目录。
+	// 两者都在 Kill 时释放，避免临时目录堆积与孤儿进程。
+	sb      *sandbox
+	workDir string
+}
+
+// botEnv 只保留运行时可执行文件必需的环境变量。
+//
+// 直接继承 os.Environ 会把选手不该看到的东西（令牌、代理、其他工具路径）
+// 一起递过去，也让「不得访问网络」这条更难过。
+func botEnv(extra []string) []string {
+	keep := map[string]bool{
+		"SystemRoot": true, "windir": true, "TEMP": true, "TMP": true,
+		"PATH": true, "HOME": true, "LANG": true, "TZ": true,
+	}
+	out := make([]string, 0, len(keep)+len(extra))
+	for _, kv := range os.Environ() {
+		if i := strings.IndexByte(kv, '='); i > 0 && keep[kv[:i]] {
+			out = append(out, kv)
+		}
+	}
+	return append(out, extra...)
 }
 
 func startBot(spec BotSpec, hello string, initMs int, env []string) (*botProc, error) {
 	cmd := exec.Command(spec.Path)
-	if len(env) > 0 {
-		cmd.Env = append(os.Environ(), env...)
+	cmd.Env = botEnv(env)
+	// 选手进程在一次性临时目录里跑：写文件的副作用不会污染仓库，
+	// 也无法用相对路径摸到 results/ 或别人的 workspace/。
+	workDir, err := os.MkdirTemp("", "wod-bot-")
+	if err != nil {
+		return nil, fmt.Errorf("创建选手工作目录失败: %w", err)
 	}
+	cmd.Dir = workDir
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
+		os.RemoveAll(workDir)
 		return nil, err
 	}
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
+		os.RemoveAll(workDir)
 		return nil, err
 	}
-	p := &botProc{spec: spec, cmd: cmd, stdin: stdin, lines: make(chan string, 4), done: make(chan struct{})}
+	p := &botProc{spec: spec, cmd: cmd, stdin: stdin, lines: make(chan string, 4), done: make(chan struct{}), workDir: workDir}
 	cmd.Stderr = &limitedWriter{buf: &p.err, max: 4096}
 	if err := cmd.Start(); err != nil {
+		os.RemoveAll(workDir)
 		return nil, fmt.Errorf("启动 %s 失败: %w", spec.Name, err)
+	}
+	// 沙箱必须在进程刚起来时套上：晚一步就给了它派生子进程的窗口。
+	p.sb = newSandbox()
+	if err := p.sb.Apply(cmd.Process); err != nil {
+		p.Kill()
+		return nil, fmt.Errorf("%s 沙箱未生效: %w", spec.Name, err)
 	}
 	go p.readLoop(stdout)
 	if err := p.writeLine(hello); err != nil {
@@ -188,6 +224,12 @@ func (p *botProc) Kill() {
 			_ = p.cmd.Process.Kill()
 		}
 		_ = p.cmd.Wait()
+		if p.sb != nil {
+			p.sb.Close()
+		}
+		if p.workDir != "" {
+			_ = os.RemoveAll(p.workDir)
+		}
 	})
 }
 

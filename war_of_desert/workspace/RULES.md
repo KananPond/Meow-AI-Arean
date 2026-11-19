@@ -1,8 +1,10 @@
-# 选手规则与协议 v1.1（Go 原生引擎）
+# 选手规则与协议 v1.2（Go 原生引擎）
 
 > 你写一个独立程序，裁判用 stdin/stdout 和你对话。本文是完整契约；`botkit/` 是可选工具库。
-> v1.1 规则变更：四子系统分配（armour/repair/attack/range）、CU/RU 双资源运输线经济、
-> 生产线由工业科技驱动、单局 1200 tick、七领域确定性计分（移除墙钟「算力表现」）。
+> 当前规则 = **v1.3**：四子系统分配（armour/repair/attack/range）、CU/RU 双资源运输线经济、
+> 生产线由工业科技驱动、单局 1200 tick、七领域确定性计分（无墙钟「算力表现」域）、
+> 生产队列**跳过式出队**、母舰 **RU 基础收入 0.20/tick**、母舰**脱战后才自愈**。
+> 本赛季 `vision=false`：**双方全图可见，无战争迷雾**。
 
 ---
 
@@ -15,6 +17,8 @@ go build -o bots/bin/submission.exe ./workspace/submission
 ```
 
 正式赛收卷时只冻结这个文件；编译由主办方统一执行。
+
+依赖只允许 **Go 标准库 + 选手包自带的 `botkit`**（可选）。**不要 import 你自己新增的包或任何第三方库**——收卷只冻结 `decide.go` 单文件，其他源码不会随卷带走，会导致收卷后编译失败。
 
 ---
 
@@ -81,9 +85,9 @@ go build -o bots/bin/submission.exe ./workspace/submission
 | `turn` / `tickLimit` | 当前 tick 与总 tick（1200） |
 | `side` | 你是 0（红）还是 1（蓝） |
 | `timing` | `tickMs=50`、`decideMs=120`、`applyAt`、`orderLatency=1` |
-| `units` | 你方全部单位 + 你视野内的敌方单位。敌方单位不带 `mode`；己方采集车带 `harvest`/`hstate`/`carry` |
+| `units` | 你方全部单位 + 你视野内的敌方单位（**本赛季视野关闭 = 全图可见**）。敌方单位不带 `mode`；己方采集车带 `harvest`/`hstate`/`carry` |
 | `vp` | `{id,x,y,owner,contested}`；`owner=-1` 表示无主 |
-| `res` | 资源点 `{id,x,y,kind,amount}`；`kind` 是 `cu`（4 个里 3 个）或 `ru`（1 个） |
+| `res` | 资源点 `{id,x,y,kind,amount}`；按索引每 3 个里第 3 个为 `ru`（`i%3==2`），其余为 `cu`，即约 **1/3 是 `ru`** |
 | `score` | 双方 `{vp,kills,losses}` |
 | `me` | 你的 CU、人口、四项分配、槽位、武器、科技、生产队列 |
 | `shells` | 在飞的炮弹（能看到来袭） |
@@ -118,12 +122,17 @@ go build -o bots/bin/submission.exe ./workspace/submission
 | `idle` | `id` | 原地待命 |
 | `harvest` | `id,resId` | **采集车专用**：指派运输线资源点，引擎托管「装载→回程→卸货」；`resId:null` 取消。**只发一次**——每拍重发会把状态机打回 toResource。采 `kind:"cu"` 节点回本方 CU、`kind:"ru"` 节点回本方 RU |
 | `alloc` | `alloc` | 母舰四子系统分配（armour/repair/attack/range），整数、和必须 100，每拍最多 1 条 |
-| `produce` | `kind` | 入生产队列；生产线数量由工业科技决定（1→I1→I3a/I3b 共 3 条）；`by` 可指定自己的运载舰代造小单位。**队列按序出队**（v1.2-beta）：每拍从队首找第一个 CU/RU 付得起的单位出队，付不起的项原地保留（不丢单、不改相对次序），整队都付不起才等待 |
+| `produce` | `kind` | 入生产队列；生产线数量由工业科技决定（1→I1→I3a/I3b 共 3 条）；`by` 可指定自己的运载舰代造小单位。**队列跳过式出队**（v1.2）：每拍从队首找第一个 CU/RU 付得起的单位出队，付不起的项原地保留（不丢单、不改相对次序），整队都付不起才等待 |
 | `research` | `tech` | 开始研究；前置、互斥、槽位（固定 2）、CU 由引擎校验 |
 | `weapon` | — | 造一门母舰主炮，独立队列（炮位上限固定 5） |
 | `mode` | `mode` | 不带 `id` 改全队与后续新造单位；带 `id` 只改一台 |
 
-规则上限：每台单位每拍最多 1 条单位动作；阵营动作每拍各最多 1 条；动作总数不超过 `己方存活单位数 × 2 + 4`。
+规则上限：
+
+- `move` / `attack` / `idle` / `harvest`：带 `id`，每台单位每拍最多 1 条；
+- `alloc` / `produce` / `weapon` / `research`：阵营动作，每拍各最多 1 条；
+- `mode`：**不占上述额度**，可单独或与单位动作同拍使用（带 `id` 改单台、不带改全队）；
+- 动作总数不超过 `己方存活单位数 × 2 + 4`。
 
 **两类非法要分清**：
 
@@ -177,16 +186,16 @@ go build -o bots/bin/submission.exe ./workspace/submission
 ```bash
 cd war_of_desert
 go build -o bots/bin/submission.exe ./workspace/submission
-go run ./cmd/arena check -config tournament/formal_v11.json -seed 20261109
+go run ./cmd/arena check -config tournament/formal_v12.json -seed 20261109
 ```
 
-期望：两局跑满 1200 tick、`故障=0/0`、`确定性复核：true`。`formal_v11.json` 的
+期望：两局跑满 1200 tick、`故障=0/0`、`确定性复核：true`。`formal_v12.json` 的
 `engine.kind` 是 `native`——规则引擎是 Go 原生 `cmd/enginehost`，不再依赖 Node 快照。
 
 想换对手：
 
 ```bash
-go run ./cmd/arena check -config tournament/formal_v11.json -a bots/bin/submission.exe -b bots/bin/nomad.exe -seed 20261110
+go run ./cmd/arena check -config tournament/formal_v12.json -a bots/bin/submission.exe -b bots/bin/nomad.exe -seed 20261110
 ```
 
 ---
@@ -196,17 +205,22 @@ go run ./cmd/arena check -config tournament/formal_v11.json -a bots/bin/submissi
 - 坐标是**世界像素**（0–1536），不是格；`x/6` 才是格。
 - `attack` 不会替你靠近目标；射程外请先 `move`。
 - `move` 目标是格内任意点，但山脊不可通行；直线撞山会卡住，自己绕。
-- `alloc` 和必须正好 100；每次最多改 5 个百分点。生产/研究**不再由分配驱动**：
+- `alloc` 和必须正好 100。它设的是**目标分配**，实际分配每拍向目标过渡最多 5 个百分点（目标本身可任意重设）。
+  生产/研究**不由分配驱动**：
   生产线 = 1 + 工业科技（I1→2 条、I3a/I3b→3 条，封顶 3），研究槽固定 2，炮位固定 5。
 - 高阶单位兼耗 **RU**（AAV 30 / RAILGUN 60 / ARTILLERY 250 / CARRIER 100），
-  RU 来自 `kind:"ru"` 的资源点 + 母舰微量基础收入（**v1.2-beta**：0.05/tick，1200 tick 约 60 RU）；
+  RU 来自 `kind:"ru"` 的资源点 + 母舰基础收入（0.20/tick，1200 tick 约 240 RU）；
+  资源点按镜像成对生成，同对同类，所以你两侧各有同样多的 RU 节点；
   没有 RU 就只能造 LAV/SALVAGER/SCOUT。
-- **生产队列是死板的 FIFO**：队首付不起（CU 或 RU）时整队冻结，且**没有取消/改序手段**。
-  把 AAV 排在 SALVAGER 前面、或让一个永远付不起的单位卡在队首，后面全部陪葬
-  （50 轮实测：某参考 Bot 因此 1200 tick 零制造，重单位全场 0 下线）。
-  下单前自查 `me.cu`/`me.ru`，付得起才排；`me.queue`/`me.active` 可看自己队列。
+- **生产队列是跳过式出队（v1.2）**：每拍从队首找第一个 CU/RU 都付得起的单位出队生产，
+  付不起的项**原地保留**（不丢单、不改相对次序），整队都付不起才等待。
+  没有取消/改序手段，所以别把永远付不起的单位排进队——它会一直占着一个队列位置。
+  下单前自查 `me.cu`/`me.ru`；`me.queue`/`me.active` 可看自己队列，回放里的 `queueBlocked` 标记表示整队等待。
 - `harvest` 只发一次：每拍重发会把采集车状态机打回 `toResource`，一局都装不满一车。
   第一台采集车先派去 `cu` 节点（基础收入为 0，CU 全靠采集），第二台派 `ru` 解锁高阶单位。
 - 母舰是**固定慢速**移动基地，四子系统只影响 减伤/自愈/增伤/增程。
+- 母舰持续挨打时**不会自愈**（脱战 60 拍后才恢复回血）——集火是有效的。
+- 攻坚：只有 RAILGUN（38 格）和 ARTILLERY（56 格）射程压过母舰（28 格），
+  LAV/AAV 够不到；这两种兵对母舰有 2.5 / 2.0 倍克制，是拆舰的唯一现实手段。
 - 母舰被毁立刻结束，别把它当普通坦克用。
 - 别在 `decide` 里 sleep；120 ms 是硬死线。

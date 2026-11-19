@@ -1,6 +1,6 @@
 // 哈希与长度口径（rules.js:436-479 的复刻）。
 //
-// 版本：v1.2-beta（Desert Arena · Go 原生引擎 internal/sim）。
+// 版本：v1.2（Desert Arena · Go 原生引擎 internal/sim）。
 // 功能：帧哈希 / rulesHash / 行长度上限三类口径。
 //
 // 两个口径刻意不同：

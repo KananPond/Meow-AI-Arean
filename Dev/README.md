@@ -17,7 +17,7 @@ Dev/
 │   ├── test/                 10 个测试套件
 │   ├── scripts/              coverage + sync_formal_test
 │   └── 正式比赛测试/         自包含 workspace、manifest、收卷、全流程报告
-├── Plan_Beta.md              v1.1 规则规格（事实源）
+├── Plan_Beta.md              v1.0/v1.1 规则规格（历史基线；当前事实源 = war_of_desert/internal/sim，v1.2）
 ├── ORACLE.md                 快照校验、复现、覆盖率与 golden trace 规范
 ├── Docs/                     原作调研、事实卡片、术语、来源（CC BY 4.0）
 │   └── archive/              历史计划与审查（只读）
@@ -39,7 +39,7 @@ Dev/
 | [`plan.md`](plan.md) | **改造方案**：12 条 DoD、A/B/C/D/E/F 六阶段工作项、文件级清单、测试计划、排期与风险 | **执行中** |
 | [`MVP/README.md`](MVP/README.md) | 正式版规则、数值、设计取舍、v0.11 修复记录 | 现行 |
 | [`MVP/正式比赛测试/README.md`](MVP/正式比赛测试/README.md) | 自包含 workspace、manifest、收卷与本地 runner | 现行 |
-| [`Plan_Beta.md`](Plan_Beta.md) | v1.1 规则基线：时序、协议、架构边界、验收门禁 | 现行 |
+| [`Plan_Beta.md`](Plan_Beta.md) | v1.0/v1.1 规则基线：时序、协议、架构边界、验收门禁 | 历史（当前 = v1.2，事实源 `war_of_desert/internal/sim`） |
 | [`ORACLE.md`](ORACLE.md) | 快照校验、复现、覆盖率、golden trace | 现行 |
 | [`审查/MVP_测试报告_20261113.md`](审查/MVP_测试报告_20261113.md) | v0.11 修复后全面测试：10 套件、覆盖率、100 局基准、遗留问题 | **现行** |
 | [`审查/WoD_设计审查_20261113.md`](审查/WoD_设计审查_20261113.md) | v0.10 设计审查：评估协议、计分卡、机制覆盖、规范对照 | 历史（v0.11 已修部分代码问题） |

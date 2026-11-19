@@ -1,6 +1,6 @@
 // 网格与地形（mapgen.js:71-82 + rules.js 的地形判定）。
 //
-// 版本：v1.2-beta（Desert Arena · Go 原生引擎 internal/sim）。
+// 版本：v1.2（Desert Arena · Go 原生引擎 internal/sim）。
 // 功能：网格常数、地表/坡度规则、地图容器、移动判定与视野/LOS。
 // GRID=256、CELL=6：世界 1536² px = 2.56 km，1 格 10 m。
 // S = GRID/64 是「相对 64 格标定的密度倍数」：

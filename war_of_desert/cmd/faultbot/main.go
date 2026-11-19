@@ -1,6 +1,6 @@
 // Command faultbot 是正式赛自检专用的故障注入 Bot。
 //
-// 版本：v1.2-beta（Desert Arena 正式赛执行链自检工具）。
+// 版本：v1.2（Desert Arena 正式赛执行链自检工具）。
 // 功能：故意违反协议，验证裁判的硬保证——
 // 超时 kill、崩溃重启、非法结构红牌。
 // 由 arena selftest 编译并驱动，不参加正式赛。

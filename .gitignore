@@ -40,4 +40,4 @@ __pycache__/
 /war_of_desert/results/*/回放/
 
 # 本地测试区（主项目测试：赛程、dump、明细与报告，不入库）
-/war_of_desert/测试/
+/Dev/历史测试_50轮/

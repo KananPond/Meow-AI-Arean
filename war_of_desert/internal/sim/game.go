@@ -1,6 +1,6 @@
 // 对局状态机：单位/阵营/队列/科技/事件的权威持有者。
 //
-// 版本：v1.2-beta（Desert Arena · Go 原生引擎 internal/sim；
+// 版本：v1.2（Desert Arena · Go 原生引擎 internal/sim；
 // v1.2 起生产队列为跳过式 + 母舰 RU 基础收入）。
 // 功能：Game 构造与终局判定、经济（采集车运输线）、生产（跳过式队列）、
 // 武器/研究/分配子系统、事件流与被拒指令记录。
@@ -109,6 +109,8 @@ type Unit struct {
 	HState  string
 	Path    []PathPt
 	PathKey string
+	// LastHit 最近一次被击中的 tick（母舰脱战自愈用）
+	LastHit int
 }
 
 // PathPt 采集车路径路点。
@@ -309,16 +311,14 @@ func NewGame(seed int, cfg GameCfg) (*Game, error) {
 			Owner: -1,
 		})
 	}
+	// 类型按镜像配对分配：同对两格必须同类，否则两侧经济结构不同（见 resources.go）
+	kinds := ResourceKinds(m.ResCells)
 	for i, c := range m.ResCells {
-		kind := "cu"
-		if i%3 == 2 {
-			kind = "ru"
-		}
 		g.Resources = append(g.Resources, &Resource{
 			ID:   i,
 			X:    float64(c[0]*Cell) + Cell/2,
 			Y:    float64(c[1]*Cell) + Cell/2,
-			Kind: kind, Amount: ResAmount,
+			Kind: kinds[i], Amount: ResAmount,
 		})
 	}
 	for s := 0; s < 2; s++ {
@@ -809,12 +809,13 @@ func techNumericID(id string) int { return 0 }
 func (g *Game) stepEconomy(side int) {
 	S := g.Sides[side]
 	S.CU += BaseIncome * (1 + S.Mods.Income)
-	// v1.2-beta（C）：母舰微量 RU 基础收入（不吃 mods），
+	// v1.2（C）：母舰微量 RU 基础收入（不吃 mods），
 	// 重单位中局即可解锁，不再完全依赖 SALVAGER 采 ru 节点。
 	S.RU += RUBaseIncome
 	g.stepSalvagers(side)
 	cv := g.Mothership(side)
-	if cv != nil && !cv.Dead && cv.HP > 0 && cv.HP < cv.MaxHP {
+	// 自愈只在脱战 MSRepairDelay 拍后生效：持续被集火时回血会让「斩舰」变成不可能事件。
+	if cv != nil && !cv.Dead && cv.HP > 0 && cv.HP < cv.MaxHP && g.Turn-cv.LastHit >= MSRepairDelay {
 		cv.HP = math.Min(cv.MaxHP, cv.HP+MSRepairRate*(float64(S.Alloc.Repair)/100))
 	}
 }
@@ -989,7 +990,7 @@ func (g *Game) salvagerPath(u *Unit, tx, ty float64) []PathPt {
 func (g *Game) stepProduction(side int) {
 	S := g.Sides[side]
 	slots := g.productionLines(side)
-	// v1.2-beta（A 队列跳过）：从队首找第一个 CU/RU 付得起的单位出队，
+	// v1.2（A 队列跳过）：从队首找第一个 CU/RU 付得起的单位出队，
 	// 不可负担项原地保留（不丢单、不改相对次序），整队无可负担才等待。
 	// 消除 v1.1 队头死锁（50 轮实测：Vanguard 式零制造、重单位整层不可达）。
 	for len(S.Active) < slots && len(S.Queue) > 0 {
@@ -1101,9 +1102,10 @@ func (g *Game) stepCarriers(side int) {
 		}
 		c.Queue = c.Queue[1:]
 		a := math.Mod(float64(g.Turn)*2.1+float64(g.NextID)*1.7, math.Pi*2)
-		u := g.spawn(side, job.Kind,
-			c.X+math.Cos(a)*Cell*2*Scale,
-			c.Y+math.Sin(a)*Cell*2*Scale)
+		// 出兵点必须落在可通行格：v1.2 直接把 c.X+cos(a)*r 当坐标，
+		// 一旦落在基地外的山环里，单位从出生就被困死（流场 Dist=-1，永远走不动）。
+		sx, sy := g.freeSpawnPoint(c.X, c.Y, Cell*2*Scale, a)
+		u := g.spawn(side, job.Kind, sx, sy)
 		ev := Event{T: g.Turn, Type: "spawn", Side: side, Kind: job.Kind, ID: u.ID, By: c.ID}
 		g.LastEvents = append(g.LastEvents, ev)
 		g.Events = append(g.Events, ev)
@@ -1118,3 +1120,28 @@ func sortStrings(in []string) []string {
 }
 
 var errDone = errors.New("game already done")
+
+// freeSpawnPoint 在 (cx,cy) 周围找一个可通行的出兵点。
+//
+// 先按理想角度试 8 个方向，再逐级缩小半径，最后退回载体中心。
+// 「出生即被困」在 v1.2 是真实故障：基地外圈是山，坐标算出来落在山里，
+// 单位从此原地不动，整支部队挤在基地门口（回放里 6 台 railgun 坐标完全相同）。
+func (g *Game) freeSpawnPoint(cx, cy, r, angle float64) (float64, float64) {
+	ok := func(x, y float64) bool {
+		gx, gy := int(x)/Cell, int(y)/Cell
+		if gx < 0 || gy < 0 || gx >= Grid || gy >= Grid {
+			return false
+		}
+		return g.Map.Base[Ci(gx, gy)] != 3
+	}
+	for rr := r; rr >= Cell; rr /= 2 {
+		for k := 0; k < 8; k++ {
+			a := angle + float64(k)*math.Pi/4
+			x, y := cx+math.Cos(a)*rr, cy+math.Sin(a)*rr
+			if ok(x, y) {
+				return x, y
+			}
+		}
+	}
+	return cx, cy
+}

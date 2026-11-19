@@ -1,6 +1,6 @@
 // Package refbot 是官方参考 Bot 的共用策略库。
 //
-// 版本：v1.2-beta（Desert Arena 正式赛）。
+// 版本：v1.2（Desert Arena 正式赛）。
 // 功能：提供「能打但不神」的标准策略——拿 VP、造兵、研究、开火四件事都做，
 // 寻路只有一步贪心；目的不是当最强对手，而是给正式赛提供一批
 // 可复现、风格不同的基准选手，让 BT 拟合与平衡回归有东西可测。
@@ -28,6 +28,10 @@ type Strategy struct {
 	HoldVP bool
 	// 战斗单位是否直插敌方半场
 	Push bool
+	// Siege 攻坚：远程单位优先锁定敌方母舰（RAILGUN 9.5 / ARTILLERY 14
+	// 都压过母舰 7 格射程，是唯一能安全拆舰的两种兵）。
+	// 关闭时行为与 v1.2 完全一致（只打最近敌人 + 抢点）。
+	Siege bool
 	// 目标炮数
 	Weapons int
 }
@@ -38,6 +42,8 @@ type Strategy struct {
 // 生产带跳过轮转与 RU 自查，harvest 只指派一次。
 func Run(s Strategy) error {
 	buildIdx := 0
+	// 表头项连续付不起的拍数（超过阈值才跳过，避免死等）
+	stall := 0
 	// 已指派的采集车数
 	harvestN := 0
 	// harvest 只指派一次，重发会重置 hstate
@@ -62,16 +68,34 @@ func Run(s Strategy) error {
 		if st.Me.Mode != "neutral" {
 			acts = append(acts, botkit.Action{Type: "mode", Mode: "neutral"})
 		}
-		// 生产循环带「跳过轮转」：当前项付不起（CU 或 RU）就试下一项，
-		// 避免一个永远付不起的 kind 占住轮转位（引擎队列是死板 FIFO，堵了就整队陪葬）。
+		// 严格建造顺序：只造表头的下一项，付不起就等。
+		// 不做「付不起就跳到下一项」的轮转——那会让便宜的 LAV/SCOUT 吃满法产，
+		// 高价兵（RAILGUN/ARTILLERY）永远排不上（v1.2 整季零斩舰的直接原因）。
+		// 只在「人口已经塞不下」或「连续 stallTicks 拍付不起」时才跳过该项。
 		if len(s.Build) > 0 {
-			for i := 0; i < len(s.Build); i++ {
-				kind := s.Build[(buildIdx+i)%len(s.Build)]
+			for tries := 0; tries < len(s.Build); tries++ {
+				kind := s.Build[buildIdx%len(s.Build)]
+				if kind == "SALVAGER" && salvagerCount(b, st) >= 2 {
+					buildIdx++
+					stall = 0
+					continue
+				}
+				if t, ok := b.Rules.Types[kind]; ok && st.Me.Pop+t.Pop > st.Me.PopMax {
+					buildIdx++
+					stall = 0
+					continue
+				}
 				if canProduce(b, st, kind) {
 					acts = append(acts, botkit.Action{Type: "produce", Kind: kind})
-					buildIdx += i + 1
-					break
+					buildIdx++
+					stall = 0
+				} else if stall >= 600 {
+					buildIdx++
+					stall = 0
+				} else {
+					stall++
 				}
+				break
 			}
 		}
 		if tech := nextTech(b, st, s.Techs); tech != "" {
@@ -126,6 +150,21 @@ func Run(s Strategy) error {
 				}
 				acts = append(acts, botkit.Action{ID: u.ID, Type: "idle"})
 				continue
+			}
+
+			/* 攻坚单位：RAILGUN / ARTILLERY 射程压过母舰，优先拆舰。
+			   母舰射程 7 格，railgun 9.5 / artillery 14 —— 站在母舰射程外就能输出；
+			   其余兵种（LAV 3.2 / AAV 3.0）够不到，冲上去只会被母舰点掉。 */
+			if s.Siege && (u.Kind == "RAILGUN" || u.Kind == "ARTILLERY") {
+				if ms := botkit.EnemyMothership(st, side); ms != nil {
+					d := math.Hypot(ms.X-u.X, ms.Y-u.Y)
+					if d <= t.Range*0.95*float64(b.Hello.Cell) {
+						acts = append(acts, botkit.Action{ID: u.ID, Type: "attack", TargetID: ms.ID})
+						continue
+					}
+					acts = append(acts, moveAlong(b, u, ms.X, ms.Y))
+					continue
+				}
 			}
 
 			/* 战斗单位：射程内开火，否则压向最近敌人；没有敌人就去抢点。 */
@@ -251,4 +290,20 @@ func moveAlong(b *botkit.Bot, u botkit.Unit, x, y float64) botkit.Action {
 		return botkit.Action{ID: u.ID, Type: "move", X: nx, Y: ny}
 	}
 	return botkit.Action{ID: u.ID, Type: "idle"}
+}
+
+// salvagerCount 统计本方采集车（含队列中）数量。
+func salvagerCount(b *botkit.Bot, st *botkit.State) int {
+	n := 0
+	for _, u := range botkit.Own(st, st.Side) {
+		if u.Kind == "SALVAGER" {
+			n++
+		}
+	}
+	for _, k := range st.Me.Queue {
+		if k == "SALVAGER" {
+			n++
+		}
+	}
+	return n
 }

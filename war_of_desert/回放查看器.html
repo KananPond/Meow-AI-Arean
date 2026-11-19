@@ -224,7 +224,7 @@ function update() {
   html += '<div class="score-row"><span>资源</span><span>CU ' + fr.cu.join(' : ') + ' ｜ RU ' + fr.ru.join(' : ') + '</span></div>';
   if (fr.techs) html += '<div class="score-row"><span>科技</span><span>' + fr.techs.map(t => (t||[]).length).join(' : ') + '</span></div>';
   /* 生产队列三态：造中（queue=生产中）+ 等待（waitingQueue）+ 堵塞标记（queueBlocked）。
-   * v1.2-pre 观测增强；旧赛季回放没有 waitingQueue 字段，自动降级为只显示造中。 */
+   * v1.2 观测增强；旧赛季回放没有 waitingQueue 字段，自动降级为只显示造中。 */
   for (let s = 0; s < 2; s++) {
     const act = (fr.queue && fr.queue[s]) || [];
     const wait = (fr.waitingQueue && fr.waitingQueue[s]) || [];

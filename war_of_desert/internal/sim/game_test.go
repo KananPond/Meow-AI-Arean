@@ -173,7 +173,7 @@ func TestSalvagerEconomy(t *testing.T) {
 	if g.Sides[0].CU != 500 || g.Sides[1].CU != 500 {
 		t.Fatalf("无被动收入：CU %v/%v 应恒 500", g.Sides[0].CU, g.Sides[1].CU)
 	}
-	// 资源点 4 个，第 3 个（index 2）是 RU
+	// 资源点 4 个 = 2 对镜像格；RU 按对称分配为 2 个（两侧各一）
 	if len(g.Resources) != 4 {
 		t.Fatalf("资源点 %d 应为 4", len(g.Resources))
 	}
@@ -183,11 +183,20 @@ func TestSalvagerEconomy(t *testing.T) {
 			ruCount++
 		}
 	}
-	if ruCount != 1 {
-		t.Fatalf("RU 节点 %d 应为 1", ruCount)
+	if ruCount != 2 {
+		t.Fatalf("RU 节点 %d 应为 2（镜像成对，两侧各一）", ruCount)
 	}
-	// 初始兵力没有采集车（与 JS 一致）——测试里直接造一台放在资源点旁
-	node := g.Resources[0]
+	// 初始兵力没有采集车（与 JS 一致）——测试里直接造一台放在资源点旁，取 CU 节点
+	var node *Resource
+	for _, r := range g.Resources {
+		if r.Kind == "cu" {
+			node = r
+			break
+		}
+	}
+	if node == nil {
+		t.Fatal("没有 CU 资源点")
+	}
 	sv := g.spawn(0, "SALVAGER", node.X+40, node.Y)
 	// 指派 harvest **只发一次**：每 tick 重发会在指令绑定阶段把 hstate 重置回
 	// toResource（JS 同款语义），状态机永远到不了 loading。之后引擎托管运输线。

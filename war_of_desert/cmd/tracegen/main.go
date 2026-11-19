@@ -1,6 +1,6 @@
 // tracegen —— 生成 golden trace（Go 引擎的回归基准）。
 //
-// 版本：v1.2-beta（Desert Arena · Go 原生引擎回归门禁工具）。
+// 版本：v1.2（Desert Arena · Go 原生引擎回归门禁工具）。
 // 功能：用固定剧本跑若干对局，把 {seed, generator, mode, mapAttempt, orderLog,
 // frameHashes, result} 冻结到 engine/golden/*.json。此后任何 sim 包改动
 // 都必须让 golden_test.go 重放全对（自确定性回归门禁，Plan_Beta §5.2）。

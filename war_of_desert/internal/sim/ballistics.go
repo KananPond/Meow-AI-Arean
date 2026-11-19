@@ -1,6 +1,6 @@
 // 外弹道（ballistics.js 的完整移植）。
 //
-// 版本：v1.2-beta（Desert Arena · Go 原生引擎 internal/sim）。
+// 版本：v1.2（Desert Arena · Go 原生引擎 internal/sim）。
 // 功能：弹道积分、仰角求解、地形遮挡判定与伤害/溅射公式。
 //
 // 运动方程：dv/dt = g_vec − k·|v|·v（二次空气阻力 + 重力标度）。

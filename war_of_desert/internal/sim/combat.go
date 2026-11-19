@@ -1,6 +1,6 @@
 // 战斗与行为层：索敌、开火、伤害结算、移动与意图绑定。
 //
-// 版本：v1.2-beta（Desert Arena · Go 原生引擎 internal/sim）。
+// 版本：v1.2（Desert Arena · Go 原生引擎 internal/sim）。
 // 功能：指令归一化（normalizeOrders→orderLog）、Step 主循环的阵营动作与
 // 单位行为、直击/溅射伤害、克制表应用、kill/spawn/vp 事件产出。
 // 管线顺序逐条对齐 JS 合并版，禁止单方面重排。
@@ -252,6 +252,7 @@ func (g *Game) damageUnit(e *Unit, dmg float64, bySide int) {
 	if e.Dead {
 		return
 	}
+	e.LastHit = g.Turn
 	e.HP -= dmg
 	if e.HP > 0 {
 		return
@@ -811,28 +812,36 @@ func (g *Game) Step(orders [2][]Action) *Frame {
 		if !fired {
 			lim := t.Range * (1 + g.Sides[u.Side].Mods.Range)
 			type candT struct {
-				e *Unit
-				d float64
+				e    *Unit
+				d    float64
+				adx  float64
+				ady  float64
 			}
 			var cands []candT
 			for _, e := range g.Units {
 				if e.Dead || e.Side == u.Side {
 					continue
 				}
-				d := math.Hypot(u.X-e.X, u.Y-e.Y) / Cell
+				dx, dy := u.X-e.X, u.Y-e.Y
+				d := math.Hypot(dx, dy) / Cell
 				if d > lim {
 					continue
 				}
 				if g.Vision.Enabled && !g.canSeeBySide(u.Side, e.X, e.Y) {
 					continue
 				}
-				cands = append(cands, candT{e, d})
+				cands = append(cands, candT{e, d, math.Abs(dx), math.Abs(dy)})
 			}
+			// 平局判定必须镜像不变：距离之后用 |dx|、|dy|，不能用 ID——
+			// 全局 ID 两侧分属不同区间，用 ID 决胜会让镜像对局失去协变性（座位偏差）。
 			sort.SliceStable(cands, func(a, b int) bool {
 				if cands[a].d != cands[b].d {
 					return cands[a].d < cands[b].d
 				}
-				return cands[a].e.ID < cands[b].e.ID
+				if cands[a].adx != cands[b].adx {
+					return cands[a].adx < cands[b].adx
+				}
+				return cands[a].ady < cands[b].ady
 			})
 			for i := 0; i < len(cands) && i < 3 && !fired; i++ {
 				fired = g.fire(u, cands[i].e)

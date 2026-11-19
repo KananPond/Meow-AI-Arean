@@ -7,7 +7,7 @@ import (
 
 // 「我的世界」风格生成器（mapgen_mc.js 的完整移植）。
 //
-// 版本：v1.2-beta（Desert Arena · Go 原生引擎 internal/sim）。
+// 版本：v1.2（Desert Arena · Go 原生引擎 internal/sim）。
 // 功能：气候参数 → 样条整形 → 河流/峡谷/洞穴/矿脉，复用 finalize 收尾。
 // 对齐 MC 1.18+ Noise Router 的生成结构，不是方块外观。
 

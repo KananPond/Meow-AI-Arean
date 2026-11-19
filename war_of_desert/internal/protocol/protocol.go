@@ -1,6 +1,6 @@
 // Package protocol 定义 Desert Arena 正式赛的线上契约。
 //
-// 版本：v1.2-beta（Desert Arena 正式赛执行链）。
+// 版本：v1.2（Desert Arena 正式赛执行链）。
 // 功能：hello / tick / actions / end 的字段形状、地图层编解码、
 // 规则常量的读取口径；裁判、引擎宿主与选手工具共用这一份定义。
 //

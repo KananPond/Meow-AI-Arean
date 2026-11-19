@@ -1,6 +1,6 @@
 // Package contest 读取正式赛配置并解析相对路径。
 //
-// 版本：v1.2-beta（Desert Arena 正式赛执行链）。
+// 版本：v1.2（Desert Arena 正式赛执行链）。
 // 功能：tournament/*.json 的结构定义与校验、引擎宿主路径解析
 // （kind=native 时构建 enginehost）、输出目录约束在仓库根内。
 package contest

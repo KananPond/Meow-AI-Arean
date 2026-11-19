@@ -1,6 +1,6 @@
 // Command siegepool 跑攻守模式的循环赛，并用双参数 Bradley–Terry 给选手池评分。
 //
-// 版本：v1.2-beta（Desert Arena 攻守变体评分工具）。
+// 版本：v1.2（Desert Arena 攻守变体评分工具）。
 // 功能：所有有序对（攻方 i, 守方 j）× 每个地图 seed 各打一局，
 // 然后拟合「攻方实力 A_i / 守方实力 D_j」，
 // 避免把攻强守弱和攻弱守强平均成同一个数。

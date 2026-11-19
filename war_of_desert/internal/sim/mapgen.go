@@ -1,6 +1,6 @@
 // 地图生成共享机械层 + 地貌过程（geomorphic）生成器。
 //
-// 版本：v1.2-beta（Desert Arena · Go 原生引擎 internal/sim）。
+// 版本：v1.2（Desert Arena · Go 原生引擎 internal/sim）。
 // 功能：GenOptions/进度监控、地 Launcher 机械层、massif/escarpment 规划、
 // 河流/风场/地貌量化；minecraft 生成器在 mapgen_mc.go，
 // 收尾在 mapgen_finalize.go。

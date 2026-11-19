@@ -1,6 +1,6 @@
 // Command siege 跑攻守实验。
 //
-// 版本：v1.2-beta（Desert Arena 攻守变体标定工具）。
+// 版本：v1.2（Desert Arena 攻守变体标定工具）。
 // 功能：固定守方/攻方 Bot 与地图 seed，逐级改变守方母舰 HP，
 // 统计“攻方摧毁守方母舰”的比例。
 //

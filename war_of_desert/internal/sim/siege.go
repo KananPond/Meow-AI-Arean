@@ -1,6 +1,6 @@
 // 攻守实验（siege）引擎 —— rules_siege.js（oracle 快照）的移植。
 //
-// 版本：v1.2-beta（攻守变体独立演进，不动对称赛口径）。
+// 版本：v1.2（攻守变体独立演进，不动对称赛口径）。
 // 功能：守方工事布置、矿场经济、攻守非对称计分与 BT 双参数模型。
 //
 // 与对称赛的关键差异：
@@ -1706,28 +1706,35 @@ func (g *SiegeGame) Step(orders [2][]Action) *Frame {
 		if !fired {
 			lim := t.Range * (1 + g.Sides[u.Side].Mods.Range)
 			type candT struct {
-				e *SiegeUnit
-				d float64
+				e   *SiegeUnit
+				d   float64
+				adx float64
+				ady float64
 			}
 			var cands []candT
 			for _, e := range g.Units {
 				if e.Dead || e.Side == u.Side {
 					continue
 				}
-				d := math.Hypot(u.X-e.X, u.Y-e.Y) / Cell
+				dx, dy := u.X-e.X, u.Y-e.Y
+				d := math.Hypot(dx, dy) / Cell
 				if d > lim {
 					continue
 				}
 				if g.Vision.Enabled && !g.canSeeBySide(u.Side, e.X, e.Y) {
 					continue
 				}
-				cands = append(cands, candT{e, d})
+				cands = append(cands, candT{e, d, math.Abs(dx), math.Abs(dy)})
 			}
+			// 同对称赛：平局判定用 |dx|、|dy|，不用全局 ID（镜像协变性）
 			sort.SliceStable(cands, func(a, b int) bool {
 				if cands[a].d != cands[b].d {
 					return cands[a].d < cands[b].d
 				}
-				return cands[a].e.ID < cands[b].e.ID
+				if cands[a].adx != cands[b].adx {
+					return cands[a].adx < cands[b].adx
+				}
+				return cands[a].ady < cands[b].ady
 			})
 			for i := 0; i < len(cands) && i < 3 && !fired; i++ {
 				fired = g.fire(u, cands[i].e)

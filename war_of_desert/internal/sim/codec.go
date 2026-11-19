@@ -1,6 +1,6 @@
 // 编解码与帧：hello / tick / actions / end 的 wire 层。
 //
-// 版本：v1.2-beta（Desert Arena · Go 原生引擎 internal/sim）。
+// 版本：v1.2（Desert Arena · Go 原生引擎 internal/sim）。
 // 功能：EncodeTick（选手观测）、Decode（指令校验入栈）、Frame（观战真值帧，
 // 含 waitingQueue/queueBlocked 观测字段）、哈希与确定性复核（VerifyRec）。
 // 键序对齐 JS frame()；帧哈希 = FNV1A(canonical JSON)。
@@ -48,7 +48,7 @@ type FrameShell struct {
 }
 
 // Frame 观战者真值帧（键序对齐 JS frame()：turn,units,vp,score,cu,ru,alloc,techs,queue,weapons,shells）。
-// v1.2-pre 观测增强：新增 waitingQueue / queueBlocked——回放可见「等待队列」与
+// v1.2 观测增强：新增 waitingQueue / queueBlocked——回放可见「等待队列」与
 // 「队首堵塞」状态（此前只有生产中队列，复盘无法解释 Vanguard 式零制造）。
 type Frame struct {
 	Turn         int           `json:"turn"`
@@ -90,7 +90,7 @@ func (g *Game) buildFrame() *Frame {
 		}
 		if len(S.Queue) > 0 {
 			f.WaitingQueue[s] = append([]string(nil), S.Queue...)
-			// v1.2-beta：堵塞 = 整队没有任何可负担项
+			// v1.2：堵塞 = 整队没有任何可负担项
 			//（与跳过式 stepProduction 的等待条件一致）。
 			blocked := true
 			for _, k := range S.Queue {

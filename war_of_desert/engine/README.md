@@ -34,9 +34,9 @@
 ## 替换为 Go 引擎（已完成 · 2026-11-14）
 
 1. ✅ `cmd/enginehost` 实现同一套命令流（`new/encode/apply/step/note/forfeit/end/result/verify/bye`），
-   规则语义在 `internal/sim`（从 MVP 合并版 b9643b0+v0.11 移植，v1.1 规则）；
+   规则语义在 `internal/sim`（从 MVP 合并版 b9643b0+v0.11 移植，当前 v1.2 规则）；
 2. ✅ 配置层落实 `engine.kind`：`oracle`（本目录快照，走 Node）| `native`（enginehost 二进制）。
-   第 2 季配置 `tournament/formal_v11.json` 已用 `native`；
+   当前赛季配置 `tournament/formal_v12.json` 用 `native`（第 2 季 `formal_v11.json` 起即 `native`）；
 3. ✅ golden trace：`engine/golden/`（6 条冻结 trace + MANIFEST）+ `internal/sim/golden_test.go`
    回归门禁；重生成用 `go run ./cmd/tracegen`；
 4. ✅ 选手包、裁判、赛程、成绩契约不动（judge 只在 `host.go:Start` 加了
