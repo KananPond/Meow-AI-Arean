@@ -658,8 +658,10 @@ class RefereeDesk(tk.Tk):
             stage = STAGE_ROOT / slug
             if stage.exists():
                 shutil.rmtree(stage)
-            shutil.copytree(path, stage,
-                            ignore=shutil.ignore_patterns("bin", "*.exe", ".git", "__pycache__"))
+            # go.mod/go.sum 必须剥掉：工作区是独立模块（选手本地能直接 build），
+            # 带着它进引擎目录会变成嵌套模块，arena build 就编不动了。
+            shutil.copytree(path, stage, ignore=shutil.ignore_patterns(
+                "bin", "*.exe", ".git", "__pycache__", "go.mod", "go.sum"))
             # 有收卷副本就以收卷副本为准：评的必须是冻结那一刻的代码。
             # 交付文件名是「<选手名>_bot.go」，不再固定叫 decide.go。
             frozen = pick_frozen(stage)

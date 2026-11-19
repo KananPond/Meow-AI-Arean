@@ -1,101 +1,76 @@
-// 骨架 Bot —— 一个「能编译、能跑、几乎什么都不做」的起点。
+// 骨架 Bot —— 只演示 line-JSON 协议，**不含任何策略或算法**。
 //
-// 版本：v1.5（选手包参考 Bot）
-// 用法：submission/<你的选手名>_bot.go 就是这份代码的副本（发卷时已按你的
-//      选手名建好）。直接在那一份的 decide() 里填你的逻辑；本文件只是参考副本。
-//      协议握手、按拍应答都由 botkit.Run 处理，不用你管。
+// 它只做三件事：
+//   1. 读到 hello，回一行 {"ready":true}
+//   2. 每读到一行 tick，回一行 {"actions":[]}（空动作，所有单位原地不动）
+//   3. 读到 end，退出
 //
-// 这个文件演示三件事，够你起步：
-//   1. 每拍返回 []botkit.Action，引擎按 id 把动作绑到你的单位上；
-//   2. 生产只要发一条 {Type:"produce", Kind:...}，钱不够引擎会拒（不判故障）；
-//   3. 移动用 botkit 的流场走一步，别自己算直线——基地外圈是山，直着走走不出去。
+// 协议细节见 RULES.md 第 2 节。要写策略，就在下面 handleTick 里返回动作。
 //
-// 想看得更强一点的例子？bots/ 下还有两个基线 exe，但它们没有源码。
+// 这里刻意不 import botkit：好让你看清 stdin/stdout 上来回传的到底是什么。
+// 需要地图解码、坐标换算、流场寻路时，再照 RULES.md 第 5 节换成 botkit.Run。
 package main
 
 import (
+	"bufio"
+	"encoding/json"
 	"fmt"
 	"os"
-
-	"desertarena/workspace/botkit"
 )
 
-// 采集车只指派一次：引擎收到 harvest 就接管运输线，
-// 重复指派会把状态机重置回 toResource。
-var assigned = map[int]bool{}
-
 func main() {
-	if err := botkit.Run(decide); err != nil {
-		fmt.Fprintln(os.Stderr, "bot 退出：", err)
-		os.Exit(1)
+	// hello 约 110 KB，行缓冲开到 1 MiB 以免被截断。
+	in := bufio.NewReaderSize(os.Stdin, 1<<20)
+	out := bufio.NewWriter(os.Stdout)
+	defer out.Flush()
+
+	for {
+		line, err := in.ReadBytes('\n')
+		if err != nil {
+			return // 裁判关了管道
+		}
+
+		// 先只看 type，别急着整体反序列化：hello 很大，tick 每拍一行。
+		var head struct {
+			Type string `json:"type"`
+		}
+		if json.Unmarshal(line, &head) != nil {
+			continue // 坏行忽略；反复返回坏 JSON 会被记故障
+		}
+
+		switch head.Type {
+		case "hello":
+			// hello 里带地图（RLE+base64）、规则常量、时序；这里不解析，只握手。
+			// ready 必须在 2000 ms 内发出。
+			fmt.Fprintln(out, `{"ready":true}`)
+			out.Flush()
+
+		case "tick":
+			// 每拍必须回一行 {"actions":[...]}，120 ms 内交不齐记一次故障。
+			// tick 里有 turn / units / vp / res / me / events 等字段，
+			// 完整 schema 见 RULES.md 第 3 节。
+			fmt.Fprintln(out, handleTick(line))
+			out.Flush()
+
+		case "end":
+			// 终局结果在这里；回不回都行，直接退出最省事。
+			return
+		}
 	}
 }
 
-// decide 每拍调用一次，返回本拍要执行的动作。
-func decide(b *botkit.Bot, st *botkit.State) []botkit.Action {
-	side := st.Side
-	acts := make([]botkit.Action, 0, len(st.Units)+1)
-
-	/* ---- 阵营动作：生产 ---- */
-	// 钱够就补一台采集车（没有采集车，500 CU 花完就再也造不出东西）。
-	if canAfford(b, st, "SALVAGER") && salvagers(st, side) < 2 {
-		acts = append(acts, botkit.Action{Type: "produce", Kind: "SALVAGER"})
-	} else if canAfford(b, st, "LAV") {
-		acts = append(acts, botkit.Action{Type: "produce", Kind: "LAV"})
-	}
-
-	/* ---- 单位动作 ---- */
-	for _, u := range botkit.Own(st, side) {
-		switch u.Kind {
-		case "MOTHERSHIP":
-			// 母舰原地不动也能打；要占点就换成 move。
-			acts = append(acts, botkit.Action{ID: u.ID, Type: "idle"})
-
-		case "SALVAGER":
-			// 采集车由引擎托管运输线：发一次 harvest 指定矿点即可，
-			// 每拍重发会把它的状态机重置回 toResource，永远装不完。
-			if r := botkit.NearestRes(st, u.X, u.Y); r != nil && !assigned[u.ID] {
-				rid := r.ID
-				acts = append(acts, botkit.Action{ID: u.ID, Type: "harvest", ResID: &rid})
-				assigned[u.ID] = true
-			}
-
-		default:
-			// 战斗单位：去最近的己方/中立 VP 站桩。
-			if v := botkit.NearestVP(st, u.X, u.Y, side, true); v != nil {
-				if nx, ny, ok := b.StepAlong(u, b.FieldTo(v.X, v.Y), b.Stride(u)); ok {
-					acts = append(acts, botkit.Action{ID: u.ID, Type: "move", X: nx, Y: ny})
-					continue
-				}
-			}
-			acts = append(acts, botkit.Action{ID: u.ID, Type: "idle"})
-		}
-	}
-	return acts
-}
-
-func canAfford(b *botkit.Bot, st *botkit.State, kind string) bool {
-	t, ok := b.Rules.Types[kind]
-	if !ok {
-		return false
-	}
-	if st.Me.Pop+t.Pop > st.Me.PopMax {
-		return false
-	}
-	return st.Me.CU >= float64(t.Cost) && st.Me.RU >= float64(t.RU)
-}
-
-func salvagers(st *botkit.State, side int) int {
-	n := 0
-	for _, u := range botkit.Own(st, side) {
-		if u.Kind == "SALVAGER" {
-			n++
-		}
-	}
-	for _, k := range st.Me.Queue {
-		if k == "SALVAGER" {
-			n++
-		}
-	}
-	return n
+// handleTick 是你真正要写的地方。现在它返回空动作，也就是什么都不做。
+//
+// 一行合法回包的样子（完整字段见 RULES.md 第 3 节）：
+//
+//	{"actions":[
+//	   {"id":3,"type":"move","x":768,"y":768},
+//	   {"type":"produce","kind":"LAV"}
+//	]}
+//
+// id 是你的单位 id；不带 id 的阵营动作（produce / research / alloc / weapon）
+// 由母舰执行。
+func handleTick(tickLine []byte) string {
+	_ = tickLine // 可以在这里 json.Unmarshal 出单位列表再决策
+	return `{"actions":[]}`
 }

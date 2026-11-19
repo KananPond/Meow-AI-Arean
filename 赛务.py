@@ -58,7 +58,7 @@ RECORD = ".赛务.json"
 WIN_EPOCH_OFFSET = 11644473600
 
 # 发给选手的东西 = 模板 workspace/ 下除赛务产物以外的一切。
-PACKAGE_ITEMS = ["RULES.md", "README.md", "prompt.md", "clock.py",
+PACKAGE_ITEMS = ["RULES.md", "README.md", "prompt.md", "clock.py", "go.mod",
                  "botkit", "bots", "submission", "sandbox"]
 
 

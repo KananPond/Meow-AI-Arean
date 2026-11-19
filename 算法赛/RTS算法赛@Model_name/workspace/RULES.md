@@ -15,9 +15,10 @@ workspace/
 ├── RULES.md                 本文件
 ├── prompt.md                发给模型的原始任务书
 ├── clock.py                 编码期计时（只读）
+├── go.mod                   本地编译用（指向引擎，别加第三方依赖）
 ├── botkit/                  协议、地图解码、流场寻路（只读）
 ├── bots/
-│   ├── skeleton/            骨架 Bot：能编译能跑，几乎什么都不做，照它改
+│   ├── skeleton/            骨架 Bot：**只有协议，没有任何算法**
 │   ├── baseline@1.exe       基线一：正面推进（预编译，无源码）
 │   └── baseline@2.exe       基线二：机动抢点（预编译，无源码）
 ├── sandbox/                 本地沙箱自检（确认赛场限制下你的程序能跑）
@@ -48,11 +49,15 @@ go run ./workspace/sandbox -exe workspace/bots/baseline@1.exe -turns 100
 即「`@` 后面的那串字符 + `_bot.go`」。发卷时这个文件已经给你建好了（骨架内容），
 你直接改它就行；改名或另建 `decide.go` 都不会被收卷。
 
-官方编译（主办方执行，你本地也可以先跑一遍）：
+本地编译（工作区自带 `go.mod`，`replace` 指向引擎，所以不用把文件拷进引擎目录）：
 
 ```bash
-go build -o bots/bin/<选手名>.exe ./workspace/submission
+cd workspace
+go build -o bot.exe ./submission
 ```
+
+主办方收卷后用引擎统一编译；两边编出来的是同一份代码，因为 `go.mod` 里的
+`replace desertarena => ../../../war_of_desert` 指向的就是赛场那份 `botkit`。
 
 正式赛收卷时**只冻结这一个文件**，其他文件不会随卷带走。
 

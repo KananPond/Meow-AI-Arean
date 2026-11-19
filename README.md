@@ -47,7 +47,7 @@ py -3 -X utf8 referee_desk.py --init "算法赛" 1     # 也可以在裁判台�
    复制到每个选手目录（`RULES.md`、`prompt.md`、`botkit/`、`bots/`、`sandbox/`、
    `clock.py`），**不开始计时**——计时由「发卷并开赛」逐个开。
 
-   选手包里的参考 Bot 只有三个：`bots/skeleton/`（骨架，能编译能跑、几乎什么都不做）、
+   选手包里的参考 Bot 只有三个：`bots/skeleton/`（骨架，只演示 stdin/stdout 协议，不含任何策略）、
    `bots/baseline@1.exe`、`bots/baseline@2.exe`（两个预编译基线）。
 
    交付物按选手名命名：`submission/<选手名>_bot.go`。例如 `RTS算法赛@HY-4/`
