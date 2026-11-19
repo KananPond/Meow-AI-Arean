@@ -55,6 +55,8 @@ func main() {
 		err = cmdCheck(args)
 	case "selftest":
 		err = cmdSelftest(args)
+	case "seal":
+		err = cmdSeal(args)
 	default:
 		usage()
 	}
@@ -73,6 +75,7 @@ func usage() {
 	arena rate   [-config tournament/formal.json]
   arena check  [-a <bot.exe>] [-b <bot.exe>] [-seed N] [-config ...]
   arena selftest [-config ...]   验证超时 kill / 崩溃重启 / 非法结构红牌
+  arena seal   [-config ...]   只校验封存记录（源码哈希 / 名单覆盖）
 
 所有相对路径都以 war_of_desert/ 为基准。请在 war_of_desert/ 下执行。
 `)
@@ -84,6 +87,32 @@ func exeSuffix() string {
 		return ".exe"
 	}
 	return ""
+}
+
+// cmdSeal 只做封存校验，不跑对局。裁判台用它点亮「封存」状态灯。
+func cmdSeal(args []string) error {
+	fs := flag.NewFlagSet("seal", flag.ExitOnError)
+	cfgPath := fs.String("config", "tournament/formal.json", "赛事配置")
+	_ = fs.Parse(args)
+
+	cfg, root, err := contest.Load(*cfgPath)
+	if err != nil {
+		return err
+	}
+	seal, err := contest.LoadSeal(root)
+	if err != nil {
+		return err
+	}
+	names := make([]string, 0, len(cfg.Entries))
+	for _, e := range cfg.Entries {
+		names = append(names, e.Name)
+	}
+	bad := append(seal.Verify(root), seal.CheckEntryCoverage(names)...)
+	if len(bad) > 0 {
+		return fmt.Errorf("封存校验未通过（先跑 arena build）:\n  %s", strings.Join(bad, "\n  "))
+	}
+	fmt.Printf("SEAL_OK  封存于 %s ｜ %d 名选手 ｜ 源码哈希与工作区一致\n", seal.GeneratedAt, len(seal.Entries))
+	return nil
 }
 
 /* ------------------------------------------------------------------ */

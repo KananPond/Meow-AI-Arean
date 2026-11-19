@@ -23,6 +23,7 @@ import (
 
 	"desertarena/internal/engine"
 	"desertarena/internal/protocol"
+	"desertarena/internal/sandbox"
 )
 
 // ErrTimeout 表示 Bot 在预算内没有交出完整一行。
@@ -103,7 +104,7 @@ type botProc struct {
 	err   bytes.Buffer
 	// sb 是操作系统级沙箱（Windows: Job Object）；workDir 是本次进程独占的临时目录。
 	// 两者都在 Kill 时释放，避免临时目录堆积与孤儿进程。
-	sb      *sandbox
+	sb      *sandbox.Sandbox
 	workDir string
 }
 
@@ -152,7 +153,7 @@ func startBot(spec BotSpec, hello string, initMs int, env []string) (*botProc, e
 		return nil, fmt.Errorf("启动 %s 失败: %w", spec.Name, err)
 	}
 	// 沙箱必须在进程刚起来时套上：晚一步就给了它派生子进程的窗口。
-	p.sb = newSandbox()
+	p.sb = sandbox.New(sandbox.DefaultLimits())
 	if err := p.sb.Apply(cmd.Process); err != nil {
 		p.Kill()
 		return nil, fmt.Errorf("%s 沙箱未生效: %w", spec.Name, err)

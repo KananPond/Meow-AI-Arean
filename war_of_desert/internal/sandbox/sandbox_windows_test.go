@@ -1,10 +1,10 @@
-// 文件：internal/judge/sandbox_windows_test.go
-// 版本：v1.3
+// 文件：internal/sandbox/sandbox_windows_test.go
+// 版本：v1.4
 // 功能：验证 Job Object 真的挡住了子进程派生。
 //
 // 这条测试防的是「沙箱写了但没生效」：SetInformationJobObject 的结构体
 // 布局或 LimitFlags 写错时，代码照样编译、自检照样通过，限制却一条都没上。
-package judge
+package sandbox
 
 import (
 	"os"
@@ -33,9 +33,9 @@ func TestSandboxBlocksChildProcess(t *testing.T) {
 		if err := cmd.Start(); err != nil {
 			t.Fatalf("启动失败: %v", err)
 		}
-		var sb *sandbox
+		var sb *Sandbox
 		if withSandbox {
-			sb = newSandbox()
+			sb = New(DefaultLimits())
 			if err := sb.Apply(cmd.Process); err != nil {
 				cmd.Process.Kill()
 				t.Fatalf("沙箱施加失败: %v", err)
