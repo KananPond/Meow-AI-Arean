@@ -825,7 +825,7 @@ func cmdLocal(args []string) error {
 	vsFlag := fs.String("vs", "", "对手 exe，逗号分隔（默认取 bots/baseline@*.exe）")
 	nSeeds := fs.Int("seeds", 2, "跑几个 seed（每个 seed 换边两局）")
 	baseSeed := fs.Int("seed0", 20261109, "起始 seed")
-	outDir := fs.String("out", "对局记录", "回放与结果目录")
+	outDir := fs.String("out", "matches", "回放与结果目录")
 	limit := fs.Int("limit", 0, "覆盖 tick 上限（0 = 正式规则）")
 	_ = fs.Parse(args)
 

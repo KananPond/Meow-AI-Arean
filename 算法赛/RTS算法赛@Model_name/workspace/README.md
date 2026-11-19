@@ -21,7 +21,7 @@ workspace/
 │   ├── skeleton/              骨架 Bot：只演示接口协议，不含任何策略
 │   ├── baseline@1.exe         基线一：正面推进（预编译，无源码）
 │   └── baseline@2.exe         基线二：机动抢点（预编译，无源码）
-├── tournament/本地赛.json      本地赛季配置（两个基线 + 你的 Bot）
+├── tournament/local.json      本地赛季配置（两个基线 + 你的 Bot）
 ├── 本地对局.bat               双击：编译 + 跟两个基线打
 ├── 本地赛季.bat               双击：编译 + 完整赛季评分
 └── submission/
@@ -55,7 +55,7 @@ go run ./cmd/arena check -a ..\bot.exe -b ..\bots\baseline@1.exe -seed 20261109
   seed 20261109 第1局 座位0  VP  761:1089  负  层级2  故障0  决策0.7ms
   seed 20261109 第2局 座位1  VP  761:1089  负  层级2  故障0  决策0.6ms
 合计：0 胜 0 平 4 负（4 局）｜平均 VP 761 : 1089｜最大决策 0.7ms｜故障 0 条
-回放 → 对局记录\本地对局\回放\
+回放 → matches\local\回放\
 ```
 
 回放是逐帧 JSON（单位位置、血量、VP 归属、生产队列），卡在哪一拍、兵死在哪，
@@ -73,12 +73,12 @@ go run ./cmd/arena check -a ..\bot.exe -b ..\bots\baseline@1.exe -seed 20261109
 
 ```bash
 cd arena
-go run ./cmd/arena plan -config ..\tournament\本地赛.json
-go run ./cmd/arena run  -config ..\tournament\本地赛.json -skip-seal
-go run ./cmd/arena rate -config ..\tournament\本地赛.json
+go run ./cmd/arena plan -config ..\tournament\local.json
+go run ./cmd/arena run  -config ..\tournament\local.json -skip-seal
+go run ./cmd/arena rate -config ..\tournament\local.json
 ```
 
-产出在 `对局记录\本地赛季\`：`成绩.md`（Bradley–Terry 排名 + 95% 区间）、
+产出在 `matches\season\`：`成绩.md`（Bradley–Terry 排名 + 95% 区间）、
 `成绩_加权总分.md`（七领域）、`结果.jsonl`、`回放\`。
 
 `-skip-seal` 是「跳过封存校验」。正式赛开跑前会拿源码哈希跟封存记录比对，对不上

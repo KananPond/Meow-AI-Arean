@@ -47,6 +47,6 @@
       "prebuilt": true
     }
   ],
-  "output": "对局记录/本地赛季",
+  "output": "matches/season",
   "verify": true
 }

@@ -39,7 +39,7 @@
 │           ├── arena/     正式赛引擎+裁判+比赛程序（源码，发给选手的那份）
 │           ├── bots/      骨架 + 两个预编译基线
 │           ├── submission/<选手名>_bot.go  ← 唯一要改的文件
-│           ├── tournament/本地赛.json
+│           ├── tournament/local.json
 │           └── 本地对局.bat / 本地赛季.bat
 └── war_of_desert/        引擎与执行链（Go 模块）
 ```

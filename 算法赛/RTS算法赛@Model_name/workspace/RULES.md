@@ -26,7 +26,7 @@ workspace/
 │   ├── baseline@1.exe       基线一：正面推进（预编译，无源码）
 │   └── baseline@2.exe       基线二：机动抢点（预编译，无源码）
 ├── sandbox/                 本地沙箱自检（确认赛场限制下你的程序能跑）
-├── tournament/本地赛.json    本地赛季配置（两个基线 + 你的 Bot）
+├── tournament/local.json    本地赛季配置（两个基线 + 你的 Bot）
 ├── 本地对局.bat             双击：编译，然后跟两个基线打 2 个 seed
 ├── 本地赛季.bat             双击：编译，然后跑完整赛季（BT 排名 + 加权总分）
 └── submission/
@@ -247,7 +247,7 @@ go build -o bot.exe ./submission
 
 粗调：双击 `本地对局.bat`。它做两件事——`go build -o bot.exe ./submission`，然后
 跟两个基线各打 2 个 seed（换边两局），输出逐局 VP、判定层级、故障数、决策耗时，
-回放写到 `对局记录\本地对局\`。
+回放写到 `matches\local\`。
 
 等价的手工命令：
 

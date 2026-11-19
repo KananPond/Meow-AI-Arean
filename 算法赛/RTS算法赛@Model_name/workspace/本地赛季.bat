@@ -1,17 +1,18 @@
 @echo off
+rem ASCII only - see the note in the local-match script.
 chcp 65001 >nul
 setlocal
 cd /d "%~dp0"
 
 echo ============================================================
-echo   Desert Arena 本地赛季
-echo   与正式赛同一套：冻结赛程 -^> 跑完 -^> BT 排名 + 七领域加权总分
+echo   Desert Arena - local season
+echo   plan  ->  run  ->  rate (BT rating + weighted score)
 echo ============================================================
 echo.
 
 go build -o bot.exe .\submission
 if errorlevel 1 (
-  echo [x] 编译没通过，先修上面的报错。
+  echo [x] Build failed. Fix the errors above.
   pause
   exit /b 1
 )
@@ -19,22 +20,21 @@ if errorlevel 1 (
 pushd arena
 
 echo.
-echo [1/3] 冻结赛程 ...
-go run ./cmd/arena plan -config ..\tournament\本地赛.json
+echo [1/3] Freezing schedule ...
+go run ./cmd/arena plan -config ..\tournament\local.json
 if errorlevel 1 goto :done
 
 echo.
-echo [2/3] 跑完所有对局 ...
-go run ./cmd/arena run -config ..\tournament\本地赛.json -skip-seal
+echo [2/3] Running all matches ...
+go run ./cmd/arena run -config ..\tournament\local.json -skip-seal
 if errorlevel 1 goto :done
 
 echo.
-echo [3/3] 评分 ...
-go run ./cmd/arena rate -config ..\tournament\本地赛.json
+echo [3/3] Rating ...
+go run ./cmd/arena rate -config ..\tournament\local.json
 
 :done
 popd
 echo.
-echo 成绩：对局记录\本地赛季\成绩.md
-echo 回放：对局记录\本地赛季\回放\
+echo Results: matches\season\  (standings + replays)
 pause

@@ -15,7 +15,7 @@
 - `arena/`：正式赛的引擎、裁判与比赛程序源码（只读）——本地调试用的就是它
 - `arena/workspace/botkit/`：可选工具库（读 hello、解地图、寻路辅助）
 - `bots/`：一个骨架 + 两个预编译基线（`baseline@1.exe`、`baseline@2.exe`）
-- `tournament/本地赛.json`：本地赛季配置（两个基线 + 你的 Bot）
+- `tournament/local.json`：本地赛季配置（两个基线 + 你的 Bot）
 - `本地对局.bat` / `本地赛季.bat`：双击编译并对打，不用记命令
 - `clock.py`：查看编码期已用时间
 
@@ -34,7 +34,7 @@ go build -o bot.exe ./submission
 ```
 
 它编译你的代码，然后跟两个基线各打 2 个 seed（换边两局），打印逐局 VP、
-判定层级、故障与决策耗时，回放落在 `对局记录\本地对局\`。
+判定层级、故障与决策耗时，回放落在 `matches\local\`。
 
 程序通过 stdin/stdout 与裁判通信：
 

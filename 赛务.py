@@ -83,14 +83,14 @@ cd arena
 
 go run ./cmd/arena local -bot ..\\bot.exe -seeds 2
 go run ./cmd/arena check -a ..\\bot.exe -b ..\\bots\\baseline@1.exe -seed 20261109
-go run ./cmd/arena plan -config ..\\tournament\\本地赛.json
-go run ./cmd/arena run  -config ..\\tournament\\本地赛.json -skip-seal
-go run ./cmd/arena rate -config ..\\tournament\\本地赛.json
+go run ./cmd/arena plan -config ..\\tournament\\local.json
+go run ./cmd/arena run  -config ..\\tournament\\local.json -skip-seal
+go run ./cmd/arena rate -config ..\\tournament\\local.json
 go run ./cmd/arena version
 ```
 
 `local` 与正式赛的区别只有三点：不校验封存、不读正式赛赛程、结果写到
-`..\\对局记录\\`。判定逻辑、沙箱、超时口径完全一致。
+`..\\matches\\`。判定逻辑、沙箱、超时口径完全一致。
 
 `run` 要加 `-skip-seal`：正式赛开跑前会拿源码哈希跟封存记录比对，本地练习
 没有封存记录，所以要跳过。
