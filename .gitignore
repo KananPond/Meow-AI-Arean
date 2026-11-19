@@ -41,3 +41,8 @@ __pycache__/
 
 # 本地测试区（主项目测试：赛程、dump、明细与报告，不入库）
 /Dev/历史测试_50轮/
+
+# 裁判台工作区评测：暂存副本与评测产物不入库
+/war_of_desert/workspace/contestants/
+/war_of_desert/results/desk/
+/war_of_desert/tournament/_desk_*.json
