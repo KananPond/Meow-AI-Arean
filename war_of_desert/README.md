@@ -163,7 +163,7 @@ go run ./cmd/siegepool -from results/siege/bt_pool.csv -out results/siege/bt_poo
 │   ├── tournament/formal_v12.json   第 3 季（v1.2，赛程作废）
 │   ├── tournament/formal_v13.json   第 4 季（v1.3）
 │   ├── tournament/formal_v14.json   第 5 季（v1.4，当前）
-│   ├── workspace/           选手包（规则、模板、工具库、参考 Bot、计时器）
+│   ├── workspace/           引擎侧参考工作区（Starter 选手 + botkit/refbot 共用库）
 │   │   ├── bots/sapper/     攻坚参考 Bot（RAILGUN 拆舰，v1.3 新增）
 │   │   └── siege/           攻守参考 Bot：siegebot 库 + attacker / defender / pool
 │   ├── bots/                封存记录与编译产物（bin 不入库）

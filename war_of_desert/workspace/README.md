@@ -1,5 +1,9 @@
 # 选手工作区
 
+> 这是**引擎侧**的参考工作区：正式赛的 Starter 选手，加上 `botkit/`、`refbot/` 共用库。
+> 发给选手的完整包在 [`../../算法赛/RTS算法赛@Model_name/workspace/`](../../算法赛/RTS算法赛@Model_name/workspace/)，
+> 里面带 `arena/`（引擎与裁判源码）、骨架 + 两个预编译基线、`本地对局.bat`。
+
 > 正式赛编码期，你只需要动 `submission/`。其余目录是规则、工具和陪练。
 
 ## 目录
