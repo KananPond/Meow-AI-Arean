@@ -48,8 +48,10 @@ var BaseSurface = [5]float64{0.9, 1.1, 0.7, 0, 1}
 const (
 	UnitSlope    = 26 * Scale
 	CarrierSlope = 10 * Scale
-	// DoK F-19：母舰是最大地面单位，专用坡限
-	MothershipSlope = 8 * Scale
+	// DoK F-19：母舰是最大地面单位，专用坡限。
+	// v1.4：8*Scale（=32）在实际地形上完全不起作用——实测邻格高差 p90 只有 2~3、
+	// 全图最大 23，32 等于无限通行。改成绝对 4 个高程单位，母舰才真正被陡坎挡住。
+	MothershipSlope = 4
 	PlatformSlope   = 55 * Scale
 )
 

@@ -1,10 +1,10 @@
 {
  "files": {
-  "MANIFEST.json": "b3b23e81e59e111319c523096a3baa2f102fe409804dfef5e86e1c1e8284c69c",
-  "duel-geomorphic-20261109.json": "cdaa70c5bda0a616cf0a82b2c4b51ed0a1f8ed48e9e2b6d08dde3d750dc40e1a",
-  "duel-geomorphic-7.json": "4fb354a157620265b51d936d60a82a339419c44bfcf8cd02d45efa134659e267",
-  "duel-minecraft-20261109.json": "08828f13c8d73806298e1e3828c33190ed52cadb8e1b1821a3bed60c0b5b0c4a",
-  "duel-minecraft-7.json": "6991a6c166cf23f4ddebb27d0b6ffd4df66df1cb049a8fc5184a91cbd9541609",
+  "MANIFEST.json": "982c034c6ee6a4864591b3dd039cda71b55862ea3f836c8d4f23efc22b12d760",
+  "duel-geomorphic-20261109.json": "2ea0a56517422c77c8969cef86bc79e2123d0eb952de1f36dfb10a8dbbf156a3",
+  "duel-geomorphic-7.json": "baf109c0f97c73ad586eb5da4033c46dd08b952b56d2a7c8e9ba70b4b30dcd79",
+  "duel-minecraft-20261109.json": "ff5181b2ef70069e41d5ef0f43689e9fba749b10d8ed4f9ae4e669d3510a8a4a",
+  "duel-minecraft-7.json": "e0520b52bd12aa6c1fbbf952b1905ad27b9d713f14ca86ca2077625a778cb57c",
   "siege-minecraft-20261109.json": "e3279bdc306e83a43d61c3731cbfa841355912e89d2582481fc3375779bb0b1f",
   "siege-minecraft-7.json": "c3ee146863f4f7423dc9cb4a6780d187c813d179f8eff63175cd445cab061ca4"
  },

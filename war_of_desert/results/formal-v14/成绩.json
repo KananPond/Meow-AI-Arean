@@ -1,0 +1,41 @@
+{
+  "method": "Bradley–Terry (MM) + 每对一局虚拟平局 + bootstrap 95%",
+  "anchor": "Vanguard",
+  "games": 90,
+  "bootstrap": 200,
+  "ratings": {
+    "Bulwark": 73.9,
+    "Nomad": 378.8,
+    "Sapper": 73.9,
+    "Starter": 55.6,
+    "Swarm": 18.8,
+    "Vanguard": 0
+  },
+  "intervals": {
+    "Bulwark": [
+      -68.3,
+      222.5
+    ],
+    "Nomad": [
+      242.6,
+      521.2
+    ],
+    "Sapper": [
+      -67.7,
+      211.7
+    ],
+    "Starter": [
+      -33.1,
+      170.8
+    ],
+    "Swarm": [
+      -137.7,
+      145.4
+    ],
+    "Vanguard": [
+      0,
+      0
+    ]
+  },
+  "scale": "基准 = 0，差 400 ≈ 10:1；区间按对局整块重抽样"
+}

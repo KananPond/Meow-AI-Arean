@@ -60,7 +60,9 @@ func baseTypes() map[string]UnitType {
 		"ARTILLERY":  {HP: 400, Speed: 1.4, Range: 14, Dmg: 45, Rof: 30, Vision: 7, Arc: "lob", Armor: "light", V0: 628, Elev: [2]int{-5, 75}, Cost: 950, Build: 90, Pop: 5},
 		"SALVAGER":   {HP: 160, Speed: 2.2, Range: 0, Dmg: 0, Rof: 0, Vision: 7, Arc: "none", Armor: "light", V0: 0, Elev: [2]int{0, 0}, Cost: 100, Build: 20, Pop: 1},
 		"SCOUT":      {HP: 40, Speed: 4.6, Range: 0, Dmg: 0, Rof: 0, Vision: 16, Arc: "none", Armor: "light", V0: 0, Elev: [2]int{0, 0}, Cost: 80, Build: 15, Pop: 1},
-		"MOTHERSHIP": {HP: 3000, Speed: 0.55, Range: 7, Dmg: 22, Rof: 12, Vision: 14, Arc: "direct", Armor: "heavy", V0: 408, Elev: [2]int{-8, 30}, Cost: 0, Build: 0, Pop: 0},
+		// v1.4 削弱：HP 3000→1800、Dmg 22→13、Speed 0.55→0.30。
+		// 射程/射速/视野/装甲/弹道/四子系统全部保留——只降低战斗与机动数值，不减功能。
+		"MOTHERSHIP": {HP: 1800, Speed: 0.30, Range: 7, Dmg: 13, Rof: 12, Vision: 14, Arc: "direct", Armor: "heavy", V0: 408, Elev: [2]int{-8, 30}, Cost: 0, Build: 0, Pop: 0},
 		"CARRIER":    {HP: 800, Speed: 1.6, Range: 5, Dmg: 10, Rof: 15, Vision: 12, Arc: "direct", Armor: "heavy", V0: 337, Elev: [2]int{-10, 28}, Cost: 300, Build: 50, Pop: 4},
 	}
 }
@@ -274,7 +276,7 @@ const (
 // 任何会改变对局语义的改动都必须递增——不只是数值常量，也包括代码逻辑
 // （例如队列出队方式、索敌平局判定）。它参与 RulesHash，从而保证
 // 「同一指纹 = 同一套规则」，审计时不必再靠版本号自证。
-const RulesVersion = "1.3"
+const RulesVersion = "1.4"
 
 // SpeedMulOf 已废弃（母舰固定慢速），保留导出兼容。
 func SpeedMulOf(pct int) float64 {
