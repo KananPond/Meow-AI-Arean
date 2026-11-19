@@ -54,3 +54,7 @@ __pycache__/
 /算法赛/RTS算法赛@*/workspace/
 /算法赛/RTS算法赛@*/交卷/
 /算法赛/RTS算法赛@*/.赛务.json
+
+# 模板工作区是选手包的唯一真源，必须入库（上面的忽略规则要放行它）
+!/算法赛/RTS算法赛@Model_name/workspace/
+!/算法赛/RTS算法赛@Model_name/workspace/**

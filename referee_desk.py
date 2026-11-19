@@ -104,6 +104,24 @@ def detect_source(ws: Path):
     return None, "没找到 package main"
 
 
+def pick_frozen(stage: Path):
+    """找收卷副本：优先 交卷记录.json 里登记的 file，其次扫 *_bot.go / decide.go。"""
+    d = stage / "交卷"
+    if not d.is_dir():
+        return None
+    rec = d / "交卷记录.json"
+    if rec.is_file():
+        try:
+            name = json.loads(rec.read_text(encoding="utf-8")).get("file")
+            if name and (d / name).is_file():
+                return d / name
+        except Exception:  # noqa: BLE001
+            pass
+    for p in sorted(d.glob("*_bot.go")) + sorted(d.glob("decide.go")):
+        return p
+    return None
+
+
 def slugify(name: str) -> str:
     """工作区名 → 暂存目录名。
 
@@ -628,7 +646,7 @@ class RefereeDesk(tk.Tk):
     def _contest_pipeline(self, picked, seeds):
         stamp = time.strftime("%m%d-%H%M%S")
         out_rel = "results/desk/%s" % stamp
-        names, manifest = [], []
+        names, manifest, sources = [], [], {}
         STAGE_ROOT.mkdir(parents=True, exist_ok=True)
         for idx, (path, label, src, _note) in enumerate(picked):
             base = label.split("@")[-1] if "@" in label else label
@@ -636,18 +654,20 @@ class RefereeDesk(tk.Tk):
             if slug in names:
                 slug = "%s_%d" % (slug, idx + 1)
             names.append(slug)
+            sources[slug] = src
             stage = STAGE_ROOT / slug
             if stage.exists():
                 shutil.rmtree(stage)
             shutil.copytree(path, stage,
                             ignore=shutil.ignore_patterns("bin", "*.exe", ".git", "__pycache__"))
-            # 有收卷副本就以收卷副本为准：评的必须是冻结那一刻的代码
-            frozen = stage / "交卷" / "decide.go"
-            if frozen.is_file() and src:
+            # 有收卷副本就以收卷副本为准：评的必须是冻结那一刻的代码。
+            # 交付文件名是「<选手名>_bot.go」，不再固定叫 decide.go。
+            frozen = pick_frozen(stage)
+            if frozen is not None and src:
                 dst = stage if src == "." else stage / src
                 dst.mkdir(parents=True, exist_ok=True)
-                shutil.copy2(frozen, dst / "decide.go")
-                self._emit(("line", "     使用收卷副本 交卷/decide.go", "dim"))
+                shutil.copy2(frozen, dst / frozen.name)
+                self._emit(("line", "     使用收卷副本 交卷/%s" % frozen.name, "dim"))
             digest = tree_digest(stage)
             self._emit(("line", "暂存 %-24s ← %s" % (slug, path)))
             self._emit(("line", "     源码摘要 %s" % digest[:16]))
@@ -690,8 +710,10 @@ class RefereeDesk(tk.Tk):
                         % len(REF_BOTS), "dim"))
         stage_rel = STAGE_ROOT.relative_to(ENGINE).as_posix()
         for slug in names:
+            sub = sources.get(slug) or "."
+            src_rel = "%s/%s" % (stage_rel, slug) if sub == "." else "%s/%s/%s" % (stage_rel, slug, sub)
             cfg["entries"].append({"name": slug, "author": "选手工作区",
-                                   "source": "%s/%s" % (stage_rel, slug),
+                                   "source": src_rel,
                                    "bin": "bots/bin/%s.exe" % slug})
 
         cfg_rel = "tournament/_desk_%s.json" % stamp
@@ -701,8 +723,9 @@ class RefereeDesk(tk.Tk):
         out_abs.mkdir(parents=True, exist_ok=True)
         (out_abs / "工作区清单.json").write_text(
             json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
-        self._emit(("line", "编排完成：%d 名选手 + %d 个参考 Bot → %s"
-                        % (len(names), len(REF_BOTS), out_rel), "ok"))
+        n_opp = len(baselines) if baselines else len(REF_BOTS)
+        self._emit(("line", "编排完成：%d 名选手 + %d 个对手 → %s"
+                        % (len(names), n_opp, out_rel), "ok"))
 
         for argv in (["go", "run", "./cmd/arena", "build", "-config", cfg_rel],
                      ["go", "run", "./cmd/arena", "plan", "-config", cfg_rel],
@@ -924,7 +947,8 @@ def main():
         seeds = int(argv[i + 2]) if len(argv) > i + 2 else 1
         app.headless = True
         app._emit = lambda item: print(item[1] if item[0] == "line" else "EXIT=%s" % item[1])
-        app._contest_pipeline([(ws, ws.name, ".", "smoke")], seeds)
+        src, note = detect_source(ws)
+        app._contest_pipeline([(ws, ws.name, src, note)], seeds)
         app.destroy()
         return
     if "--scan" in argv:

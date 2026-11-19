@@ -43,9 +43,15 @@ py -3 -X utf8 referee_desk.py --init "算法赛" 1     # 也可以在裁判台�
 
 做两件事：
 
-1. **初始化工作区**：给还没有选手包的工作区目录发卷（`RULES.md`、`botkit/`、
-   模板 `submission/decide.go`、`clock.py`），**不开始计时**——计时由
-   「发卷并开赛」逐个开。
+1. **初始化工作区**：以 `算法赛/RTS算法赛@Model_name/workspace/` 为**模板**，
+   复制到每个选手目录（`RULES.md`、`prompt.md`、`botkit/`、`bots/`、`sandbox/`、
+   `clock.py`），**不开始计时**——计时由「发卷并开赛」逐个开。
+
+   选手包里的参考 Bot 只有三个：`bots/skeleton/`（骨架，能编译能跑、几乎什么都不做）、
+   `bots/baseline@1.exe`、`bots/baseline@2.exe`（两个预编译基线）。
+
+   交付物按选手名命名：`submission/<选手名>_bot.go`。例如 `RTS算法赛@HY-4/`
+   要交的是 `workspace/submission/HY-4_bot.go`——**不是 `decide.go`**。
 2. **冻结赛程**：按「所有报名者两两相遇 × 每个 seed 换边两局」生成
    `算法赛/赛程.json`，记录报名者（基线 + 选手）与全部对阵。
 

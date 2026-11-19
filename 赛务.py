@@ -16,11 +16,12 @@
 目录约定（与 开赛.py 一致）：
 
     算法赛/RTS算法赛@X/
-    ├── workspace/            选手包（发卷后出现）
+    ├── workspace/            选手包（由模板 RTS算法赛@Model_name 复制而来）
     │   ├── RULES.md …
-    │   ├── submission/decide.go   ← AI 在这里写
+    │   ├── bots/             骨架 Bot + 两个预编译基线
+    │   ├── submission/X_bot.go    ← AI 在这里写（文件名 = 选手名 + _bot.go）
     │   └── clock.py               ← 选手自己查看剩余时间
-    ├── 交卷/decide.go        收卷后的冻结副本
+    ├── 交卷/X_bot.go         收卷后的冻结副本
     ├── 交卷/交卷记录.json     SHA-256 / 字节数 / 用时 / accepted
     └── .赛务.json            计时与暂停的权威记录
 
@@ -43,24 +44,44 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 ENGINE = HERE / "war_of_desert"
-PACKAGE = ENGINE / "workspace"
+# 选手包的唯一真源：模板工作区。其他选手目录都由它复制而来。
+TEMPLATE = HERE / "算法赛" / "RTS算法赛@Model_name"
+PACKAGE = TEMPLATE / "workspace"
 
 TARGET_MINUTES = 90
 LIMIT_MINUTES = 120
 
 WS = "workspace"
-SUBMISSION = Path(WS) / "submission" / "decide.go"
 CLOCK = Path(WS) / "clock.py"
 FROZEN_DIR = "交卷"
 RECORD = ".赛务.json"
 WIN_EPOCH_OFFSET = 11644473600
 
-# 发给选手的东西。siege/ 是攻守实验，contestants/ 是裁判台的暂存区，都不发。
+# 发给选手的东西 = 模板 workspace/ 下除赛务产物以外的一切。
 PACKAGE_ITEMS = ["RULES.md", "README.md", "prompt.md", "clock.py",
-                 "botkit", "refbot", "bots", "submission", "sandbox"]
+                 "botkit", "bots", "submission", "sandbox"]
 
 
 # ---------------------------------------------------------------- 记录
+def contestant_name(ws: Path) -> str:
+    """选手名 = 目录名 @ 之后的部分；没有 @ 就用目录名。"""
+    return ws.name.split("@")[-1] if "@" in ws.name else ws.name
+
+
+def bot_filename(ws: Path) -> str:
+    """交付物文件名：<选手名>_bot.go（规则里写死的约定）。"""
+    return contestant_name(ws) + "_bot.go"
+
+
+def submission_path(ws: Path) -> Path:
+    """当前的交付文件。优先新命名，兼容早期发卷留下的 decide.go。"""
+    new = ws / WS / "submission" / bot_filename(ws)
+    if new.is_file():
+        return new
+    legacy = ws / WS / "submission" / "decide.go"
+    return legacy if legacy.is_file() else new
+
+
 def record_path(ws: Path) -> Path:
     return ws / RECORD
 
@@ -160,15 +181,16 @@ def status(ws: Path) -> dict:
         "target_left": max(0.0, TARGET_MINUTES - used),
         "paused": paused,
         "frozen": frozen,
-        "has_submission": (ws / SUBMISSION).is_file(),
+        "has_submission": submission_path(ws).is_file(),
+        "submission": submission_path(ws).name,
         "issued": (ws / CLOCK).is_file(),
     }
 
 
 # ---------------------------------------------------------------- 动作
 def issue(ws: Path) -> list:
-    """把选手包铺进 <ws>/workspace。已存在的文件不覆盖（避免冲掉 AI 的代码）。"""
-    dest = ws / "workspace"
+    """把选手包铺进 <ws>/workspace。已存在的文件不覆盖（避免冲掉选手的代码）。"""
+    dest = ws / WS
     dest.mkdir(parents=True, exist_ok=True)
     copied = []
     for name in PACKAGE_ITEMS:
@@ -179,13 +201,23 @@ def issue(ws: Path) -> list:
         if src.is_dir():
             if dst.exists():
                 continue
-            shutil.copytree(src, dst, ignore=shutil.ignore_patterns("bin", "*.exe", "__pycache__"))
+            # 基线 exe 必须一起发（它们本身就是预编译产物，不能按 bin 过滤掉）
+            shutil.copytree(src, dst, ignore=shutil.ignore_patterns("__pycache__"))
             copied.append(name + "/")
         else:
             if dst.exists():
                 continue
             shutil.copy2(src, dst)
             copied.append(name)
+
+    # 交付文件按「<选手名>_bot.go」命名：模板里叫 Model_name_bot.go，发卷时改名。
+    sub = dest / "submission"
+    if sub.is_dir():
+        for stale in ("Model_name_bot.go", "decide.go"):
+            p = sub / stale
+            if p.is_file() and p.name != bot_filename(ws):
+                p.rename(sub / bot_filename(ws))
+                break
     return copied
 
 
@@ -229,7 +261,7 @@ def resume(ws: Path) -> None:
 
 def freeze(ws: Path) -> dict:
     """冻结 submission/decide.go 到 交卷/，记录哈希与用时。"""
-    src = ws / SUBMISSION
+    src = submission_path(ws)
     out = ws / FROZEN_DIR
     out.mkdir(parents=True, exist_ok=True)
     used = elapsed_seconds(ws) / 60.0
@@ -241,13 +273,13 @@ def freeze(ws: Path) -> dict:
         "missing_submission": not src.is_file(),
     }
     if src.is_file():
-        dst = out / "decide.go"
+        dst = out / src.name
         shutil.copy2(src, dst)
         raw = dst.read_bytes()
         info.update({
             "sha256": hashlib.sha256(raw).hexdigest(),
             "bytes": len(raw),
-            "file": "decide.go",
+            "file": src.name,
         })
     (out / "交卷记录.json").write_text(
         json.dumps(info, ensure_ascii=False, indent=2), encoding="utf-8")
