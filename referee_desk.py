@@ -129,6 +129,47 @@ def tree_digest(root: Path) -> str:
     return h.hexdigest()
 
 
+# ---------------------------------------------------------------- 赛程
+def seed_list(n: int) -> list:
+    return [20261109 + i * 7 for i in range(max(1, n))]
+
+
+def discover_players(root: Path) -> list:
+    """参赛名单：预编译基线（root 下的 baseline@*.exe）+ 选手目录。"""
+    players = []
+    for exe in sorted(root.glob("baseline@*.exe")):
+        players.append({"name": exe.stem, "kind": "baseline", "path": exe.name})
+    for d in sorted(root.iterdir()):
+        if d.is_dir() and not d.name.startswith("_"):
+            players.append({"name": d.name, "kind": "contestant", "path": d.name})
+    return players
+
+
+def build_schedule(root: Path, seeds: int) -> dict:
+    players = discover_players(root)
+    ms = seed_list(seeds)
+    matches = []
+    for seed in ms:
+        for i in range(len(players)):
+            for j in range(i + 1, len(players)):
+                matches.append({"id": len(matches), "seed": seed,
+                                "a": players[i]["name"], "b": players[j]["name"],
+                                "mirror": True})
+    return {
+        "version": 1,
+        "createdBy": "referee_desk.py · 初始化赛程",
+        "createdAt": time.strftime("%Y-%m-%dT%H:%M:%S"),
+        "rulesVersion": "1.4",
+        "engine": "native",
+        "seeds": ms,
+        "mirror": True,
+        "players": players,
+        "matches": matches,
+        "note": "对阵表按「所有报名者两两相遇 × 每个 seed 换边两局」冻结；"
+                "实际开跑时只有已交付且被勾选的选手上场。",
+    }
+
+
 # ---------------------------------------------------------------- 主窗口
 class RefereeDesk(tk.Tk):
     def __init__(self):
@@ -288,7 +329,8 @@ class RefereeDesk(tk.Tk):
         srv = tk.Frame(tab, bg=BG)
         srv.pack(fill="x", padx=12, pady=(0, 4))
         tk.Label(srv, text="赛务", bg=BG, fg=MUTED).pack(side="left")
-        for text, fn in (("发卷并开赛", self.issue_start),
+        for text, fn in (("初始化工作区与赛程", self.init_contest),
+                         ("发卷并开赛", self.issue_start),
                          ("暂停", self.pause_timer),
                          ("恢复", self.resume_timer),
                          ("收卷", self.freeze_timer),
@@ -393,6 +435,7 @@ class RefereeDesk(tk.Tk):
             self._log("比赛根目录不存在：%s\n" % root, "err")
             self.status.set("目录不存在")
             return
+        self.root = root
         dirs = [root] if detect_source(root)[0] else [
             d for d in sorted(root.iterdir()) if d.is_dir() and not d.name.startswith("_")]
         for d in dirs:
@@ -458,6 +501,39 @@ class RefereeDesk(tk.Tk):
             messagebox.showwarning("裁判台", "%s：先在列表里选中一个工作区" % action)
             return None
         return w
+
+    def init_contest(self):
+        """初始化工作区（发卷，不开表）+ 冻结赛程。"""
+        if self.running:
+            return
+        root = Path(self.contest_root.get().strip() or DEFAULT_CONTEST_ROOT)
+        if not root.is_dir():
+            messagebox.showwarning("裁判台", "比赛根目录不存在：%s" % root)
+            return
+        seeds = int(self.seed_count.get() or "1")
+        if not messagebox.askokcancel(
+                "初始化", "对 %s 执行：\n"
+                "  · 给还没有选手包的工作区发卷（不开表）\n"
+                "  · 冻结赛程（%d 个 seed）\n确认？" % (root, seeds)):
+            return
+        done = []
+        for d in sorted(root.iterdir()):
+            if not d.is_dir() or d.name.startswith("_"):
+                continue
+            if (d / "workspace" / "clock.py").is_file():
+                continue
+            try:
+                service.issue(d)
+                done.append(d.name)
+            except Exception as e:  # noqa: BLE001
+                self._log("发卷失败 %s：%s\n" % (d.name, e), "err")
+        plan = build_schedule(root, seeds)
+        (root / "赛程.json").write_text(
+            json.dumps(plan, ensure_ascii=False, indent=2), encoding="utf-8")
+        self._log("发卷：%s\n" % ("、".join(done) if done else "全部已有选手包"), "dim")
+        self._log("赛程已冻结：%d 名报名者，%d 场对阵 → %s\n"
+                  % (len(plan["players"]), len(plan["matches"]), root / "赛程.json"), "ok")
+        self.scan_workspaces()
 
     def issue_start(self):
         if self.running:
@@ -593,12 +669,25 @@ class RefereeDesk(tk.Tk):
             "output": out_rel,
             "verify": True,
         }
-        # 参考 Bot 必须排在前面：BT 以「名册第一名」为锚（=0），
+        # 对手必须排在前面：BT 以「名册第一名」为锚（=0），
         # 锚点放成选手的话，每个选手都会是 0 分，跨场无法比较。
-        for bot in REF_BOTS:
-            cfg["entries"].append({"name": bot, "author": "官方参考 Bot",
-                                   "source": "workspace/bots/%s" % bot.lower(),
-                                   "bin": "bots/bin/%s.exe" % bot.lower()})
+        root = Path(self.contest_root.get().strip() or DEFAULT_CONTEST_ROOT)
+        baselines = sorted(root.glob("baseline@*.exe"))
+        if baselines:
+            for exe in baselines:
+                cfg["entries"].append({
+                    "name": exe.stem, "author": "基线（预编译）", "source": "",
+                    "bin": str(exe), "prebuilt": True,
+                })
+            self._emit(("line", "对手：%s（预编译基线）"
+                        % "、".join(e.stem for e in baselines), "dim"))
+        else:
+            for bot in REF_BOTS:
+                cfg["entries"].append({"name": bot, "author": "官方参考 Bot",
+                                       "source": "workspace/bots/%s" % bot.lower(),
+                                       "bin": "bots/bin/%s.exe" % bot.lower()})
+            self._emit(("line", "未找到 baseline@*.exe，改用 %d 个参考 Bot"
+                        % len(REF_BOTS), "dim"))
         stage_rel = STAGE_ROOT.relative_to(ENGINE).as_posix()
         for slug in names:
             cfg["entries"].append({"name": slug, "author": "选手工作区",
@@ -802,6 +891,30 @@ def main():
         text = state["text"] or app.seal_lbl.cget("text")
         print("SEAL_LABEL=%s" % text)
         print("SMOKE_OK" if ("✓" in text or "✗" in text) else "SMOKE_FAIL")
+        app.destroy()
+        return
+    if "--init" in argv:
+        # 无头初始化：--init [根目录] [seed 数]
+        i = argv.index("--init")
+        root = Path(argv[i + 1]) if len(argv) > i + 1 else DEFAULT_CONTEST_ROOT
+        seeds = int(argv[i + 2]) if len(argv) > i + 2 else 1
+        app.headless = True
+        app.contest_root.set(str(root))
+        for d in sorted(root.iterdir()):
+            if d.is_dir() and not d.name.startswith("_"):
+                if (d / "workspace" / "clock.py").is_file():
+                    print("已发卷  %s" % d.name)
+                    continue
+                got = service.issue(d)
+                print("发卷    %s  ← %s" % (d.name, "、".join(got)))
+        plan = build_schedule(root, seeds)
+        (root / "赛程.json").write_text(
+            json.dumps(plan, ensure_ascii=False, indent=2), encoding="utf-8")
+        print("赛程    %d 名报名者 / %d 场对阵（%d 个 seed）→ %s"
+              % (len(plan["players"]), len(plan["matches"]), len(plan["seeds"]),
+                 root / "赛程.json"))
+        for p_ in plan["players"]:
+            print("        %-44s %s" % (p_["name"], p_["kind"]))
         app.destroy()
         return
     if "--smoke-contest" in argv:

@@ -17,6 +17,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -127,7 +128,13 @@ func botEnv(extra []string) []string {
 }
 
 func startBot(spec BotSpec, hello string, initMs int, env []string) (*botProc, error) {
-	cmd := exec.Command(spec.Path)
+	// 选手进程在一次性临时目录里跑（cmd.Dir 会切走），相对路径必须在此刻
+	// 解析成绝对路径，否则 exec 会在临时目录里找 exe 并报「找不到路径」。
+	exe, err := filepath.Abs(spec.Path)
+	if err != nil {
+		return nil, fmt.Errorf("解析 %s 路径失败: %w", spec.Name, err)
+	}
+	cmd := exec.Command(exe)
 	cmd.Env = botEnv(env)
 	// 选手进程在一次性临时目录里跑：写文件的副作用不会污染仓库，
 	// 也无法用相对路径摸到 results/ 或别人的 workspace/。

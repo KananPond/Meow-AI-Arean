@@ -131,6 +131,9 @@ type sealEntry struct {
 	Source string            `json:"source"`
 	Bin    string            `json:"bin"`
 	Files  map[string]string `json:"files"`
+	// Prebuilt 项没有源码，只封存可执行文件的哈希。
+	Prebuilt  bool   `json:"prebuilt,omitempty"`
+	BinSHA256 string `json:"binSha256,omitempty"`
 }
 
 func cmdBuild(args []string) error {
@@ -159,9 +162,21 @@ func cmdBuild(args []string) error {
 		if binRel == "" {
 			binRel = filepath.ToSlash(filepath.Join("bots", "bin", e.Name+exeSuffix()))
 		}
-		bin := filepath.Join(root, filepath.FromSlash(binRel))
+		bin := binPath(root, binRel)
 		if err := os.MkdirAll(filepath.Dir(bin), 0o755); err != nil {
 			return err
+		}
+		if e.Prebuilt {
+			sum, err := hashFile(bin)
+			if err != nil {
+				return fmt.Errorf("预编译选手 %s 的可执行文件不可用（%s）: %w", e.Name, binRel, err)
+			}
+			fmt.Printf("seal  %-12s 预编译 → %s\n", e.Name, binRel)
+			rec.Entries = append(rec.Entries, sealEntry{
+				Name: e.Name, Source: e.Source, Bin: binRel,
+				Prebuilt: true, BinSHA256: sum,
+			})
+			continue
 		}
 		cmd := exec.Command("go", "build", "-o", bin, "./"+filepath.ToSlash(e.Source))
 		cmd.Dir = root
@@ -187,6 +202,26 @@ func cmdBuild(args []string) error {
 	}
 	fmt.Println("封存记录 → bots/封存记录.json（" + fmt.Sprint(len(rec.Entries)) + " 名选手）")
 	return nil
+}
+
+// binPath 把配置里的 bin 解析成绝对路径。
+//
+// 相对路径按仓库根解析；绝对路径原样使用——基线 Bot 以预编译 exe 的形式
+// 放在 算法赛/ 下，不在 Go 模块里，不能被 Join 拼接。
+func binPath(root, rel string) string {
+	if filepath.IsAbs(rel) || (len(rel) > 1 && rel[1] == ':') {
+		return filepath.FromSlash(rel)
+	}
+	return filepath.Join(root, filepath.FromSlash(rel))
+}
+
+func hashFile(p string) (string, error) {
+	raw, err := os.ReadFile(p)
+	if err != nil {
+		return "", err
+	}
+	sum := sha256.Sum256(raw)
+	return hex.EncodeToString(sum[:]), nil
 }
 
 func hashTree(dir string) (map[string]string, error) {
@@ -398,8 +433,8 @@ func cmdRun(args []string) error {
 		if !ok {
 			return fmt.Errorf("赛程里的选手 %s 不在 entries 中", m.B)
 		}
-		specA := judge.BotSpec{Name: ea.Name, Path: filepath.Join(root, filepath.FromSlash(ea.Bin))}
-		specB := judge.BotSpec{Name: eb.Name, Path: filepath.Join(root, filepath.FromSlash(eb.Bin))}
+		specA := judge.BotSpec{Name: ea.Name, Path: binPath(root, ea.Bin)}
+		specB := judge.BotSpec{Name: eb.Name, Path: binPath(root, eb.Bin)}
 		rec, err := judge.RunMatch(m.ID, m.Seed, specA, specB, judgeCfg)
 		if err != nil {
 			return fmt.Errorf("第 %d 场（%s vs %s）失败: %w", m.ID, m.A, m.B, err)
@@ -679,7 +714,7 @@ func cmdCheck(args []string) error {
 	}
 	if *bPath == "" {
 		first := cfg.Entries[0]
-		*bPath = filepath.Join(root, filepath.FromSlash(first.Bin))
+		*bPath = binPath(root, first.Bin)
 	}
 	for _, p := range []string{*aPath, *bPath} {
 		if _, err := os.Stat(p); err != nil {

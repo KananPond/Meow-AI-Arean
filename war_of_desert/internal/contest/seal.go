@@ -25,6 +25,9 @@ type SealEntry struct {
 	Source string            `json:"source"`
 	Bin    string            `json:"bin"`
 	Files  map[string]string `json:"files"`
+	// Prebuilt 项没有源码：只校验可执行文件的哈希。
+	Prebuilt  bool   `json:"prebuilt,omitempty"`
+	BinSHA256 string `json:"binSha256,omitempty"`
 }
 
 // Seal 是 bots/封存记录.json 的结构。
@@ -65,6 +68,18 @@ func (s *Seal) Verify(root string) []string {
 		}
 	}
 	for _, e := range s.Entries {
+		if e.Prebuilt {
+			got, err := hashFile(resolveBin(root, e.Bin))
+			if err != nil {
+				bad = append(bad, fmt.Sprintf("%s（预编译）：%v", e.Name, err))
+				continue
+			}
+			if got != e.BinSHA256 {
+				bad = append(bad, fmt.Sprintf("%s（预编译）：封存 %s，实际 %s",
+					e.Name, short(e.BinSHA256), short(got)))
+			}
+			continue
+		}
 		dir := filepath.Join(root, filepath.FromSlash(e.Source))
 		have, err := hashTree(dir)
 		if err != nil {
@@ -117,6 +132,15 @@ func (s *Seal) CheckEntryCoverage(names []string) []string {
 	}
 	sort.Strings(bad)
 	return bad
+}
+
+// resolveBin 解析 bin 路径：绝对路径原样用（基线 exe 在 Go 模块之外，
+// 用 filepath.Join 拼会得到 "root/D:/..." 这种非法路径）。
+func resolveBin(root, bin string) string {
+	if filepath.IsAbs(bin) || (len(bin) > 1 && bin[1] == ':') {
+		return filepath.FromSlash(bin)
+	}
+	return filepath.Join(root, filepath.FromSlash(bin))
 }
 
 func hashFile(p string) (string, error) {
