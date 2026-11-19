@@ -52,7 +52,7 @@
 窗口里选赛季配置，按顺序点「环境自检 → 编译封存 → 冻结赛程 → 开赛 → 评分」，
 进度条按场次走，日志实时滚动；右上角封存灯直接反映 `arena seal` 的结果。
 
-组织方菜单（等价于下面的命令）：
+组织方旧菜单（功能与裁判台重叠，保留给脚本化场景）：
 
 ```bash
 python -X utf8 start.py          # 交互菜单：build / plan / run / rate / check / selftest / season / status
@@ -64,7 +64,7 @@ python -X utf8 start.py season   # 整季流水线：build → plan → run → 
 ```bash
 CFG=tournament/formal_v14.json   # 当前赛季（v1.4）
 go run ./cmd/arena selftest -config $CFG   # 验证超时 kill / 崩溃重启 / 非法结构红牌
-go run ./cmd/arena build    -config $CFG   # 编译 5 名选手 + 封存源码哈希
+go run ./cmd/arena build    -config $CFG   # 编译 6 名选手（5 个参考 Bot + Starter）并封存源码哈希
 go run ./cmd/arena plan     -config $CFG   # 冻结赛程 → results/formal-v14/赛程.json
 go run ./cmd/arena run      -config $CFG   # 跑完 45 场 / 90 局 → 结果.jsonl + 回放（开赛前校验封存）
 go run ./cmd/arena rate     -config $CFG   # BT + 加权总分 → 成绩.md / 成绩_加权总分.md / 成绩.json
