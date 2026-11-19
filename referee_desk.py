@@ -12,7 +12,7 @@
     python -X utf8 referee_desk.py        # 或双击 裁判台.bat
 
 为什么用 tkinter：裁判机常常就是比赛机，开赛时不该再抢几百 MB。
-标准库单窗口，常驻约 30 MB，零第三方依赖。
+标准库单窗口，实测常驻约 41 MB，零第三方依赖。
 """
 
 import hashlib
@@ -47,7 +47,7 @@ REF_BOTS = ["Vanguard", "Bulwark", "Swarm", "Nomad", "Sapper"]
 
 PROGRESS_RE = re.compile(r"\[(\d+)\s*/\s*(\d+)\]")
 ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
-SLUG_RE = re.compile(r"[^0-9A-Za-z_\-\u4e00-\u9fa5]+")
+SLUG_RE = re.compile(r"[^0-9A-Za-z_-]+")
 
 BG = "#1e1f22"
 PANEL = "#2b2d31"
@@ -72,16 +72,21 @@ def go_files(d: Path, depth: int = 1) -> list:
 
 
 def detect_source(ws: Path):
-    """判断一个工作区里可编译的 main 包在哪。返回 (源子目录, 说明)。"""
+    """判断一个工作区里可编译的 main 包在哪。返回 (源子目录, 说明)。
+
+    判定看整个 .go 文件而不是开头若干行：选手包模板的许可证/说明注释很长，
+    按前缀截断会把合法的 decide.go 判成「没有 package main」。
+    """
     for c in (ws, ws / "submission", ws / "src"):
         if not c.is_dir():
             continue
         for f in sorted(c.glob("*.go")):
             try:
-                head = f.read_text(encoding="utf-8", errors="replace")[:600]
+                # 整文件扫：选手包模板开头的注释比 600 字符还长，截断会漏判
+                src_text = f.read_text(encoding="utf-8", errors="replace")[:1 << 16]
             except OSError:
                 continue
-            if "package main" in head and "func main(" in head:
+            if "package main" in src_text and "func main(" in src_text:
                 return ("." if c == ws else c.name), "入口 %s" % f.name
     if not go_files(ws):
         return None, "没有 .go 文件（空工作区？）"
@@ -89,7 +94,18 @@ def detect_source(ws: Path):
 
 
 def slugify(name: str) -> str:
-    return SLUG_RE.sub("_", name).strip("_") or "contestant"
+    """工作区名 → 暂存目录名。
+
+    必须是纯 ASCII：暂存目录在 Go 模块里，导入路径含中文会直接
+    “malformed import path ... invalid char”。全中文的名字退回短哈希。
+    """
+    s = SLUG_RE.sub("_", name).strip("_")
+    if not s:
+        return "bot_" + hashlib.sha1(name.encode("utf-8")).hexdigest()[:6]
+    if re.search(r"[^0-9A-Za-z_-]", name):
+        # 原名含中文等非 ASCII：补个短哈希，避免 模板Bot / 测试Bot 撞成同一个 Bot
+        s = "%s_%s" % (s, hashlib.sha1(name.encode("utf-8")).hexdigest()[:4])
+    return s
 
 
 def tree_digest(root: Path) -> str:
@@ -227,7 +243,7 @@ class RefereeDesk(tk.Tk):
         ttk.Button(row, text="浏览", command=self.browse_root).pack(side="left")
         ttk.Button(row, text="扫描", command=self.scan_workspaces).pack(side="left", padx=8)
 
-        tk.Label(tab, text="勾选要评测的工作区（可多选，不必全选）；目录名建议 RTS算法赛@<模型名>",
+        tk.Label(tab, text="勾选要评测的工作区（可多选）；只想跑一个就双击它。目录名建议 RTS算法赛@<模型名>",
                  bg=BG, fg=MUTED, font=(None, 9)).pack(anchor="w", padx=12)
 
         wrap = tk.Frame(tab, bg=BG)
@@ -239,6 +255,8 @@ class RefereeDesk(tk.Tk):
         sb = tk.Scrollbar(wrap, command=self.lst.yview, bg=PANEL)
         sb.pack(side="left", fill="y")
         self.lst.configure(yscrollcommand=sb.set)
+        self.lst.bind("<<ListboxSelect>>", self._on_select)
+        self.lst.bind("<Double-Button-1>", self.run_single)
 
         bar = tk.Frame(tab, bg=BG)
         bar.pack(fill="x", padx=12, pady=(8, 10))
@@ -247,8 +265,11 @@ class RefereeDesk(tk.Tk):
         tk.Label(bar, text="seed 数", bg=BG, fg=MUTED).pack(side="left", padx=(16, 4))
         ttk.Combobox(bar, textvariable=self.seed_count, values=("1", "2", "3"),
                      width=4, state="readonly").pack(side="left")
-        ttk.Button(bar, text="评测选中", style="Go.TButton",
-                   command=self.run_contest).pack(side="left", padx=(16, 0))
+        self.eval_btn = ttk.Button(bar, text="评测选中（0）", style="Go.TButton",
+                                   command=self.run_contest)
+        self.eval_btn.pack(side="left", padx=(16, 0))
+        ttk.Button(bar, text="只跑双击的那一个", command=self.run_single).pack(
+            side="left", padx=6)
         ttk.Button(bar, text="打开评测结果", command=self.open_contest_results).pack(
             side="left", padx=8)
         return tab
@@ -359,7 +380,28 @@ class RefereeDesk(tk.Tk):
                 self.workspaces.append((d, label, src, note))
         ok = sum(1 for w in self.workspaces if w[2])
         self.status.set("扫描到 %d 个，可用 %d 个" % (len(self.workspaces), ok))
+        self._on_select()
         self._log("扫描 %s：%d 个目录，%d 个可编译\n" % (root, len(self.workspaces), ok), "dim")
+
+    def _on_select(self, _evt=None):
+        n = len(self.picked())
+        if hasattr(self, "eval_btn"):
+            self.eval_btn.configure(text="评测选中（%d）" % n)
+
+    def run_single(self, evt=None):
+        """只跑一个：双击哪一行就只评测哪一行。"""
+        if self.running:
+            return
+        if evt is not None:
+            idx = self.lst.nearest(evt.y)
+            self.lst.selection_clear(0, "end")
+            self.lst.selection_set(idx)
+        self._on_select()
+        picked = self.picked()
+        if len(picked) != 1:
+            messagebox.showwarning("裁判台", "请双击（或只勾选）一个可编译的工作区")
+            return
+        self.run_contest()
 
     def select_all(self):
         for i, w in enumerate(self.workspaces):
@@ -380,9 +422,11 @@ class RefereeDesk(tk.Tk):
         if not picked:
             messagebox.showwarning("裁判台", "先勾选至少一个可编译的工作区")
             return
+        who = "只跑这一个" if len(picked) == 1 else "评测 %d 个选手" % len(picked)
         if not messagebox.askokcancel(
-                "评测", "评测 %d 个选手：\n%s\n\n对手：%s + 彼此\n确认开跑？"
-                % (len(picked), "\n".join("  · " + w[1] for w in picked), "、".join(REF_BOTS))):
+                who, "%s\n%s\n\n对手：%s%s\n确认开跑？"
+                % (who, "\n".join("  · " + w[1] for w in picked), "、".join(REF_BOTS),
+                   "" if len(picked) == 1 else " + 彼此")):
             return
         seeds = int(self.seed_count.get() or "1")
 
@@ -488,23 +532,23 @@ class RefereeDesk(tk.Tk):
         threading.Thread(target=work, daemon=True).start()
 
     def _stream(self, argv) -> bool:
-        self.log_q.put(("line", "$ " + " ".join(argv)))
+        self._emit(("line", "$ " + " ".join(argv)))
         try:
             proc = subprocess.Popen(argv, cwd=str(ENGINE), stdout=subprocess.PIPE,
                                     stderr=subprocess.STDOUT, text=True, encoding="utf-8",
                                     errors="replace", bufsize=1,
                                     creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
         except Exception as e:  # noqa: BLE001
-            self.log_q.put(("line", "启动失败：%s" % e))
-            self.log_q.put(("exit", 127, None))
+            self._emit(("line", "启动失败：%s" % e))
+            self._emit(("exit", 127, None))
             return False
         self.proc = proc
         assert proc.stdout is not None
         for line in proc.stdout:
-            self.log_q.put(("line", line.rstrip("\n")))
+            self._emit(("line", line.rstrip("\n")))
         code = proc.wait()
         if code != 0:
-            self.log_q.put(("exit", code, None))
+            self._emit(("exit", code, None))
             return False
         return True
 
@@ -639,6 +683,10 @@ def main():
         app.destroy()
         return
     if "--scan" in argv:
+        i = argv.index("--scan")
+        if len(argv) > i + 1:
+            app.contest_root.set(argv[i + 1])
+            app.scan_workspaces()
         for path, label, src, note in app.workspaces:
             print("%-44s src=%-10s %s" % (label, src or "-", note))
         app.destroy()

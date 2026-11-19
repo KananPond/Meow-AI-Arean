@@ -46,3 +46,6 @@ __pycache__/
 /war_of_desert/workspace/contestants/
 /war_of_desert/results/desk/
 /war_of_desert/tournament/_desk_*.json
+
+# 裁判台演示工作区（本地测试用）
+/_demo工作区/
