@@ -1,0 +1,52 @@
+{
+  "name": "本地练习赛",
+  "season": "本地 · 与正式赛同规则",
+  "version": "1.4",
+  "engine": {
+    "kind": "native"
+  },
+  "rules": {
+    "tickLimit": 1200,
+    "tickMs": 50,
+    "decideMs": 120,
+    "initMs": 2000,
+    "maxStrikes": 3,
+    "strikeMode": "consecutive",
+    "generator": "minecraft",
+    "vision": false
+  },
+  "schedule": {
+    "seeds": [
+      20261109,
+      20261116,
+      20261123
+    ],
+    "mirror": true,
+    "bootstrap": 200
+  },
+  "entries": [
+    {
+      "name": "baseline@1",
+      "author": "基线（预编译）",
+      "source": "",
+      "bin": "bots/baseline@1.exe",
+      "prebuilt": true
+    },
+    {
+      "name": "baseline@2",
+      "author": "基线（预编译）",
+      "source": "",
+      "bin": "bots/baseline@2.exe",
+      "prebuilt": true
+    },
+    {
+      "name": "你的 Bot",
+      "author": "本地",
+      "source": "",
+      "bin": "bot.exe",
+      "prebuilt": true
+    }
+  ],
+  "output": "对局记录/本地赛季",
+  "verify": true
+}

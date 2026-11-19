@@ -53,6 +53,10 @@ func main() {
 		err = cmdRate(args)
 	case "check":
 		err = cmdCheck(args)
+	case "local":
+		err = cmdLocal(args)
+	case "version":
+		err = cmdVersion(args)
 	case "selftest":
 		err = cmdSelftest(args)
 	case "seal":
@@ -74,6 +78,9 @@ func usage() {
 	arena run    [-config tournament/formal.json] [-resume] [-limit N]
 	arena rate   [-config tournament/formal.json]
   arena check  [-a <bot.exe>] [-b <bot.exe>] [-seed N] [-config ...]
+  arena local  [-bot bot.exe] [-vs a.exe,b.exe] [-seeds N] [-out 目录]
+               选手本地调试：与基线对打，出逐局 VP + 回放（不校验封存）
+  arena version        打印规则版本与指纹
   arena selftest [-config ...]   验证超时 kill / 崩溃重启 / 非法结构红牌
   arena seal   [-config ...]   只校验封存记录（源码哈希 / 名单覆盖）
 
@@ -697,6 +704,20 @@ func cmdRate(args []string) error {
 /* check                                                               */
 /* ------------------------------------------------------------------ */
 
+// loadConfigOrDefault 读配置；默认路径不存在时用内置的正式赛默认值。
+//
+// 选手包里的 arena/ 只有引擎源码，没有 tournament/ 目录，但 check 得能直接跑；
+// 显式指定的配置文件找不到时仍然报错，不静默降级。
+func loadConfigOrDefault(p string) (*contest.Config, string, error) {
+	if st, err := os.Stat(p); err == nil && !st.IsDir() {
+		return contest.Load(p)
+	}
+	if p == "tournament/formal.json" {
+		return contest.Default(), ".", nil
+	}
+	return nil, "", fmt.Errorf("找不到配置 %s", p)
+}
+
 func cmdCheck(args []string) error {
 	fs := flag.NewFlagSet("check", flag.ExitOnError)
 	cfgPath := fs.String("config", "tournament/formal.json", "赛事配置")
@@ -705,7 +726,7 @@ func cmdCheck(args []string) error {
 	seed := fs.Int("seed", 20261109, "seed")
 	_ = fs.Parse(args)
 
-	cfg, root, err := contest.Load(*cfgPath)
+	cfg, root, err := loadConfigOrDefault(*cfgPath)
 	if err != nil {
 		return err
 	}
@@ -713,8 +734,12 @@ func cmdCheck(args []string) error {
 		*aPath = filepath.Join(root, "bots", "bin", "submission"+exeSuffix())
 	}
 	if *bPath == "" {
-		first := cfg.Entries[0]
-		*bPath = binPath(root, first.Bin)
+		if len(cfg.Entries) > 0 {
+			*bPath = binPath(root, cfg.Entries[0].Bin)
+		} else {
+			// 选手包布局：<workspace>/{bot.exe, bots/baseline@1.exe}
+			*bPath = filepath.Join(filepath.Dir(*aPath), "bots", "baseline@1.exe")
+		}
 	}
 	for _, p := range []string{*aPath, *bPath} {
 		if _, err := os.Stat(p); err != nil {
@@ -772,6 +797,278 @@ func cmdCheck(args []string) error {
 		}
 	}
 	return nil
+}
+
+// cmdVersion 打印规则身份，供打包脚本与选手核对「裁判/宿主/规则」三者是否配套。
+func cmdVersion(args []string) error {
+	fs := flag.NewFlagSet("version", flag.ExitOnError)
+	tickLimit := fs.Int("ticklimit", 1200, "tick 上限")
+	_ = fs.Parse(args)
+	fmt.Printf("rulesVersion=%s\n", sim.RulesVersion)
+	fmt.Printf("rulesHash=%s\n", sim.RulesHash(*tickLimit, sim.NormalizeVision(sim.Vision{})))
+	fmt.Printf("proto=%s.%d\n", protocol.ProtoName, protocol.ProtoVersion)
+	return nil
+}
+
+/* ------------------------------------------------------------------ */
+/* local                                                               */
+/* ------------------------------------------------------------------ */
+
+// cmdLocal 是发给选手的本地对局器：拿自己编的 Bot 跟基线对打。
+//
+// 它与正式赛共用同一套裁判（internal/judge）与规则（internal/sim），差别只有
+// 三点：不校验封存记录、不读正式赛赛程、结果写到当前目录。这样选手在自己
+// 机器上看到的结果，就是赛场上会拿到的结果。
+func cmdLocal(args []string) error {
+	fs := flag.NewFlagSet("local", flag.ExitOnError)
+	botPath := fs.String("bot", "bot.exe", "要调试的 Bot 可执行文件")
+	vsFlag := fs.String("vs", "", "对手 exe，逗号分隔（默认取 bots/baseline@*.exe）")
+	nSeeds := fs.Int("seeds", 2, "跑几个 seed（每个 seed 换边两局）")
+	baseSeed := fs.Int("seed0", 20261109, "起始 seed")
+	outDir := fs.String("out", "对局记录", "回放与结果目录")
+	limit := fs.Int("limit", 0, "覆盖 tick 上限（0 = 正式规则）")
+	_ = fs.Parse(args)
+
+	botAbs, err := filepath.Abs(*botPath)
+	if err != nil {
+		return err
+	}
+	if st, err := os.Stat(botAbs); err != nil || st.IsDir() {
+		return fmt.Errorf("找不到你的 Bot：%s（先在 workspace 下 go build -o bot.exe ./submission）", *botPath)
+	}
+
+	opponents, err := localOpponents(*vsFlag, botAbs)
+	if err != nil {
+		return err
+	}
+
+	host, err := localHost()
+	if err != nil {
+		return err
+	}
+
+	tickLimit := 1200
+	if *limit > 0 {
+		tickLimit = *limit
+	}
+	vision := sim.NormalizeVision(sim.Vision{})
+	wantHash := sim.RulesHash(tickLimit, vision)
+
+	jcfg := judge.Config{
+		HostScript: host,
+		Rules: engine.HostConfig{
+			Generator: "minecraft",
+			TickLimit: tickLimit,
+			TickMs:    50,
+			DecideMs:  120,
+			InitMs:    2000,
+			Vision:    false,
+		},
+		Mirror:     true,
+		MaxStrikes: 3,
+		StrikeMode: "consecutive",
+		Verify:     true,
+	}
+
+	you := "你的 Bot"
+	fmt.Println("Desert Arena 本地对局")
+	fmt.Printf("  规则 %s ｜ 指纹 %s ｜ %d tick ｜ 换边两局 ｜ 确定性复核 开\n",
+		sim.RulesVersion, wantHash, tickLimit)
+	if *limit > 0 && *limit != 1200 {
+		fmt.Printf("  ⚠ tick 上限被改成 %d，与正式赛（1200）不同，结果不可与正式成绩比较\n", *limit)
+	}
+	fmt.Printf("  Bot ：%s\n", botAbs)
+	fmt.Printf("  对手：%s\n", strings.Join(opponents, "、"))
+	fmt.Printf("  宿主：%s\n\n", host)
+
+	replayDir := filepath.Join(*outDir, "回放")
+	if err := os.MkdirAll(replayDir, 0o755); err != nil {
+		return err
+	}
+	resultsPath := filepath.Join(*outDir, "结果.jsonl")
+	rf, err := os.Create(resultsPath)
+	if err != nil {
+		return err
+	}
+	defer rf.Close()
+	w := bufio.NewWriter(rf)
+	defer w.Flush()
+
+	if *nSeeds <= 0 {
+		*nSeeds = 1
+	}
+	wins, draws, losses := 0, 0, 0
+	sumYou, sumOpp, games, faultTotal := 0, 0, 0, 0
+	maxDecide := 0.0
+	matchIdx := 0
+	started := time.Now()
+
+	for _, opp := range opponents {
+		oppName := strings.TrimSuffix(filepath.Base(opp), filepath.Ext(opp))
+		fmt.Printf("── 对手 %s ──\n", oppName)
+		for k := 0; k < *nSeeds; k++ {
+			seed := *baseSeed + k*7
+			rec, err := judge.RunMatch(matchIdx, seed,
+				judge.BotSpec{Name: you, Path: botAbs},
+				judge.BotSpec{Name: oppName, Path: opp}, jcfg)
+			if err != nil {
+				return fmt.Errorf("对局失败（%s / seed=%d）: %w", oppName, seed, err)
+			}
+			if rec.RulesHash != wantHash {
+				return fmt.Errorf("裁判程序与引擎宿主版本不一致：\n  裁判期望 %s\n  宿主实际 %s\n"+
+					"tools/arena.exe 与 tools/enginehost.exe 必须成对重编（让主办方重新发卷）",
+					wantHash, rec.RulesHash)
+			}
+			writeReplay(replayDir, rec)
+			matchIdx++
+
+			for _, g := range rec.Games {
+				seatYou := 0
+				if g.Seats[0] != you {
+					seatYou = 1
+				}
+				seatOpp := 1 - seatYou
+				mark := "平"
+				switch {
+				case g.Result.Winner == seatYou:
+					mark = "胜"
+					wins++
+				case g.Result.Winner == seatOpp:
+					mark = "负"
+					losses++
+				default:
+					draws++
+				}
+				myVP, opVP := g.Result.VP[seatYou], g.Result.VP[seatOpp]
+				sumYou += myVP
+				sumOpp += opVP
+				games++
+
+				faults := len(g.Faults[seatYou])
+				faultTotal += faults
+				ds := g.Result.Decide[seatYou].AvgMS
+				if ds > maxDecide {
+					maxDecide = ds
+				}
+
+				line := gameLine{
+					Match: rec.Index, Seed: g.Seed, Game: g.Index, Swap: g.Swap, Seats: g.Seats,
+					Winner: protocol.WinnerName(g.Result.Winner, g.Seats), WinnerSeat: g.Result.Winner,
+					Level: g.Result.Level, Reason: g.Result.Reason, Turn: g.Result.Turn,
+					VP: g.Result.VP, RulesHash: rec.RulesHash,
+					Faults:     []int{len(g.Faults[0]), len(g.Faults[1])},
+					DurationMS: g.DurationMS,
+				}
+				for _, c := range g.Result.Cards {
+					line.Totals = append(line.Totals, round2(c.Total))
+					line.Fields = append(line.Fields, c.Fields)
+				}
+				if len(g.Verify) > 0 {
+					var v struct {
+						OK bool `json:"ok"`
+					}
+					if json.Unmarshal(g.Verify, &v) == nil {
+						line.VerifyOK = &v.OK
+					}
+				}
+				raw, _ := json.Marshal(line)
+				w.Write(append(raw, '\n'))
+
+				fmt.Printf("  seed %-8d 第%d局 座位%d  VP %4d:%-4d  %s  层级%d  故障%d  决策%.1fms\n",
+					g.Seed, g.Index+1, seatYou, myVP, opVP, mark, g.Result.Level, faults, ds)
+				for i, f := range g.Faults[seatYou] {
+					if i >= 2 {
+						fmt.Printf("      其余 %d 条故障见回放\n", len(g.Faults[seatYou])-2)
+						break
+					}
+					fmt.Printf("      t=%d %s: %s\n", f.Turn, f.Kind, f.Err)
+				}
+			}
+		}
+	}
+
+	avgYou, avgOpp := 0.0, 0.0
+	if games > 0 {
+		avgYou = float64(sumYou) / float64(games)
+		avgOpp = float64(sumOpp) / float64(games)
+	}
+	fmt.Printf("\n合计：%d 胜 %d 平 %d 负（%d 局）｜平均 VP %.0f : %.0f｜最大决策 %.1fms｜故障 %d 条\n",
+		wins, draws, losses, games, avgYou, avgOpp, maxDecide, faultTotal)
+	fmt.Printf("用时 %s ｜ 回放 → %s ｜ 结果 → %s\n",
+		time.Since(started).Round(100*time.Millisecond), replayDir, resultsPath)
+	if faultTotal > 0 {
+		fmt.Println("⚠ 有故障：机器人超时 / 崩溃 / 返回非法结构都会记在这里，正式赛按红牌处理。")
+	}
+	return nil
+}
+
+// localOpponents 解析对手列表；没给就在 bot 旁边和当前目录找基线 exe。
+//
+// 选手包布局是 <workspace>/{bot.exe, bots/baseline@*.exe}，而 arena 源码在
+// <workspace>/arena/，所以只按 cwd 找会落空——先看 bot 所在目录。
+func localOpponents(vs, botPath string) ([]string, error) {
+	if strings.TrimSpace(vs) != "" {
+		var out []string
+		for _, raw := range strings.Split(vs, ",") {
+			raw = strings.TrimSpace(raw)
+			if raw == "" {
+				continue
+			}
+			abs, err := filepath.Abs(raw)
+			if err != nil {
+				return nil, err
+			}
+			if st, err := os.Stat(abs); err != nil || st.IsDir() {
+				return nil, fmt.Errorf("找不到对手程序：%s", raw)
+			}
+			out = append(out, abs)
+		}
+		if len(out) > 0 {
+			return out, nil
+		}
+	}
+	dirs := []string{filepath.Join(filepath.Dir(botPath), "bots"), "bots"}
+	for _, dir := range dirs {
+		cands, _ := filepath.Glob(filepath.Join(dir, "baseline@*.exe"))
+		if len(cands) == 0 {
+			continue
+		}
+		sort.Strings(cands)
+		out := make([]string, 0, len(cands))
+		for _, c := range cands {
+			abs, err := filepath.Abs(c)
+			if err != nil {
+				return nil, err
+			}
+			out = append(out, abs)
+		}
+		return out, nil
+	}
+	return nil, fmt.Errorf("没指定对手，也没在 %s 下找到 baseline@*.exe", dirs[0])
+}
+
+// localHost 找引擎宿主：优先与裁判程序放在一起的那份，其次当前目录的源码。
+func localHost() (string, error) {
+	if p := contest.PackagedEngineHost(); p != "" {
+		return p, nil
+	}
+	if st, err := os.Stat(filepath.Join("cmd", "enginehost")); err == nil && st.IsDir() {
+		// 编到 .bin/ 而不是 bots/bin/：选手包里的 arena/ 是只读源码副本，
+		// 不该因为跑一次本地对局就多出一棵构建产物目录。
+		bin := filepath.Join(".bin", "enginehost"+exeSuffix())
+		_ = os.MkdirAll(filepath.Dir(bin), 0o755)
+		build := exec.Command("go", "build", "-o", bin, "./cmd/enginehost")
+		build.Stdout, build.Stderr = os.Stdout, os.Stderr
+		if err := build.Run(); err != nil {
+			return "", fmt.Errorf("编译 enginehost 失败: %w", err)
+		}
+		return filepath.Abs(bin)
+	}
+	if st, err := os.Stat("enginehost" + exeSuffix()); err == nil && !st.IsDir() {
+		return filepath.Abs("enginehost" + exeSuffix())
+	}
+	return "", fmt.Errorf("找不到引擎宿主 enginehost%s：它必须和 arena%s 放在同一目录（tools/）",
+		exeSuffix(), exeSuffix())
 }
 
 /* ------------------------------------------------------------------ */

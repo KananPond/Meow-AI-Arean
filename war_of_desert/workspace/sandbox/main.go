@@ -3,10 +3,10 @@
 // 版本：v1.4
 // 功能：两个用法——
 //
-//	go run ./workspace/sandbox
+//	go run ./sandbox
 //	    验证本机沙箱是否真的生效：沙箱内必须无法派生子进程。
 //
-//	go run ./workspace/sandbox -exe bots/bin/submission.exe -turns 60
+//	go run ./sandbox -exe bot.exe -turns 60
 //	    用正式赛同一套限制把你的 Bot 跑起来：真实 hello、逐拍 tick、
 //	    结束后退出。用来确认你的程序在被裁判掐住之后仍能正常工作。
 //

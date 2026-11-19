@@ -1,6 +1,6 @@
 # 选手工作区
 
-> 正式赛编码期，你只需要动 `submission/<选手名>_bot.go`。其余目录是规则、工具和陪练。
+> 编码期你只需要动 `submission/<选手名>_bot.go`。其余目录是规则、裁判和陪练。
 
 ## 目录
 
@@ -10,48 +10,87 @@ workspace/
 ├── prompt.md                  发给模型的原始任务书
 ├── README.md                  本文件
 ├── clock.py                   编码期计时器（只读）
-├── go.mod                     本地编译用的模块定义（指向引擎）
-├── botkit/                    可选工具库：协议、地图解码、一步寻路（只读）
+├── go.mod                     本地编译用的模块定义（指向 arena/）
+├── arena/                     正式赛的引擎 + 裁判 + 比赛程序（源码，只读）
+│   ├── cmd/arena              比赛入口：local / check / plan / run / rate / version
+│   ├── cmd/enginehost         引擎宿主
+│   ├── internal/              规则、裁判、沙箱、评分
+│   └── workspace/botkit/      协议库（import "desertarena/workspace/botkit"）
 ├── sandbox/                   本地沙箱自检（确认赛场限制下你的程序能跑）
 ├── bots/
 │   ├── skeleton/              骨架 Bot：只演示接口协议，不含任何策略
 │   ├── baseline@1.exe         基线一：正面推进（预编译，无源码）
 │   └── baseline@2.exe         基线二：机动抢点（预编译，无源码）
+├── tournament/本地赛.json      本地赛季配置（两个基线 + 你的 Bot）
+├── 本地对局.bat               双击：编译 + 跟两个基线打
+├── 本地赛季.bat               双击：编译 + 完整赛季评分
 └── submission/
     └── <选手名>_bot.go        你要改的那一个文件
 ```
 
-参考 Bot 只有三个。两个基线是**预编译的 exe**，没有源码，但可以随时拉出来对打。
+`arena/` 里不是模拟器，是**正式赛那条执行链的源码**：同样的规则（`internal/sim`）、
+同样的裁判（`internal/judge`：协议校验、超时杀进程、Job Object 沙箱、确定性复核）、
+同样的比赛入口（`cmd/arena`）。你本地跑出来的判罚，就是赛场上的判罚。
 
 ## 三条命令
 
-都在这个 `workspace/` 目录里执行：
+都在这个 `workspace/` 目录里执行。
 
 ```bash
-# 1. 编译。工作区自带 go.mod，不用把代码拷进引擎目录
+# 1. 编译（工作区自带 go.mod，不用把代码拷进引擎目录）
 go build -o bot.exe ./submission
 
-# 2. 和基线打一场（换边两局，打印判定 / VP / 总分 / 故障 / 确定性复核）
-cd ../../../war_of_desert
-go run ./cmd/arena check -a ../算法赛/RTS算法赛@HY-4/workspace/bot.exe \
-                         -b ../算法赛/baseline@1.exe -seed 20261109
+# 2. 和两个基线对打：2 个 seed × 换边两局
+cd arena
+go run ./cmd/arena local -bot ..\bot.exe -seeds 2
 
-# 3. 换对手、换 seed
-go run ./cmd/arena check -a ../算法赛/RTS算法赛@HY-4/workspace/bot.exe \
-                         -b ../算法赛/baseline@2.exe -seed 20261110
+# 3. 只跑一局，看细节（判定层级、故障、决策耗时、确定性复核）
+go run ./cmd/arena check -a ..\bot.exe -b ..\bots\baseline@1.exe -seed 20261109
 ```
 
-把上面的 `RTS算法赛@HY-4` 换成你自己的目录名。
+`local` 的输出：
+
+```
+── 对手 baseline@1 ──
+  seed 20261109 第1局 座位0  VP  761:1089  负  层级2  故障0  决策0.7ms
+  seed 20261109 第2局 座位1  VP  761:1089  负  层级2  故障0  决策0.6ms
+合计：0 胜 0 平 4 负（4 局）｜平均 VP 761 : 1089｜最大决策 0.7ms｜故障 0 条
+回放 → 对局记录\本地对局\回放\
+```
+
+回放是逐帧 JSON（单位位置、血量、VP 归属、生产队列），卡在哪一拍、兵死在哪，
+直接翻它，比看日志快。
+
+## 完整赛季
+
+和正式赛同一个 `plan → run → rate`：
+
+```bat
+本地赛季.bat
+```
+
+或者手工：
+
+```bash
+cd arena
+go run ./cmd/arena plan -config ..\tournament\本地赛.json
+go run ./cmd/arena run  -config ..\tournament\本地赛.json -skip-seal
+go run ./cmd/arena rate -config ..\tournament\本地赛.json
+```
+
+产出在 `对局记录\本地赛季\`：`成绩.md`（Bradley–Terry 排名 + 95% 区间）、
+`成绩_加权总分.md`（七领域）、`结果.jsonl`、`回放\`。
+
+`-skip-seal` 是「跳过封存校验」。正式赛开跑前会拿源码哈希跟封存记录比对，对不上
+直接中止；本地没有封存记录，所以要跳过。正式赛不带这个参数。
 
 ## 沙箱（正式赛会对你的程序做的事）
 
-正式赛不是「随手起个进程跑你的 Bot」：裁判用 Windows Job Object 给它加了硬约束。
-这些约束在本地也能验证，用的**和赛场是同一份实现**：
+裁判用 Windows Job Object 给你的进程加硬约束，本地用**同一份实现**验证：
 
 ```bash
-cd ../../../war_of_desert
-go run ./workspace/sandbox                                    # 验本机沙箱可用
-go run ./workspace/sandbox -exe ../算法赛/RTS算法赛@HY-4/workspace/bot.exe -turns 200
+go run ./sandbox                                    # 验证本机沙箱可用
+go run ./sandbox -exe bot.exe -turns 200            # 在沙箱里跑你的 Bot 200 拍
 ```
 
 | 项 | 值 | 说明 |
@@ -63,7 +102,7 @@ go run ./workspace/sandbox -exe ../算法赛/RTS算法赛@HY-4/workspace/bot.exe
 | 环境变量 | 白名单 | 只有 SystemRoot/TEMP/TMP/PATH 等 |
 
 **没有覆盖的**：文件系统读权限与出网。别指望沙箱能挡住 `os.Open("C:/...")`——
-手册 §3.2 把这两条写成选手义务，裁判侧靠赛后封存哈希校验兜底。
+那两条是选手义务，裁判侧靠赛后封存哈希校验兜底。
 
 ## 计时
 
@@ -76,7 +115,8 @@ python -X utf8 clock.py
 ## 提交纪律
 
 - 只改 `submission/<选手名>_bot.go`；
-- 不要动 `RULES.md`、`clock.py`、`botkit/`、`bots/` 里的官方文件；
+- `arena/`、`RULES.md`、`clock.py`、`bots/` 都是只读的：**改了也不会跟卷走**，
+  收卷只带走你那一个文件，本地能过、赛场会编译失败；
 - 不要试图写文件、联网、起子进程；
 - 收卷时冻结的是 `submission/<选手名>_bot.go`。没有它，这届就没有你。
 

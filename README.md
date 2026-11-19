@@ -31,7 +31,16 @@
 ├── referee_desk.py       ← 裁判台本体（tkinter，标准库）
 ├── 赛务.py               ← 发卷 / 开赛 / 暂停 / 收卷（也可单独命令行用）
 ├── 算法赛/               ← 比赛工作区，每个子目录是一名选手
+│   ├── baseline@1.exe    基线一（预编译，Vanguard）
+│   ├── baseline@2.exe    基线二（预编译，Nomad）
+│   ├── 赛程.json          冻结的对阵表
 │   └── RTS算法赛@<模型名>/
+│       └── workspace/
+│           ├── arena/     正式赛引擎+裁判+比赛程序（源码，发给选手的那份）
+│           ├── bots/      骨架 + 两个预编译基线
+│           ├── submission/<选手名>_bot.go  ← 唯一要改的文件
+│           ├── tournament/本地赛.json
+│           └── 本地对局.bat / 本地赛季.bat
 └── war_of_desert/        引擎与执行链（Go 模块）
 ```
 
@@ -44,11 +53,18 @@ py -3 -X utf8 referee_desk.py --init "算法赛" 1     # 也可以在裁判台�
 做两件事：
 
 1. **初始化工作区**：以 `算法赛/RTS算法赛@Model_name/workspace/` 为**模板**，
-   复制到每个选手目录（`RULES.md`、`prompt.md`、`botkit/`、`bots/`、`sandbox/`、
-   `clock.py`），**不开始计时**——计时由「发卷并开赛」逐个开。
+   复制到每个选手目录（`RULES.md`、`prompt.md`、`arena/`、`bots/`、`sandbox/`、
+   `tournament/`、`clock.py`、`本地对局.bat`），**不开始计时**——计时由
+   「发卷并开赛」逐个开。
 
    选手包里的参考 Bot 只有三个：`bots/skeleton/`（骨架，只演示 stdin/stdout 协议，不含任何策略）、
    `bots/baseline@1.exe`、`bots/baseline@2.exe`（两个预编译基线）。
+
+   **`arena/` 是正式赛引擎、裁判与比赛程序的源码副本**，不是模拟器：规则
+   `internal/sim`、裁判 `internal/judge`（协议校验、超时杀进程、Job Object 沙箱、
+   确定性复核）、入口 `cmd/arena`（`local` / `check` / `plan` / `run` / `rate`）。
+   选手双击 `本地对局.bat` 跑的就是赛场上那条执行链，`go.mod` 的
+   `replace desertarena => ./arena` 让 `botkit` 也解析到这份副本。
 
    交付物按选手名命名：`submission/<选手名>_bot.go`。例如 `RTS算法赛@HY-4/`
    要交的是 `workspace/submission/HY-4_bot.go`——**不是 `decide.go`**。
@@ -60,7 +76,7 @@ py -3 -X utf8 referee_desk.py --init "算法赛" 1     # 也可以在裁判台�
 | 类型 | 位置 | 说明 |
 |---|---|---|
 | 基线 | `算法赛/baseline@*.exe` | **预编译**可执行文件，不参与编译，直接上场 |
-| 选手 | `算法赛/RTS算法赛@<模型名>/` | 目录名即选手名，以收卷后的 `交卷/decide.go` 为准 |
+| 选手 | `算法赛/RTS算法赛@<模型名>/` | 目录名即选手名，以收卷后的 `交卷/<选手名>_bot.go` 为准 |
 
 当前两个基线是用参考 Bot 编译的：`baseline@1` = Vanguard（正面推进），
 `baseline@2` = Nomad（机动抢点）。评测时基线排在名册前面，BT 以
@@ -74,9 +90,9 @@ py -3 -X utf8 referee_desk.py --init "算法赛" 1     # 也可以在裁判台�
   右上角封存灯实时反映 `arena seal` 的结果。
 - **工作区**：指定比赛根目录（默认 `算法赛/`），扫描 `RTS算法赛@<模型名>` 这类目录。
   - **赛务**：选中一个目录点「发卷并开赛」——即使目录是空的，也会把选手包铺进
-    `<工作区>/workspace/`（RULES.md、botkit、模板 decide.go、clock.py），并开始计时
-    （90 分钟目标 / 120 分钟强制收卷）。随时可「暂停 / 恢复 / 收卷」，收卷把
-    `workspace/submission/decide.go` 冻结到 `交卷/` 并记 SHA-256 与用时。
+    `<工作区>/workspace/`（RULES.md、arena 引擎源码、模板 `<选手名>_bot.go`、clock.py），
+    并开始计时（90 分钟目标 / 120 分钟强制收卷）。随时可「暂停 / 恢复 / 收卷」，
+    收卷把 `workspace/submission/<选手名>_bot.go` 冻结到 `交卷/` 并记 SHA-256 与用时。
   - **评测**：勾选任意几个（不必全选，双击则只跑那一个）编排一场比赛——选中的选手
     互相对局，并与 5 个参考 Bot 对局，跑完出 BT 榜。有收卷副本时以收卷副本为准。
     工作区会先复制到 `war_of_desert/workspace/_contestants/<名字>/` 再编译，
@@ -105,7 +121,13 @@ go run ./cmd/arena check -config tournament/formal_v12.json -seed 20261109
 
 ## 编写参赛 Bot
 
-从 [`war_of_desert/workspace/submission/decide.go`](war_of_desert/workspace/submission/decide.go) 开始。参赛者通常只修改 `submission/`，规则和通信协议见[选手规则](war_of_desert/workspace/RULES.md)，参赛目录说明见[选手工作区](war_of_desert/workspace/README.md)。
+在 `算法赛/RTS算法赛@<模型名>/workspace/` 里写。只改一个文件：
+`submission/<选手名>_bot.go`。规则见该目录下的
+[`RULES.md`](算法赛/RTS算法赛@Model_name/workspace/RULES.md)，包内容见
+[`README.md`](算法赛/RTS算法赛@Model_name/workspace/README.md)。
+
+包内自带**正式赛同一套引擎、裁判与比赛程序**（`arena/` 源码）：双击
+`本地对局.bat` 就编译并对打两个基线，`本地赛季.bat` 跑完整赛季并出 BT 榜。
 
 编译并自检：
 

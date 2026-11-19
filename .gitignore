@@ -58,3 +58,11 @@ __pycache__/
 # 模板工作区是选手包的唯一真源，必须入库（上面的忽略规则要放行它）
 !/算法赛/RTS算法赛@Model_name/workspace/
 !/算法赛/RTS算法赛@Model_name/workspace/**
+
+# 选手包里的 arena/ 由赛务.py 从引擎源码同步（--sync-engine），不重复入库
+/算法赛/RTS算法赛@Model_name/workspace/arena/
+/算法赛/RTS算法赛@Model_name/workspace/对局记录/
+/算法赛/RTS算法赛@Model_name/workspace/bot.exe
+
+# 引擎宿主构建产物（arena 与选区自检都会用到）
+/war_of_desert/.bin/

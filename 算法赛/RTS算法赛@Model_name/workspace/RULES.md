@@ -1,6 +1,6 @@
-# 选手规则与协议 v1.5（Go 原生引擎）
+# 选手规则与协议 v1.4（Go 原生引擎）
 
-> 你写一个独立程序，裁判用 stdin/stdout 和你对话。本文是完整契约；`botkit/` 是可选工具库。
+> 你写一个独立程序，裁判用 stdin/stdout 和你对话。本文是完整契约；`arena/workspace/botkit/` 是可选工具库。
 > 当前规则 = **v1.4**：四子系统分配（armour/repair/attack/range）、CU/RU 双资源运输线经济、
 > 生产线由工业科技驱动、单局 1200 tick、七领域确定性计分（无墙钟「算力表现」域）、
 > 生产队列**跳过式出队**、母舰 **RU 基础收入 0.20/tick**、母舰**脱战后才自愈**。
@@ -15,21 +15,32 @@ workspace/
 ├── RULES.md                 本文件
 ├── prompt.md                发给模型的原始任务书
 ├── clock.py                 编码期计时（只读）
-├── go.mod                   本地编译用（指向引擎，别加第三方依赖）
-├── botkit/                  协议、地图解码、流场寻路（只读）
+├── go.mod                   本地编译用（指向 arena/，别加第三方依赖）
+├── arena/                   正式赛的引擎 + 裁判 + 比赛程序（源码，只读）
+│   ├── cmd/arena            比赛入口：local / check / plan / run / rate / version
+│   ├── cmd/enginehost       引擎宿主：跑规则、发 tick
+│   ├── internal/            规则、裁判、沙箱、评分
+│   └── workspace/botkit/    协议库（import "desertarena/workspace/botkit" 指这里）
 ├── bots/
 │   ├── skeleton/            骨架 Bot：**只有协议，没有任何算法**
 │   ├── baseline@1.exe       基线一：正面推进（预编译，无源码）
 │   └── baseline@2.exe       基线二：机动抢点（预编译，无源码）
 ├── sandbox/                 本地沙箱自检（确认赛场限制下你的程序能跑）
+├── tournament/本地赛.json    本地赛季配置（两个基线 + 你的 Bot）
+├── 本地对局.bat             双击：编译，然后跟两个基线打 2 个 seed
+├── 本地赛季.bat             双击：编译，然后跑完整赛季（BT 排名 + 加权总分）
 └── submission/
     └── <选手名>_bot.go      你要改的那一个文件
 ```
 
+`arena/` 不是简化版：它就是赛场那条执行链（规则 `internal/sim`、裁判
+`internal/judge`、比赛入口 `cmd/arena`），直接复制进来的。你跑的判罚、超时、
+沙箱、确定性复核，跟正式赛一模一样。
+
 参考 Bot 只有三个：骨架 + 两个基线。基线是**预编译的 exe**，可以直接拿来对打：
 
 ```bash
-go run ./workspace/sandbox -exe workspace/bots/baseline@1.exe -turns 100
+go run ./sandbox -exe ./bots/baseline@1.exe -turns 100
 ```
 
 ---
@@ -57,15 +68,16 @@ go build -o bot.exe ./submission
 ```
 
 主办方收卷后用引擎统一编译；两边编出来的是同一份代码，因为 `go.mod` 里的
-`replace desertarena => ../../../war_of_desert` 指向的就是赛场那份 `botkit`。
+`replace desertarena => ./arena` 指向的就是包里这份 `arena/workspace/botkit`。
 
 正式赛收卷时**只冻结这一个文件**，其他文件不会随卷带走。
 
 依赖只允许 **Go 标准库 + `botkit`**。**不要 import 你自己新增的包或任何第三方库**——
 收卷只带走一个文件，多出来的源码会导致收卷后编译失败。
 
-> `botkit/` 是只读参考副本：import 路径固定写 `desertarena/workspace/botkit`，
-> 赛场上编译器用的是引擎侧那一份，改本地副本不生效。需要新工具就写在你自己的 `_bot.go` 里。
+> `arena/workspace/botkit/` 是只读副本：import 路径固定写 `desertarena/workspace/botkit`。
+> **不要改它**——收卷只带走 `submission/<选手名>_bot.go` 一个文件，你改的 botkit
+> 不会跟卷走，本地能过、赛场会编译失败。需要新工具就写在你自己的 `_bot.go` 里。
 
 ---
 
@@ -134,7 +146,7 @@ go build -o bot.exe ./submission
 | `timing` | `tickMs=50`、`decideMs=120`、`applyAt`、`orderLatency=1` |
 | `units` | 你方全部单位 + 你视野内的敌方单位（**本赛季视野关闭 = 全图可见**）。敌方单位不带 `mode`；己方采集车带 `harvest`/`hstate`/`carry` |
 | `vp` | `{id,x,y,owner,contested}`；`owner=-1` 表示无主 |
-| `res` | 资源点 `{id,x,y,kind,amount}`；按索引每 3 个里第 3 个为 `ru`（`i%3==2`），其余为 `cu`，即约 **1/3 是 `ru`** |
+| `res` | 资源点 `{id,x,y,kind,amount}`；按**镜像成对**生成，同一对左右两侧同类，约 1/3 是 `ru`。`kind` 直接给你，不要按索引猜 |
 | `score` | 双方 `{vp,kills,losses}` |
 | `me` | 你的 CU、人口、四项分配、槽位、武器、科技、生产队列 |
 | `shells` | 在飞的炮弹（能看到来袭） |
@@ -230,20 +242,35 @@ go build -o bot.exe ./submission
 
 ## 9. 自检
 
-```bash
-cd war_of_desert
-go build -o bots/bin/submission.exe ./workspace/submission
-go run ./cmd/arena check -config tournament/formal_v12.json -seed 20261109
-```
+包里带的是**正式赛同一套引擎和裁判**（`arena/` 源码，不是另做的简化版）：同样的规则、
+同样的超时口径、同样的沙箱、同样的确定性复核。
 
-期望：两局跑满 1200 tick、`故障=0/0`、`确定性复核：true`。`formal_v12.json` 的
-`engine.kind` 是 `native`——规则引擎是 Go 原生 `cmd/enginehost`，不再依赖 Node 快照。
+粗调：双击 `本地对局.bat`。它做两件事——`go build -o bot.exe ./submission`，然后
+跟两个基线各打 2 个 seed（换边两局），输出逐局 VP、判定层级、故障数、决策耗时，
+回放写到 `对局记录\本地对局\`。
 
-想换对手：
+等价的手工命令：
 
 ```bash
-go run ./cmd/arena check -config tournament/formal_v12.json -a bots/bin/submission.exe -b bots/bin/nomad.exe -seed 20261110
+cd arena
+go run ./cmd/arena local -bot ..\bot.exe -seeds 2
 ```
+
+单场、只看一局：
+
+```bash
+cd arena
+go run ./cmd/arena check -a ..\bot.exe -b ..\bots\baseline@1.exe -seed 20261109
+```
+
+完整赛季（和正式赛同一个 `plan → run → rate`，出 BT 排名与七领域加权总分）：
+
+```bat
+本地赛季.bat
+```
+
+期望：`故障 0`、`确定性复核 true`、两局都跑满 1200 tick。
+**通过只说明协议和超时没问题，不代表能赢。**
 
 ---
 

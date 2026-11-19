@@ -58,19 +58,125 @@ RECORD = ".赛务.json"
 WIN_EPOCH_OFFSET = 11644473600
 
 # 发给选手的东西 = 模板 workspace/ 下除赛务产物以外的一切。
+# arena/ 不在这里：它是从引擎源码同步出来的，每次发卷都整体刷新（见 sync_engine）。
 PACKAGE_ITEMS = ["RULES.md", "README.md", "prompt.md", "clock.py", "go.mod",
-                 "botkit", "bots", "submission", "sandbox"]
+                 "bots", "submission", "sandbox", "tournament",
+                 "本地对局.bat", "本地赛季.bat"]
+
+# 打包进选手包的引擎源码：正式赛同一套规则、裁判与比赛入口。
+# 只带编译 cmd/ 那三个程序需要的东西——不带参考 Bot、不带历史赛季产物。
+ARENA_ITEMS = ["go.mod", "cmd/arena", "cmd/enginehost", "cmd/faultbot",
+               "internal", "workspace/botkit"]
+
+ARENA_README = """# arena/ —— 正式赛的引擎、裁判与比赛程序
+
+这是 `war_of_desert/` 的源码副本，和赛场上跑的是**同一份代码**：同样的规则
+（`internal/sim`）、同样的裁判（`internal/judge`：协议校验、超时杀进程、沙箱、
+确定性复核）、同样的比赛入口（`cmd/arena`）。
+
+**只读。** 改这里不会影响正式赛——收卷只带走 `submission/<选手名>_bot.go` 一个文件。
+
+## 常用命令
+
+```bat
+cd arena
+
+go run ./cmd/arena local -bot ..\\bot.exe -seeds 2
+go run ./cmd/arena check -a ..\\bot.exe -b ..\\bots\\baseline@1.exe -seed 20261109
+go run ./cmd/arena plan -config ..\\tournament\\本地赛.json
+go run ./cmd/arena run  -config ..\\tournament\\本地赛.json -skip-seal
+go run ./cmd/arena rate -config ..\\tournament\\本地赛.json
+go run ./cmd/arena version
+```
+
+`local` 与正式赛的区别只有三点：不校验封存、不读正式赛赛程、结果写到
+`..\\对局记录\\`。判定逻辑、沙箱、超时口径完全一致。
+
+`run` 要加 `-skip-seal`：正式赛开跑前会拿源码哈希跟封存记录比对，本地练习
+没有封存记录，所以要跳过。
+
+## 里面是什么
+
+```
+cmd/arena        比赛入口：build / plan / run / rate / check / local / selftest / seal / version
+cmd/enginehost   引擎宿主：独立进程，跑规则、发 tick、收动作
+cmd/faultbot     故障注入 Bot，主办方跑 selftest 时用
+internal/sim     规则（经济、战斗、弹道、胜负判定）
+internal/judge   裁判：拉起选手进程、校验协议、沙箱、确定性复核
+internal/sandbox Windows Job Object 封装（禁派生子进程、内存上限）
+internal/contest 赛事配置与封存校验
+internal/rating  Bradley–Terry 与七领域加权总分
+workspace/botkit 协议库（submission 通过 desertarena/workspace/botkit 用它）
+```
+
+纯 Go 标准库，零第三方依赖，`go run` 不需要联网。构建产物落在 `arena/.bin/`。
+"""
+
+
+def sync_engine(dest: Path) -> dict:
+    """把引擎源码复制到 <选手包>/arena/，覆盖旧副本。
+
+    给选手的必须是**同一份源码**，所以不打包成 exe：他们 `go run ./cmd/arena`
+    跑的就是赛场上那条执行链。每次发卷都整体刷新，避免规则改了而选手包还是旧版。
+    """
+    out = dest / "arena"
+    n = 0
+    for item in ARENA_ITEMS:
+        src = ENGINE / item
+        if not src.exists():
+            continue
+        dst = out / item
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        if src.is_dir():
+            # 原地覆盖，不先删目录：删整棵树风险太高（误传路径就是一次数据丢失），
+            # 覆盖足够——引擎删文件极少，真删了下次发卷让选手换目录即可。
+            shutil.copytree(src, dst, dirs_exist_ok=True,
+                            ignore=shutil.ignore_patterns("__pycache__", "*.exe"))
+        else:
+            shutil.copy2(src, dst)
+        n += 1
+    (out / "README.md").write_text(ARENA_README, encoding="utf-8")
+    return {"items": n, "dir": out}
 
 
 # ---------------------------------------------------------------- 记录
+def engine_rules_version() -> str:
+    """从 internal/sim/rules.go 读版本号，避免文档和代码各说一套。"""
+    try:
+        raw = (ENGINE / "internal" / "sim" / "rules.go").read_text(encoding="utf-8")
+        for line in raw.splitlines():
+            if line.startswith("const RulesVersion"):
+                return line.split('"')[1]
+    except OSError:
+        pass
+    return "?"
+
+
+def engine_rules_version() -> str:
+    """从 internal/sim/rules.go 读版本号，避免文档和代码各说一套。"""
+    try:
+        raw = (ENGINE / "internal" / "sim" / "rules.go").read_text(encoding="utf-8")
+        for line in raw.splitlines():
+            if line.startswith("const RulesVersion"):
+                return line.split('"')[1]
+    except OSError:
+        pass
+    return "?"
+
+
 def contestant_name(ws: Path) -> str:
     """选手名 = 目录名 @ 之后的部分；没有 @ 就用目录名。"""
     return ws.name.split("@")[-1] if "@" in ws.name else ws.name
 
 
 def bot_filename(ws: Path) -> str:
-    """交付物文件名：<选手名>_bot.go（规则里写死的约定）。"""
-    return contestant_name(ws) + "_bot.go"
+    """交付物文件名：<选手名>_bot.go（规则里写死的约定）。
+
+    开头的下划线必须去掉：Go 工具链会忽略以 `_` 或 `.` 开头的文件，
+    目录名叫 `_test` 时 `_test_bot.go` 会编译成「no Go files」。
+    """
+    name = contestant_name(ws).lstrip("_.")
+    return (name or "bot") + "_bot.go"
 
 
 def submission_path(ws: Path) -> Path:
@@ -210,6 +316,10 @@ def issue(ws: Path) -> list:
             shutil.copy2(src, dst)
             copied.append(name)
 
+    # 引擎/裁判/比赛程序：每次发卷都刷新成当前版本
+    sync_engine(dest)
+    copied.append("arena/（引擎+裁判+比赛程序）")
+
     # 交付文件按「<选手名>_bot.go」命名：模板里叫 Model_name_bot.go，发卷时改名。
     sub = dest / "submission"
     if sub.is_dir():
@@ -303,7 +413,7 @@ def describe(ws: Path) -> str:
 
 def main() -> int:
     ap = argparse.ArgumentParser(description="Desert Arena 赛务：发卷 / 开赛 / 暂停 / 收卷")
-    ap.add_argument("--dir", required=True, help="选手目录（可以为空）")
+    ap.add_argument("--dir", help="选手目录（可以为空）；--sync-engine 时不需要")
     g = ap.add_mutually_exclusive_group(required=True)
     g.add_argument("--issue", action="store_true", help="发放选手包")
     g.add_argument("--start", action="store_true", help="开始/重置计时")
@@ -311,9 +421,19 @@ def main() -> int:
     g.add_argument("--pause", action="store_true", help="暂停计时")
     g.add_argument("--resume", action="store_true", help="恢复计时")
     g.add_argument("--freeze", action="store_true", help="收卷")
+    g.add_argument("--sync-engine", action="store_true",
+                   help="把引擎源码同步进模板工作区的 arena/（其他选手目录发卷时自动做）")
     ap.add_argument("--note", default="", help="暂停原因")
     a = ap.parse_args()
 
+    if a.sync_engine:
+        info = sync_engine(PACKAGE)
+        print("同步引擎 → %s（%d 项，规则 %s）"
+              % (info["dir"], info["items"], engine_rules_version()))
+        return 0
+
+    if not a.dir:
+        ap.error("需要 --dir（或用 --sync-engine 同步模板）")
     ws = Path(a.dir)
     if not ws.is_absolute():
         ws = (Path.cwd() / ws).resolve()
@@ -339,7 +459,7 @@ def main() -> int:
     elif a.freeze:
         info = freeze(ws)
         if info["missing_submission"]:
-            print("收卷 %s：没有 decide.go，记为未提交" % ws.name)
+            print("收卷 %s：没有 %s，记为未提交" % (ws.name, bot_filename(ws)))
         else:
             print("收卷 %s：%d 字节，用 %.1f 分钟，sha256=%s%s"
                   % (ws.name, info["bytes"], info["used_minutes"],

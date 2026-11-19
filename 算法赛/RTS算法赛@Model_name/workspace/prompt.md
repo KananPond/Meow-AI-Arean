@@ -11,9 +11,12 @@
 一个 `workspace/` 目录：
 
 - `RULES.md`：完整规则与行协议（**先读这个**）
-- `submission/<选手名>_bot.go`：可运行的骨架，已经实现协议循环；把文件名里的选手名换成你自己的
-- `botkit/`：可选工具库（读 hello、解地图、寻路辅助）
-- `bots/`：五个官方参考 Bot 的源码，可读、可改、可对打
+- `submission/<选手名>_bot.go`：可运行的骨架，已经实现协议循环，但**不含任何策略**
+- `arena/`：正式赛的引擎、裁判与比赛程序源码（只读）——本地调试用的就是它
+- `arena/workspace/botkit/`：可选工具库（读 hello、解地图、寻路辅助）
+- `bots/`：一个骨架 + 两个预编译基线（`baseline@1.exe`、`baseline@2.exe`）
+- `tournament/本地赛.json`：本地赛季配置（两个基线 + 你的 Bot）
+- `本地对局.bat` / `本地赛季.bat`：双击编译并对打，不用记命令
 - `clock.py`：查看编码期已用时间
 
 ## 你要交什么
@@ -21,8 +24,17 @@
 **一个 `submission/<参赛选手名称>_bot.go`**（文件名用下划线接 `_bot.go`，不要改名）。编译命令：
 
 ```bash
-go build -o bots/bin/submission.exe ./workspace/submission
+go build -o bot.exe ./submission
 ```
+
+想先确认能跑通：
+
+```bat
+本地对局.bat
+```
+
+它编译你的代码，然后跟两个基线各打 2 个 seed（换边两局），打印逐局 VP、
+判定层级、故障与决策耗时，回放落在 `对局记录\本地对局\`。
 
 程序通过 stdin/stdout 与裁判通信：
 

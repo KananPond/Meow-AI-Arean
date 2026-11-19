@@ -72,6 +72,28 @@ func Load(path string) (*Config, string, error) {
 	return &c, root, nil
 }
 
+// Default 返回正式赛的默认规则。
+//
+// 选手包里的 arena/ 不带 tournament/ 目录，check/local 需要一个不需要配置文件的
+// 兜底：数值必须与正式赛配置一致，否则本地跑出来的判定和赛场不是一回事。
+func Default() *Config {
+	c := &Config{Name: "本地默认", Season: "local", Version: "1"}
+	c.Engine.Kind = "native"
+	c.Rules.TickLimit = 1200
+	c.Rules.TickMs = 50
+	c.Rules.DecideMs = 120
+	c.Rules.InitMs = 2000
+	c.Rules.MaxStrikes = 3
+	c.Rules.StrikeMode = "consecutive"
+	c.Rules.Generator = "minecraft"
+	c.Rules.Vision = false
+	c.Schedule.Seeds = []int{20261109}
+	c.Schedule.Mirror = true
+	c.Schedule.Bootstrap = 200
+	c.Verify = true
+	return c
+}
+
 // ScheduleConfig 转成赛程包的口径。
 func (c *Config) ScheduleConfig() schedule.Config {
 	return schedule.Config{
@@ -91,19 +113,61 @@ func (c *Config) HostPath(root string) string {
 	return filepath.Join(root, filepath.FromSlash(c.Engine.Host))
 }
 
-// EngineHostPath 返回引擎宿主：kind=native 时构建 Go 原生 enginehost
-// 二进制（go build 有缓存，重复调用开销小），否则走 oracle_host.js。
+// EngineHostPath 返回引擎宿主：kind=native 时优先从源码构建 Go 原生
+// enginehost（go build 有缓存，重复调用开销小）；没有源码时退回预编译宿主。
+//
+// 两种源码布局都要认：赛事仓库是 <root>/cmd/enginehost；发给选手的包里
+// 引擎整体放在 <root>/arena/，配置在 <root>/tournament/ 下。
 func (c *Config) EngineHostPath(root string) (string, error) {
 	if c.Engine.Kind != "native" {
 		return c.HostPath(root), nil
 	}
-	bin := filepath.Join(root, "bots", "bin", "enginehost"+exeSuffix())
-	build := exec.Command("go", "build", "-o", bin, "./cmd/enginehost")
-	build.Dir = root
-	if out, err := build.CombinedOutput(); err != nil {
-		return "", fmt.Errorf("构建 enginehost 失败: %s", strings.TrimSpace(string(out)))
+	for _, base := range []string{root, filepath.Join(root, "arena")} {
+		if st, err := os.Stat(filepath.Join(base, "cmd", "enginehost")); err != nil || !st.IsDir() {
+			continue
+		}
+		bin := filepath.Join(base, ".bin", "enginehost"+exeSuffix())
+		build := exec.Command("go", "build", "-o", bin, "./cmd/enginehost")
+		build.Dir = base
+		if out, err := build.CombinedOutput(); err != nil {
+			return "", fmt.Errorf("构建 enginehost 失败: %s", strings.TrimSpace(string(out)))
+		}
+		return bin, nil
 	}
-	return bin, nil
+	if p := PackagedEngineHost(); p != "" {
+		return p, nil
+	}
+	bin := filepath.Join(root, "bots", "bin", "enginehost"+exeSuffix())
+	if st, err := os.Stat(bin); err == nil && !st.IsDir() {
+		return bin, nil
+	}
+	return "", fmt.Errorf("找不到引擎宿主 enginehost%s：要么在 war_of_desert/ 下运行，"+
+		"要么把 arena/（引擎源码）放在配置目录旁边", exeSuffix())
+}
+
+// PackagedEngineHost 找与当前可执行文件同目录的引擎宿主。
+//
+// 发给选手的裁判程序是「arena.exe + enginehost.exe」一对：选手机器上没有
+// 引擎源码，只能靠这份预编译宿主。找不到返回空串。
+func PackagedEngineHost() string {
+	exe, err := os.Executable()
+	if err != nil {
+		return ""
+	}
+	dir := filepath.Dir(exe)
+	for _, cand := range []string{
+		filepath.Join(dir, "enginehost"+exeSuffix()),
+		filepath.Join(dir, "tools", "enginehost"+exeSuffix()),
+	} {
+		if st, err := os.Stat(cand); err == nil && !st.IsDir() {
+			abs, err := filepath.Abs(cand)
+			if err != nil {
+				return cand
+			}
+			return abs
+		}
+	}
+	return ""
 }
 
 func exeSuffix() string {
