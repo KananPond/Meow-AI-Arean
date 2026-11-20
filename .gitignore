@@ -69,3 +69,8 @@ __pycache__/
 
 # 本地对局产物
 /算法赛/RTS算法赛@Model_name/workspace/matches/
+
+# 正式赛 beta 发布包：解包目录与 7z 压缩包都是本地构建产物，不入库
+/_发布包/
+# 若重新解包/打包到仓库根目录，同样忽略
+/Meow社区比赛__WoD正式赛_beta*
