@@ -59,13 +59,14 @@ WIN_EPOCH_OFFSET = 11644473600
 
 # 发给选手的东西 = 模板 workspace/ 下除赛务产物以外的一切。
 # arena/ 不在这里：它是从引擎源码同步出来的，每次发卷都整体刷新（见 sync_engine）。
+# 沙箱自检工具也不在这里：它必须跑在 desertarena 模块内，随 arena/ 一起发（cmd/sandbox）。
 PACKAGE_ITEMS = ["RULES.md", "README.md", "prompt.md", "clock.py", "go.mod",
-                 "bots", "submission", "sandbox", "tournament",
+                 "bots", "submission", "tournament",
                  "本地对局.bat", "本地赛季.bat"]
 
 # 打包进选手包的引擎源码：正式赛同一套规则、裁判与比赛入口。
-# 只带编译 cmd/ 那三个程序需要的东西——不带参考 Bot、不带历史赛季产物。
-ARENA_ITEMS = ["go.mod", "cmd/arena", "cmd/enginehost", "cmd/faultbot",
+# 只带编译这几个 cmd 程序需要的东西——不带参考 Bot、不带历史赛季产物。
+ARENA_ITEMS = ["go.mod", "cmd/arena", "cmd/enginehost", "cmd/faultbot", "cmd/sandbox",
                "internal", "workspace/botkit"]
 
 ARENA_README = """# arena/ —— 正式赛的引擎、裁判与比赛程序
@@ -87,6 +88,8 @@ go run ./cmd/arena plan -config ..\\tournament\\local.json
 go run ./cmd/arena run  -config ..\\tournament\\local.json -skip-seal
 go run ./cmd/arena rate -config ..\\tournament\\local.json
 go run ./cmd/arena version
+go run ./cmd/sandbox
+go run ./cmd/sandbox -exe ..\\bot.exe -turns 200
 ```
 
 `local` 与正式赛的区别只有三点：不校验封存、不读正式赛赛程、结果写到
@@ -101,6 +104,7 @@ go run ./cmd/arena version
 cmd/arena        比赛入口：build / plan / run / rate / check / local / selftest / seal / version
 cmd/enginehost   引擎宿主：独立进程，跑规则、发 tick、收动作
 cmd/faultbot     故障注入 Bot，主办方跑 selftest 时用
+cmd/sandbox      沙箱自检：验证本机隔离生效，或用赛场限制跑你的 Bot
 internal/sim     规则（经济、战斗、弹道、胜负判定）
 internal/judge   裁判：拉起选手进程、校验协议、沙箱、确定性复核
 internal/sandbox Windows Job Object 封装（禁派生子进程、内存上限）

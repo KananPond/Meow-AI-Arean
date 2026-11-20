@@ -14,9 +14,9 @@ workspace/
 ├── arena/                     正式赛的引擎 + 裁判 + 比赛程序（源码，只读）
 │   ├── cmd/arena              比赛入口：local / check / plan / run / rate / version
 │   ├── cmd/enginehost         引擎宿主
+│   ├── cmd/sandbox            沙箱自检：用赛场限制跑你的 Bot
 │   ├── internal/              规则、裁判、沙箱、评分
 │   └── workspace/botkit/      协议库（import "desertarena/workspace/botkit"）
-├── sandbox/                   本地沙箱自检（确认赛场限制下你的程序能跑）
 ├── bots/
 │   ├── skeleton/              骨架 Bot：只演示接口协议，不含任何策略
 │   ├── baseline@1.exe         基线一：正面推进（预编译，无源码）
@@ -89,8 +89,9 @@ go run ./cmd/arena rate -config ..\tournament\local.json
 裁判用 Windows Job Object 给你的进程加硬约束，本地用**同一份实现**验证：
 
 ```bash
-go run ./sandbox                                    # 验证本机沙箱可用
-go run ./sandbox -exe bot.exe -turns 200            # 在沙箱里跑你的 Bot 200 拍
+cd arena
+go run ./cmd/sandbox                                # 验证本机沙箱可用
+go run ./cmd/sandbox -exe ../bot.exe -turns 200     # 在沙箱里跑你的 Bot 200 拍
 ```
 
 | 项 | 值 | 说明 |

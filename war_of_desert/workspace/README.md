@@ -17,7 +17,6 @@ workspace/
 ├── submission/decide.go   你的提交物
 ├── botkit/                可选工具库：协议、地图解码、一步寻路
 ├── refbot/                参考 Bot 共用策略库（只读）
-├── sandbox/               轻量沙箱自检工具（本地验证赛场限制）
 └── bots/                  五个参考 Bot
     ├── vanguard/          正面推进
     ├── bulwark/           经济防守
@@ -49,11 +48,14 @@ go run ./cmd/arena check -a bots/bin/submission.exe -b bots/bin/nomad.exe -seed 
 
 ```bash
 # 1. 先确认本机沙箱可用（沙箱内必须无法派生子进程）
-go run ./workspace/sandbox
+go run ./cmd/sandbox
 
 # 2. 用正式赛的限制把你的 Bot 跑起来：真实 hello + 逐拍 tick
-go run ./workspace/sandbox -exe bots/bin/submission.exe -turns 200
+go run ./cmd/sandbox -exe bots/bin/submission.exe -turns 200
 ```
+
+（工具在 `war_of_desert/cmd/sandbox/`：它要 import `internal/sandbox`，所以必须跑在
+引擎模块内。选手包里的等价命令是 `cd arena && go run ./cmd/sandbox`。）
 
 限制清单：
 

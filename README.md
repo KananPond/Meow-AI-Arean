@@ -53,7 +53,7 @@ py -3 -X utf8 referee_desk.py --init "算法赛" 1     # 也可以在裁判台�
 做两件事：
 
 1. **初始化工作区**：以 `算法赛/RTS算法赛@Model_name/workspace/` 为**模板**，
-   复制到每个选手目录（`RULES.md`、`prompt.md`、`arena/`、`bots/`、`sandbox/`、
+   复制到每个选手目录（`RULES.md`、`prompt.md`、`arena/`、`bots/`、
    `tournament/`、`clock.py`、`本地对局.bat`），**不开始计时**——计时由
    「发卷并开赛」逐个开。
 

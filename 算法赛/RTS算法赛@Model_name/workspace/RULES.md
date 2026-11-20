@@ -19,13 +19,13 @@ workspace/
 ├── arena/                   正式赛的引擎 + 裁判 + 比赛程序（源码，只读）
 │   ├── cmd/arena            比赛入口：local / check / plan / run / rate / version
 │   ├── cmd/enginehost       引擎宿主：跑规则、发 tick
+│   ├── cmd/sandbox          沙箱自检：用赛场限制跑你的 Bot
 │   ├── internal/            规则、裁判、沙箱、评分
 │   └── workspace/botkit/    协议库（import "desertarena/workspace/botkit" 指这里）
 ├── bots/
 │   ├── skeleton/            骨架 Bot：**只有协议，没有任何算法**
 │   ├── baseline@1.exe       基线一：正面推进（预编译，无源码）
 │   └── baseline@2.exe       基线二：机动抢点（预编译，无源码）
-├── sandbox/                 本地沙箱自检（确认赛场限制下你的程序能跑）
 ├── tournament/local.json    本地赛季配置（两个基线 + 你的 Bot）
 ├── 本地对局.bat             双击：编译，然后跟两个基线打 2 个 seed
 ├── 本地赛季.bat             双击：编译，然后跑完整赛季（BT 排名 + 加权总分）
@@ -40,7 +40,7 @@ workspace/
 参考 Bot 只有三个：骨架 + 两个基线。基线是**预编译的 exe**，可以直接拿来对打：
 
 ```bash
-go run ./sandbox -exe ./bots/baseline@1.exe -turns 100
+cd arena && go run ./cmd/sandbox -exe ../bots/baseline@1.exe -turns 100
 ```
 
 ---

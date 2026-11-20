@@ -1,14 +1,17 @@
-// 选手侧轻量沙箱工具。
+// 沙箱自检工具：用正式赛同一套限制把程序跑起来。
 //
 // 版本：v1.4
 // 功能：两个用法——
 //
-//	go run ./workspace/sandbox
+//	go run ./cmd/sandbox
 //	    验证本机沙箱是否真的生效：沙箱内必须无法派生子进程。
 //
-//	go run ./workspace/sandbox -exe bots/bin/submission.exe -turns 60
+//	go run ./cmd/sandbox -exe bots/bin/submission.exe -turns 60
 //	    用正式赛同一套限制把你的 Bot 跑起来：真实 hello、逐拍 tick、
 //	    结束后退出。用来确认你的程序在被裁判掐住之后仍能正常工作。
+//
+// 选手包里的等价写法是 `cd arena && go run ./cmd/sandbox`：arena/ 是引擎源码
+// 副本，这个工具必须跑在 desertarena 模块内，才能拿到 internal/sandbox。
 //
 // 限制来自 internal/sandbox，和裁判（internal/judge）共用同一份实现，
 // 所以这里测到的行为就是赛场上的行为。
