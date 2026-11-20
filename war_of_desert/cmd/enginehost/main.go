@@ -28,6 +28,7 @@ type hostCfg struct {
 	InitMs     int    `json:"initMs"`
 	Vision     bool   `json:"vision"`
 	FrameEvery int    `json:"frameEvery"`
+	Ruleset    string `json:"ruleset"`
 
 	Mode                 string `json:"mode"`
 	MothershipHP         int    `json:"mothershipHp"`
@@ -136,7 +137,7 @@ func (s *server) handle(raw []byte) {
 		}
 		gg, err := sim.NewGame(cfg.Seed, sim.GameCfg{
 			TickLimit: cfg.TickLimit, TickMS: cfg.TickMs, DecideMS: cfg.DecideMs, InitMS: cfg.InitMs,
-			Generator: cfg.Generator, Vision: sim.VisionFromBool(cfg.Vision),
+			Generator: cfg.Generator, Vision: sim.VisionFromBool(cfg.Vision), Ruleset: cfg.Ruleset,
 		})
 		if err != nil {
 			s.fail("new", err.Error())
@@ -147,7 +148,7 @@ func (s *server) handle(raw []byte) {
 		s.respond(envelope{
 			Cmd: "new", Hello: strings.TrimRight(gg.EncodeHello(), "\n"), Seed: gg.Seed,
 			Generator: gg.Map.Generator, MapAttempt: gg.Map.Attempt,
-			RulesHash:    sim.RulesHash(gg.Cfg.TickLimit, gg.Vision),
+			RulesHash:    sim.RulesHashFor(gg.Cfg.Ruleset, gg.Cfg.TickLimit, gg.Vision),
 			ProtoVersion: sim.ProtoVersion, TickLimit: gg.Cfg.TickLimit,
 		})
 
@@ -323,6 +324,7 @@ func (s *server) verifyRec() *sim.VerifyRec {
 	if s.game != nil {
 		rec.Seed = s.game.Seed
 		rec.TickLimit = s.game.Cfg.TickLimit
+		rec.Ruleset = s.game.Cfg.Ruleset
 		rec.Generator = s.game.Cfg.Generator
 		rec.MapAttempt = &s.game.Map.Attempt
 		rec.OrderLog = s.game.OrderLog

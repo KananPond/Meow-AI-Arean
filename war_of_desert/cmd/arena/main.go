@@ -273,7 +273,10 @@ func cmdPlan(args []string) error {
 	outDir := cfg.OutDir(root)
 	plan := schedule.Build(cfg.Entries, cfg.Schedule.Seeds, cfg.Schedule.Mirror, cfg.ScheduleConfig())
 	plan.RulesVersion = sim.RulesVersion
-	plan.RulesHash = sim.RulesHash(cfg.Rules.TickLimit, sim.NormalizeVision(sim.Vision{Enabled: cfg.Rules.Vision, Fog: cfg.Rules.Vision, LOS: cfg.Rules.Vision}))
+	if cfg.Rules.Ruleset == sim.RulesetV15 {
+		plan.RulesVersion = sim.RulesVersionV15
+	}
+	plan.RulesHash = sim.RulesHashFor(cfg.Rules.Ruleset, cfg.Rules.TickLimit, sim.NormalizeVision(sim.Vision{Enabled: cfg.Rules.Vision, Fog: cfg.Rules.Vision, LOS: cfg.Rules.Vision}))
 	plan.Engine = cfg.Engine.Kind
 	if err := os.MkdirAll(outDir, 0o755); err != nil {
 		return err
@@ -374,7 +377,7 @@ func cmdRun(args []string) error {
 		return fmt.Errorf("读不到冻结赛程（先跑 arena plan）: %w", err)
 	}
 	// 冻结赛程必须与当前引擎同一套规则；否则 seed 与规则指纹都会对不上。
-	wantHash := sim.RulesHash(cfg.Rules.TickLimit, sim.NormalizeVision(sim.Vision{
+	wantHash := sim.RulesHashFor(cfg.Rules.Ruleset, cfg.Rules.TickLimit, sim.NormalizeVision(sim.Vision{
 		Enabled: cfg.Rules.Vision, Fog: cfg.Rules.Vision, LOS: cfg.Rules.Vision,
 	}))
 	if plan.RulesHash != "" && plan.RulesHash != wantHash {
@@ -488,6 +491,7 @@ func cmdRun(args []string) error {
 			DecideMs:  cfg.Rules.DecideMs,
 			InitMs:    cfg.Rules.InitMs,
 			Vision:    cfg.Rules.Vision,
+			Ruleset:   cfg.Rules.Ruleset,
 		},
 		Mirror:     plan.Mirror,
 		MaxStrikes: plan.Config.MaxStrikes,
@@ -627,7 +631,7 @@ func cmdRate(args []string) error {
 	if err != nil {
 		return err
 	}
-	wantHash := sim.RulesHash(cfg.Rules.TickLimit, sim.NormalizeVision(sim.Vision{
+	wantHash := sim.RulesHashFor(cfg.Rules.Ruleset, cfg.Rules.TickLimit, sim.NormalizeVision(sim.Vision{
 		Enabled: cfg.Rules.Vision, Fog: cfg.Rules.Vision, LOS: cfg.Rules.Vision,
 	}))
 	f, err := os.Open(filepath.Join(outDir, "结果.jsonl"))
@@ -852,6 +856,7 @@ func cmdCheck(args []string) error {
 			DecideMs:  cfg.Rules.DecideMs,
 			InitMs:    cfg.Rules.InitMs,
 			Vision:    cfg.Rules.Vision,
+			Ruleset:   cfg.Rules.Ruleset,
 		},
 		Mirror:     true,
 		MaxStrikes: cfg.Rules.MaxStrikes,
@@ -1218,6 +1223,7 @@ func cmdSelftest(args []string) error {
 			DecideMs:  cfg.Rules.DecideMs,
 			InitMs:    cfg.Rules.InitMs,
 			Vision:    cfg.Rules.Vision,
+			Ruleset:   cfg.Rules.Ruleset,
 		},
 		Mirror:     false,
 		MaxStrikes: cfg.Rules.MaxStrikes,

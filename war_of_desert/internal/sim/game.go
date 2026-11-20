@@ -24,6 +24,8 @@ type GameCfg struct {
 	InitMS    int    `json:"initMs"`
 	Generator string `json:"generator"`
 	Vision    Vision `json:"vision"`
+	// Ruleset 规则集："v14"（默认）或 "v15"（遗产物/插旗/胜利分/CEP/等级实验）。
+	Ruleset string `json:"ruleset,omitempty"`
 }
 
 // SideState 一方状态。
@@ -51,6 +53,8 @@ type SideState struct {
 	WeaponsReady int
 	WeaponQueue  []WeaponJob
 	Mods         Mods
+	// VS 胜利分三本账（v1.5）。v1.4 下保持零值，不参与计分。
+	VS VictoryScore
 }
 
 // Mods 科技加成累计。
@@ -64,6 +68,9 @@ type Mods struct {
 	Produce float64 `json:"produce"`
 	Harvest float64 `json:"harvest"`
 	Cost    float64 `json:"cost"`
+	// v1.5 火控：CEP 减缩（0..1 累加）与炮塔转速加成。
+	CEP      float64 `json:"cep,omitempty"`
+	Traverse float64 `json:"traverse,omitempty"`
 }
 
 // TechJob 正在研究的科技。
@@ -111,6 +118,20 @@ type Unit struct {
 	PathKey string
 	// LastHit 最近一次被击中的 tick（母舰脱战自愈用）
 	LastHit int
+	// v1.5：射界、等级、遗产运输。
+	Facing     float64 // 车体朝向（度）
+	Turret     float64 // 炮塔朝向（度）
+	Kills      int     // 本单位的击杀数
+	XP         float64 // 只来自击杀的经验
+	Level      int     // 1..5
+	Relic      *int    // 携带的遗产 id
+	RState     string  // toRelic / loading / toDeposit / unloading
+	RelicTimer int
+	FlagTimer  int
+	// AimTargetID v1.5 炮塔锁定的目标；避免每拍换目标导致炮塔来回摆。
+	AimTargetID int
+	AimLockTick int
+	TurretDir   int
 }
 
 // PathPt 采集车路径路点。
@@ -152,6 +173,9 @@ type Projectile struct {
 	VImpact  float64
 	TargetID int
 	Dead     bool
+	// v1.5：开火单位（经验/胜利分归属）与旗目标。
+	ByUnitID     int
+	TargetFlagID int
 }
 
 // Event 对局事件。
@@ -181,6 +205,10 @@ type Action struct {
 	TargetID   *int        `json:"targetId,omitempty"`
 	ResID      *int        `json:"resId,omitempty"`
 	Mode       string      `json:"mode,omitempty"`
+	// v1.5：旗目标 / 遗产目标 / 原地转向角度。
+	FlagID  *int     `json:"flagId,omitempty"`
+	RelicID *int     `json:"relicId,omitempty"`
+	Deg     *float64 `json:"deg,omitempty"`
 }
 
 // OrderLogEntry 确定性重放的一条记录。
@@ -228,6 +256,8 @@ type Result struct {
 	Hits       [2]int        `json:"hits"`
 	Timing     ResultTiming  `json:"timing"`
 	Decide     [2]DecideStat `json:"decide"`
+	// VS v1.5 胜利分三本账；v14 为 nil，不进 JSON。
+	VS *[2]VictoryScore `json:"vs,omitempty"`
 }
 
 // ResultTiming / DecideStat 终局统计块。
@@ -274,6 +304,8 @@ type Game struct {
 	OrderLog    []OrderLogEntry
 	FrameHashes []string
 	Rejected    []Rejected
+	// V15 v1.5 专属状态；v14 为 nil。
+	V15 *V15State
 }
 
 // NewGame 构造一局（JS Game constructor 的移植）。
@@ -292,6 +324,9 @@ func NewGame(seed int, cfg GameCfg) (*Game, error) {
 	}
 	if cfg.Generator == "" {
 		cfg.Generator = "minecraft"
+	}
+	if cfg.Ruleset == "" {
+		cfg.Ruleset = RulesetV14
 	}
 	v := NormalizeVision(cfg.Vision)
 	cfg.Vision = v
@@ -338,6 +373,17 @@ func NewGame(seed int, cfg GameCfg) (*Game, error) {
 			a := math.Pi*float64(s) + (float64(i)/2)*math.Pi*2
 			g.spawn(s, "LAV", cx+math.Cos(a)*Cell*2.8*Scale, cy+math.Sin(a)*Cell*2.8*Scale)
 		}
+		if cfg.Ruleset == RulesetV15 {
+			// v1.5 开局给一台采矿机：遗产/插旗从第 0 拍就可达，
+			// 否则首个 SALVAGER 的 100 CU 会把第一条遗产线拖到 200 拍之后。
+			// 出兵点必须落在可通行格，否则采集车从开局就卡在山环里（CU 死锁）。
+			a := math.Pi*float64(s) + math.Pi/2
+			sx, sy := g.freeSpawnPoint(cx, cy, Cell*3.4*Scale, a)
+			g.spawn(s, "SALVAGER", sx, sy)
+		}
+	}
+	if cfg.Ruleset == RulesetV15 {
+		g.initV15()
 	}
 	g.FrameHashes = append(g.FrameHashes, g.HashFrame(nil))
 	return g, nil
@@ -350,6 +396,7 @@ func (g *Game) spawn(side int, kind string, x, y float64) *Unit {
 	t := Types[kind]
 	S := g.Sides[side]
 	maxHP := math.Round(t.HP * (1 + S.Mods.HP))
+	facing := math.Mod(math.Atan2(float64(World)/2-y, float64(World)/2-x)*180/math.Pi+360, 360)
 	u := &Unit{
 		ID: g.NextID, Side: side, Kind: kind, X: x, Y: y,
 		HP: maxHP, MaxHP: maxHP,
@@ -358,6 +405,7 @@ func (g *Game) spawn(side int, kind string, x, y float64) *Unit {
 		HState:  "idle",
 		CarryCU: 0, CarryRU: 0,
 		AITargetID: 0,
+		Facing:     facing, Turret: facing, Level: 1,
 	}
 	g.NextID++
 	g.Units = append(g.Units, u)
@@ -683,7 +731,7 @@ type techCheck struct {
 }
 
 func (g *Game) techAvailable(side int, id string) techCheck {
-	def, ok := Techs[id]
+	def, ok := g.techTable()[id]
 	if !ok {
 		return techCheck{false, "unknown tech"}
 	}
@@ -745,9 +793,9 @@ func joinSlash(ss []string) string {
 
 func (g *Game) applyTech(side int, id string) {
 	S := g.Sides[side]
-	eff := Techs[id].Eff
+	eff := g.techTable()[id].Eff
 	// 数值效果进 mods；unlock 是非数值（生效靠 techDone 查询）
-	for _, k := range []string{"muzzle", "hp", "range", "speed", "rof", "income", "produce", "harvest", "cost"} {
+	for _, k := range []string{"muzzle", "hp", "range", "speed", "rof", "income", "produce", "harvest", "cost", "cep", "traverse"} {
 		if v, ok := eff[k].(float64); ok {
 			switch k {
 			case "muzzle":
@@ -768,6 +816,10 @@ func (g *Game) applyTech(side int, id string) {
 				S.Mods.Harvest += v
 			case "cost":
 				S.Mods.Cost += v
+			case "cep":
+				S.Mods.CEP += v
+			case "traverse":
+				S.Mods.Traverse += v
 			}
 		}
 	}
@@ -813,6 +865,9 @@ func (g *Game) stepEconomy(side int) {
 	// 重单位中局即可解锁，不再完全依赖 SALVAGER 采 ru 节点。
 	S.RU += RUBaseIncome
 	g.stepSalvagers(side)
+	if g.v15() {
+		g.stepRelics(side)
+	}
 	cv := g.Mothership(side)
 	// 自愈只在脱战 MSRepairDelay 拍后生效：持续被集火时回血会让「斩舰」变成不可能事件。
 	if cv != nil && !cv.Dead && cv.HP > 0 && cv.HP < cv.MaxHP && g.Turn-cv.LastHit >= MSRepairDelay {
@@ -875,7 +930,11 @@ func (g *Game) stepSalvagers(side int) {
 				continue
 			}
 			g.followPath(u, drop.X, drop.Y)
-			if unitDist(u, drop) <= ResRadius {
+			rr := ResRadius
+			if g.v15() {
+				rr = DropoffRadius
+			}
+			if unitDist(u, drop) <= rr {
 				u.HState = "unloading"
 			}
 		case "unloading":

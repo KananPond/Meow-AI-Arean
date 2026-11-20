@@ -34,6 +34,10 @@ type Strategy struct {
 	Siege bool
 	// 目标炮数
 	Weapons int
+	// 行为模式："" = neutral；攻城 Bot 用 obey，避免被路过敌人拽住不走。
+	Mode string
+	// Hunt 猎杀：没有近处敌人时直插敌方母舰，强制制造交战。
+	Hunt bool
 }
 
 // Run 启动标准主循环。
@@ -65,17 +69,24 @@ func Run(s Strategy) error {
 		if !sameAlloc(st.Me.AllocTarget, s.Alloc) {
 			acts = append(acts, botkit.Action{Type: "alloc", Alloc: s.Alloc})
 		}
-		if st.Me.Mode != "neutral" {
-			acts = append(acts, botkit.Action{Type: "mode", Mode: "neutral"})
+		if st.Me.Mode != botMode(s) {
+			acts = append(acts, botkit.Action{Type: "mode", Mode: botMode(s)})
 		}
 		// 严格建造顺序：只造表头的下一项，付不起就等。
 		// 不做「付不起就跳到下一项」的轮转——那会让便宜的 LAV/SCOUT 吃满法产，
 		// 高价兵（RAILGUN/ARTILLERY）永远排不上（v1.2 整季零斩舰的直接原因）。
 		// 只在「人口已经塞不下」或「连续 stallTicks 拍付不起」时才跳过该项。
-		if len(s.Build) > 0 {
+		maxSalvagers := 2
+		if st.V15() {
+			// v1.5：两台采 cu/ru，第三台专职插旗+拉遗产。
+			maxSalvagers = 3
+		}
+		if st.V15() && salvagerCount(b, st) < maxSalvagers && st.Me.CU >= 100 {
+			acts = append(acts, botkit.Action{Type: "produce", Kind: "SALVAGER"})
+		} else if len(s.Build) > 0 {
 			for tries := 0; tries < len(s.Build); tries++ {
 				kind := s.Build[buildIdx%len(s.Build)]
-				if kind == "SALVAGER" && salvagerCount(b, st) >= 2 {
+				if kind == "SALVAGER" && salvagerCount(b, st) >= maxSalvagers {
 					buildIdx++
 					stall = 0
 					continue
@@ -118,7 +129,7 @@ func Run(s Strategy) error {
 				// 目标节点按指派序分流：第 1 台采 cu（基础收入 0，CU 全靠采集）；
 				// 生产表里真有高阶单位时，第 2 台采 ru 解锁，其余全回 cu——
 				// 纯轻单位阵容（RU 需求为 0）不去 ru，别浪费 CU 采集力。
-				if !harvested[u.ID] {
+				if !harvested[u.ID] && harvestN < 2 {
 					kind := "cu"
 					if harvestN == 1 && needsRU {
 						kind = "ru"
@@ -129,6 +140,31 @@ func Run(s Strategy) error {
 						harvested[u.ID] = true
 						harvestN++
 					}
+					continue
+				}
+				// 已指派采集运输线的车绝不改成遗产车：否则经济线会被抽干。
+				if u.Harvest != nil || harvested[u.ID] {
+					continue
+				}
+				if !st.V15() {
+					continue
+				}
+				// v1.5 专职运输车：先找己方旗；有旗就拉最近的无主遗产，
+				// 没旗就找最近的无旗 VP 停车插旗（引擎 40 拍自动插）。
+				if u.Relic != nil {
+					// 引擎托管「装载→回程→入库」，Bot 不插手。
+					continue
+				}
+				if own := botkit.NearestOwnFlag(st, side, u.X, u.Y); own != nil {
+					if r := botkit.NearestGroundRelic(st, u.X, u.Y); r != nil {
+						acts = append(acts, botkit.Action{ID: u.ID, Type: "relic", RelicID: r.ID})
+					} else {
+						acts = append(acts, moveAlong(b, u, own.X, own.Y))
+					}
+					continue
+				}
+				if v := botkit.NearestUnflaggedVP(st, u.X, u.Y); v != nil {
+					acts = append(acts, moveAlong(b, u, v.X, v.Y))
 				}
 				continue
 			case "SCOUT":
@@ -181,6 +217,28 @@ func Run(s Strategy) error {
 					continue
 				}
 			}
+			// v1.5：没有单位可打时拆敌旗。旗有独立 HP，打掉能扣对方的旗分，
+			// 并把该点库存遗产打回地面。
+			if s.Hunt {
+				if ms := botkit.EnemyMothership(st, side); ms != nil {
+					acts = append(acts, moveAlong(b, u, ms.X, ms.Y))
+					continue
+				}
+			}
+			if st.V15() {
+				if ef := botkit.NearestEnemyFlag(st, side, u.X, u.Y); ef != nil {
+					d := math.Hypot(ef.X-u.X, ef.Y-u.Y)
+					if d <= t.Range*0.95*float64(b.Hello.Cell) {
+						acts = append(acts, botkit.Action{ID: u.ID, Type: "attackFlag", FlagID: ef.ID})
+						continue
+					}
+					if s.Push && d <= t.Range*2.2*float64(b.Hello.Cell) {
+						x, y := b.StepToward(u, ef.X, ef.Y, b.Stride(u))
+						acts = append(acts, botkit.Action{ID: u.ID, Type: "move", X: x, Y: y})
+						continue
+					}
+				}
+			}
 			v := botkit.NearestVP(st, u.X, u.Y, side, true)
 			if s.Push {
 				v = b.EnemyVP(st, side)
@@ -191,6 +249,14 @@ func Run(s Strategy) error {
 		}
 		return acts
 	})
+}
+
+// botMode 默认 neutral；攻城 Bot 用 obey 保证 move 指令不被索敌覆盖。
+func botMode(s Strategy) string {
+	if s.Mode != "" {
+		return s.Mode
+	}
+	return "neutral"
 }
 
 // sameAlloc 比较当前分配与目标分配是否一致。
@@ -289,6 +355,11 @@ func moveAlong(b *botkit.Bot, u botkit.Unit, x, y float64) botkit.Action {
 	if nx, ny, ok := b.StepAlong(u, b.FieldTo(x, y), b.Stride(u)); ok {
 		return botkit.Action{ID: u.ID, Type: "move", X: nx, Y: ny}
 	}
+	// 流场不可达（目标在独立山谷/山格）时退回贪心一步：至少朝目标蹭，
+	// 否则整队会永久冻结在自家基地。
+	if nx, ny := b.StepToward(u, x, y, b.Stride(u)); nx != u.X || ny != u.Y {
+		return botkit.Action{ID: u.ID, Type: "move", X: nx, Y: ny}
+	}
 	return botkit.Action{ID: u.ID, Type: "idle"}
 }
 
@@ -302,6 +373,11 @@ func salvagerCount(b *botkit.Bot, st *botkit.State) int {
 	}
 	for _, k := range st.Me.Queue {
 		if k == "SALVAGER" {
+			n++
+		}
+	}
+	for _, a := range st.Me.Active {
+		if a.Kind == "SALVAGER" {
 			n++
 		}
 	}

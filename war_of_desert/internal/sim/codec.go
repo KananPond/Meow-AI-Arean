@@ -26,6 +26,35 @@ type FrameUnit struct {
 	HP    int     `json:"hp"`
 	MaxHP float64 `json:"maxHp"`
 	Mode  string  `json:"mode"`
+	// v1.5；v14 留零值并由 omitempty 隐藏。
+	Lvl    int  `json:"lvl,omitempty"`
+	Kills  int  `json:"kills,omitempty"`
+	Facing int  `json:"facing,omitempty"`
+	Turret int  `json:"turret,omitempty"`
+	Relic  *int `json:"relic,omitempty"`
+	// v1.5 诊断：采集车状态（回放复盘用）
+	Harvest *int   `json:"harvest,omitempty"`
+	HState  string `json:"hstate,omitempty"`
+	CarryCU int    `json:"carryCu,omitempty"`
+	CarryRU int    `json:"carryRu,omitempty"`
+}
+
+type FrameRelic struct {
+	ID    int    `json:"id"`
+	X     int    `json:"x"`
+	Y     int    `json:"y"`
+	State string `json:"state"`
+	By    int    `json:"by,omitempty"`
+	VP    int    `json:"vp,omitempty"`
+}
+
+type FrameFlag struct {
+	ID   int `json:"id"`
+	VP   int `json:"vp"`
+	Side int `json:"side"`
+	X    int `json:"x"`
+	Y    int `json:"y"`
+	HP   int `json:"hp"`
 }
 
 type FrameVP struct {
@@ -37,6 +66,7 @@ type FrameScore struct {
 	VP     int `json:"vp"`
 	Kills  int `json:"kills"`
 	Losses int `json:"losses"`
+	VS     int `json:"vs,omitempty"`
 }
 
 type FrameShell struct {
@@ -64,16 +94,32 @@ type Frame struct {
 	QueueBlocked [2]bool       `json:"queueBlocked"`
 	Weapons      [2]int        `json:"weapons"`
 	Shells       []FrameShell  `json:"shells"`
+	// v1.5；v14 为 nil，omitempty 保证旧回放字节不变。
+	Relics []FrameRelic   `json:"relics,omitempty"`
+	Flags  []FrameFlag    `json:"flags,omitempty"`
+	VS     []VictoryScore `json:"vs,omitempty"`
 }
 
 func (g *Game) buildFrame() *Frame {
 	f := &Frame{Turn: g.Turn}
 	for _, u := range g.Units {
-		f.Units = append(f.Units, FrameUnit{
+		fu := FrameUnit{
 			ID: u.ID, Side: u.Side, Kind: u.Kind,
 			X: int(math.Round(u.X)), Y: int(math.Round(u.Y)),
 			HP: int(math.Round(u.HP)), MaxHP: u.MaxHP, Mode: u.Mode,
-		})
+		}
+		if g.v15() {
+			fu.Lvl, fu.Kills = u.Level, u.Kills
+			fu.Facing = int(math.Round(u.Facing))
+			fu.Turret = int(math.Round(u.Turret))
+			fu.Relic = u.Relic
+			if u.Kind == "SALVAGER" {
+				fu.Harvest, fu.HState = u.Harvest, u.HState
+				fu.CarryCU = int(math.Round(u.CarryCU))
+				fu.CarryRU = int(math.Round(u.CarryRU))
+			}
+		}
+		f.Units = append(f.Units, fu)
 	}
 	for _, vp := range g.Vps {
 		f.VP = append(f.VP, FrameVP{ID: vp.ID, Owner: vp.Owner})
@@ -81,6 +127,10 @@ func (g *Game) buildFrame() *Frame {
 	for s := 0; s < 2; s++ {
 		S := g.Sides[s]
 		f.Score[s] = FrameScore{VP: S.VPScore, Kills: S.Kills, Losses: S.Losses}
+		if g.v15() {
+			f.Score[s].VP = S.VS.Total
+			f.Score[s].VS = S.VS.Total
+		}
 		f.CU[s] = int(math.Round(S.CU))
 		f.RU[s] = int(math.Round(S.RU))
 		f.Alloc[s] = [4]int{S.Alloc.Armour, S.Alloc.Repair, S.Alloc.Attack, S.Alloc.Range}
@@ -112,6 +162,22 @@ func (g *Game) buildFrame() *Frame {
 			Y: int(math.Round(p.SY + p.DY*p.S/MPerPX)),
 			H: int(math.Round(p.H)),
 		})
+	}
+	if g.v15() {
+		for _, r := range g.V15.Relics {
+			f.Relics = append(f.Relics, FrameRelic{
+				ID: r.ID, X: int(math.Round(r.X)), Y: int(math.Round(r.Y)),
+				State: r.State, By: r.CarrierID, VP: r.VPID,
+			})
+		}
+		for _, fl := range g.V15.Flags {
+			f.Flags = append(f.Flags, FrameFlag{
+				ID: fl.ID, VP: fl.VPID, Side: fl.Side,
+				X: int(math.Round(fl.X)), Y: int(math.Round(fl.Y)),
+				HP: int(math.Round(fl.HP)),
+			})
+		}
+		f.VS = []VictoryScore{g.Sides[0].VS, g.Sides[1].VS}
 	}
 	return f
 }
@@ -183,16 +249,33 @@ func (g *Game) Header() json.RawMessage {
 		},
 		"modes": Modes, "defaultMode": DefaultMode, "modeDesc": ModeDesc,
 		"modeRetreatCells": ModeRetreatCells,
-		"techs":            Techs, "trees": TechTrees,
+		"techs":            g.techTable(), "trees": g.treeTable(),
+		"ruleset": g.Cfg.Ruleset,
+	}
+	if g.v15() {
+		sites := make([]map[string]any, 0, len(g.V15.Sites))
+		for i, s := range g.V15.Sites {
+			sites = append(sites, map[string]any{"id": i, "x": s.X, "y": s.Y})
+		}
+		rules["v15"] = map[string]any{
+			"vsWin": VSWinScore, "relicValue": RelicValue, "flagValue": FlagValue,
+			"flagHP": FlagHP, "flagPlaceTicks": FlagPlaceTicks, "stolenShare": FlagStolenShare,
+			"relicLoadTicks": RelicLoadTicks, "relicDropTicks": RelicDropTicks,
+			"relicSpawnTicks": RelicSpawnTicks, "relicMaxGround": RelicMaxGround,
+			"relicRadius": RelicRadius, "relicCarrySpeedMul": RelicCarrySpeedMul,
+			"relicSites": sites, "cep": CEPMax, "arcHalf": ArcHalf, "traverse": TraverseRate,
+			"vetTitles": VetTitles, "vetThresholds": VetThresholds, "killVP": killVPTable(),
+		}
 	}
 	hello := map[string]any{
 		"version": ProtoVersion, "proto": ProtoName, "protoVersion": ProtoVersion,
-		"rulesHash": RulesHash(g.Cfg.TickLimit, g.Vision),
+		"rulesHash": RulesHashFor(g.Cfg.Ruleset, g.Cfg.TickLimit, g.Vision),
 		"game":      "Desert Arena · Referee MVP", "seed": g.Seed, "players": g.Players,
 		"generator": g.Map.Generator, "mapAttempt": g.Map.Attempt,
 		"w": Grid, "h": Grid, "cell": Cell, "world": World,
 		"map": layers, "spawns": spawns, "vp": vps, "res": ress,
-		"rules": rules,
+		"ruleset": g.Cfg.Ruleset,
+		"rules":   rules,
 	}
 	b, _ := json.Marshal(hello)
 	return b
@@ -225,6 +308,10 @@ type TickState struct {
 	Me        TickMe        `json:"me"`
 	Shells    []FrameShell  `json:"shells"`
 	Events    []Event       `json:"events"`
+	// v1.5
+	Relics []TickRelic    `json:"relics,omitempty"`
+	Flags  []TickFlag     `json:"flags,omitempty"`
+	VS     []VictoryScore `json:"vs,omitempty"`
 }
 
 type TickTiming struct {
@@ -246,6 +333,30 @@ type TickUnit struct {
 	Harvest *int       `json:"harvest,omitempty"`
 	HState  string     `json:"hstate,omitempty"`
 	Carry   *TickCarry `json:"carry,omitempty"`
+	// v1.5
+	Lvl    int  `json:"lvl,omitempty"`
+	Kills  int  `json:"kills,omitempty"`
+	Facing int  `json:"facing,omitempty"`
+	Turret int  `json:"turret,omitempty"`
+	Relic  *int `json:"relic,omitempty"`
+}
+
+type TickRelic struct {
+	ID    int     `json:"id"`
+	X     float64 `json:"x"`
+	Y     float64 `json:"y"`
+	State string  `json:"state"`
+	By    int     `json:"by,omitempty"`
+	VP    int     `json:"vp,omitempty"`
+}
+
+type TickFlag struct {
+	ID   int     `json:"id"`
+	VP   int     `json:"vp"`
+	Side int     `json:"side"`
+	X    float64 `json:"x"`
+	Y    float64 `json:"y"`
+	HP   float64 `json:"hp"`
 }
 
 type TickCarry struct {
@@ -295,6 +406,7 @@ type TickMe struct {
 	Active       []TickActive  `json:"active"`
 	Carriers     []TickCarrier `json:"carriers"`
 	Mods         Mods          `json:"mods"`
+	VS           *VictoryScore `json:"vs,omitempty"`
 }
 
 type TickTechJob struct {
@@ -337,6 +449,12 @@ func (g *Game) EncodeTick(i int) string {
 				tu.Carry = &TickCarry{CU: int(math.Round(u.CarryCU)), RU: int(math.Round(u.CarryRU))}
 			}
 		}
+		if g.v15() {
+			tu.Lvl, tu.Kills = u.Level, u.Kills
+			tu.Facing = int(math.Round(u.Facing))
+			tu.Turret = int(math.Round(u.Turret))
+			tu.Relic = u.Relic
+		}
 		ts.Units = append(ts.Units, tu)
 	}
 	for _, v := range g.Vps {
@@ -347,6 +465,23 @@ func (g *Game) EncodeTick(i int) string {
 	}
 	for s := 0; s < 2; s++ {
 		ts.Score[s] = FrameScore{VP: g.Sides[s].VPScore, Kills: g.Sides[s].Kills, Losses: g.Sides[s].Losses}
+		if g.v15() {
+			ts.Score[s].VP = g.Sides[s].VS.Total
+			ts.Score[s].VS = g.Sides[s].VS.Total
+		}
+	}
+	if g.v15() {
+		for _, r := range g.V15.Relics {
+			ts.Relics = append(ts.Relics, TickRelic{
+				ID: r.ID, X: r.X, Y: r.Y, State: r.State, By: r.CarrierID, VP: r.VPID,
+			})
+		}
+		for _, fl := range g.V15.Flags {
+			ts.Flags = append(ts.Flags, TickFlag{
+				ID: fl.ID, VP: fl.VPID, Side: fl.Side, X: fl.X, Y: fl.Y, HP: fl.HP,
+			})
+		}
+		ts.VS = []VictoryScore{g.Sides[0].VS, g.Sides[1].VS}
 	}
 	ts.Me = TickMe{
 		CU: int(math.Round(S.CU)), RU: int(math.Round(S.RU)), Pop: S.Pop, PopMax: PopMax,
@@ -357,6 +492,10 @@ func (g *Game) EncodeTick(i int) string {
 		SpeedMul:     1,
 		TechDone:     sortStrings(keysOf(S.TechDone)),
 		Mods:         S.Mods,
+	}
+	if g.v15() {
+		vs := S.VS
+		ts.Me.VS = &vs
 	}
 	for _, w := range S.WeaponQueue {
 		ts.Me.WeaponQueue = append(ts.Me.WeaponQueue, int(math.Ceil(w.Remain)))
@@ -669,6 +808,83 @@ func (g *Game) Decode(i int, line string) ([]Action, error) {
 				continue
 			}
 			out = append(out, act)
+		case "relic":
+			if !g.v15() {
+				g.noteRejected(i, 0, "relic: not in v15")
+				continue
+			}
+			idf, ok := a["id"].(float64)
+			if !ok || idf != math.Trunc(idf) {
+				return nil, errors.New("bad unit id")
+			}
+			id := int(idf)
+			if !mine[id] || seenUnit[id] {
+				return nil, errors.New("bad unit id")
+			}
+			sv := g.unitByID(id)
+			if sv == nil || sv.Kind != "SALVAGER" {
+				g.noteRejected(i, id, "relic: not a salvager")
+				continue
+			}
+			ridf, ok := a["relicId"].(float64)
+			if !ok || ridf != math.Trunc(ridf) {
+				g.noteRejected(i, id, "relic: bad relicId")
+				continue
+			}
+			rid := int(ridf)
+			r := g.relicByID(rid)
+			if r == nil || r.State != "ground" {
+				g.noteRejected(i, id, "relic: not a ground relic")
+				continue
+			}
+			seenUnit[id] = true
+			out = append(out, Action{Type: "relic", ID: &id, RelicID: &rid})
+		case "attackFlag":
+			if !g.v15() {
+				g.noteRejected(i, 0, "attackFlag: not in v15")
+				continue
+			}
+			idf, ok := a["id"].(float64)
+			if !ok || idf != math.Trunc(idf) {
+				return nil, errors.New("bad unit id")
+			}
+			id := int(idf)
+			if !mine[id] || seenUnit[id] {
+				return nil, errors.New("bad unit id")
+			}
+			fidf, ok := a["flagId"].(float64)
+			if !ok || fidf != math.Trunc(fidf) {
+				g.noteRejected(i, id, "attackFlag: bad flagId")
+				continue
+			}
+			fid := int(fidf)
+			f := g.flagByID(fid)
+			if f == nil || f.Side == i {
+				g.noteRejected(i, id, "attackFlag: bad flag")
+				continue
+			}
+			seenUnit[id] = true
+			out = append(out, Action{Type: "attackFlag", ID: &id, FlagID: &fid})
+		case "face":
+			if !g.v15() {
+				g.noteRejected(i, 0, "face: not in v15")
+				continue
+			}
+			idf, ok := a["id"].(float64)
+			if !ok || idf != math.Trunc(idf) {
+				return nil, errors.New("bad unit id")
+			}
+			id := int(idf)
+			if !mine[id] || seenUnit[id] {
+				return nil, errors.New("bad unit id")
+			}
+			deg, ok := a["deg"].(float64)
+			if !ok || math.IsNaN(deg) || math.IsInf(deg, 0) || deg < 0 || deg > 360 {
+				g.noteRejected(i, id, "face: bad deg")
+				continue
+			}
+			seenUnit[id] = true
+			out = append(out, Action{Type: "face", ID: &id, Deg: &deg})
 		default:
 			return nil, errors.New("bad action type")
 		}
@@ -682,6 +898,7 @@ func (g *Game) Decode(i int, line string) ([]Action, error) {
 type VerifyRec struct {
 	Seed        int             `json:"seed"`
 	TickLimit   int             `json:"tickLimit,omitempty"`
+	Ruleset     string          `json:"ruleset,omitempty"`
 	Generator   string          `json:"generator,omitempty"`
 	Vision      *Vision         `json:"vision,omitempty"`
 	MapAttempt  *int            `json:"mapAttempt,omitempty"`
@@ -730,7 +947,7 @@ func VerifyDeterminism(rec *VerifyRec) VerifyReply {
 	if rec == nil || rec.OrderLog == nil {
 		return VerifyReply{OK: false}
 	}
-	cfg := GameCfg{TickLimit: rec.TickLimit}
+	cfg := GameCfg{TickLimit: rec.TickLimit, Ruleset: rec.Ruleset}
 	if cfg.TickLimit <= 0 {
 		cfg.TickLimit = TickLimit
 	}

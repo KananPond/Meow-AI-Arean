@@ -1,7 +1,8 @@
 // 文件：internal/sim/victory_test.go
 // 版本：v1.3
 // 功能：胜负链可达性门禁。「母舰被毁」是五级判定链的第一条，
-//       如果它在数值上不可达，正式赛就退化成一维 VP 赛跑（v1.2 实测 40/40 局 level=2）。
+//
+//	如果它在数值上不可达，正式赛就退化成一维 VP 赛跑（v1.2 实测 40/40 局 level=2）。
 //
 // 本测试用一支「够得着」的最小兵力验证：3 台 RAILGUN（射程 9.5 > 母舰 7）
 // 在母舰射程外持续输出，必须在 tickLimit 内打穿 3000 HP。
@@ -56,7 +57,7 @@ func TestMothershipNoRepairUnderFire(t *testing.T) {
 	ms.HP = 1000
 	// 每 40 拍挨一下（小于 MSRepairDelay，保持脱战门禁关闭）
 	for i := 0; i < 10; i++ {
-		g.damageUnit(ms, 1, 0)
+		g.damageUnit(ms, 1, 0, 0)
 		before := ms.HP
 		for j := 0; j < MSRepairDelay/2; j++ {
 			g.Step([2][]Action{nil, nil})

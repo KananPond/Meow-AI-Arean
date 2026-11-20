@@ -37,6 +37,7 @@ type Config struct {
 		StrikeMode string `json:"strikeMode"`
 		Generator  string `json:"generator"`
 		Vision     bool   `json:"vision"`
+		Ruleset    string `json:"ruleset,omitempty"`
 	} `json:"rules"`
 	Schedule struct {
 		Seeds     []int `json:"seeds"`
@@ -87,6 +88,7 @@ func Default() *Config {
 	c.Rules.StrikeMode = "consecutive"
 	c.Rules.Generator = "minecraft"
 	c.Rules.Vision = false
+	c.Rules.Ruleset = "v14"
 	c.Schedule.Seeds = []int{20261109}
 	c.Schedule.Mirror = true
 	c.Schedule.Bootstrap = 200
@@ -105,6 +107,7 @@ func (c *Config) ScheduleConfig() schedule.Config {
 		StrikeMode: c.Rules.StrikeMode,
 		Generator:  c.Rules.Generator,
 		Vision:     c.Rules.Vision,
+		Ruleset:    c.Rules.Ruleset,
 	}
 }
 

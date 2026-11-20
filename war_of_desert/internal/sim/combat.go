@@ -199,7 +199,32 @@ func (g *Game) fire(u, e *Unit) bool {
 		return false
 	}
 	shellID := g.pickShell(u.Side, e)
-	sol := g.solveShot(u, shellID, e.X, e.Y, e.VX, e.VY)
+	ex, ey := e.X, e.Y
+	if g.v15() {
+		// 炮塔锁定：旧目标还活着且在射程内就不换，否则炮塔会在两个
+		// 距离相近的目标之间来回摆，永远对不准。锁 60 拍仍打不出去就换。
+		if u.AimTargetID != 0 && g.Turn-u.AimLockTick > 60 {
+			u.AimTargetID = 0
+			u.TurretDir = 0
+		}
+		if u.AimTargetID != 0 && u.AimTargetID != e.ID {
+			old := g.unitByID(u.AimTargetID)
+			if old != nil && !old.Dead && math.Hypot(old.X-u.X, old.Y-u.Y)/Cell <= lim {
+				return false
+			}
+			u.AimTargetID = 0
+			u.TurretDir = 0
+		}
+		if u.AimTargetID == 0 {
+			u.AimTargetID = e.ID
+			u.AimLockTick = g.Turn
+		}
+		if !g.aimV15(u, e.X, e.Y) {
+			return false
+		}
+		ex, ey = g.applyCEP(u, e.X, e.Y)
+	}
+	sol := g.solveShot(u, shellID, ex, ey, e.VX, e.VY)
 	if !sol.ok {
 		return false
 	}
@@ -209,20 +234,46 @@ func (g *Game) fire(u, e *Unit) bool {
 		if n > 1 {
 			spread = (float64(i) - (float64(n)-1)/2) * 0.4
 		}
-		g.spawnShot(u, shellID, sol, spread, e.ID)
+		g.spawnShot(u, shellID, sol, spread, e.ID, 0)
 	}
 	S.Shots += n
 	return true
 }
 
-func (g *Game) spawnShot(u *Unit, shellID string, sol shotSolution, spreadDeg float64, targetID int) {
+// fireAtFlag 对旗开火。旗不是单位，弹道只做直线命中判定。
+func (g *Game) fireAtFlag(u *Unit, f *Flag) bool {
+	t := Types[u.Kind]
+	S := g.Sides[u.Side]
+	d := math.Hypot(u.X-f.X, u.Y-f.Y) / Cell
+	lim := t.Range * (1 + S.Mods.Range)
+	if d > lim {
+		return false
+	}
+	shellID := "AP"
+	fx, fy := f.X, f.Y
+	if g.v15() {
+		if !g.aimV15(u, f.X, f.Y) {
+			return false
+		}
+		fx, fy = g.applyCEP(u, f.X, f.Y)
+	}
+	sol := g.solveShot(u, shellID, fx, fy, 0, 0)
+	if !sol.ok {
+		return false
+	}
+	g.spawnShot(u, shellID, sol, 0, 0, f.ID)
+	S.Shots++
+	return true
+}
+
+func (g *Game) spawnShot(u *Unit, shellID string, sol shotSolution, spreadDeg float64, targetID, targetFlagID int) {
 	v0 := g.v0Of(u, shellID)
 	st := MakeShellState(v0, sol.theta+spreadDeg, g.muzzleH(u))
 	g.Projectiles = append(g.Projectiles, &Projectile{
 		ID: g.NextShot, Side: u.Side, SrcKind: u.Kind, Shell: shellID,
 		SX: u.X, SY: u.Y, DX: sol.dx, DY: sol.dy,
 		S: 0, H: st.H, VX: st.Vx, VH: st.Vh, T: 0,
-		V0: v0, TargetID: targetID,
+		V0: v0, TargetID: targetID, TargetFlagID: targetFlagID, ByUnitID: u.ID,
 	})
 	g.NextShot++
 }
@@ -245,12 +296,18 @@ func (g *Game) hitUnit(p *Projectile, target *Unit, factor float64) {
 	if p.SrcKind == "MOTHERSHIP" {
 		dmg *= AttackDmgBase + float64(g.Sides[p.Side].Alloc.Attack)/100
 	}
-	g.damageUnit(target, dmg, p.Side)
+	if g.v15() {
+		dmg *= g.vetDmgMul(g.unitByID(p.ByUnitID)) * V15DamageMul
+	}
+	g.damageUnit(target, dmg, p.Side, p.ByUnitID)
 }
 
-func (g *Game) damageUnit(e *Unit, dmg float64, bySide int) {
+func (g *Game) damageUnit(e *Unit, dmg float64, bySide, byUnitID int) {
 	if e.Dead {
 		return
+	}
+	if g.v15() {
+		dmg *= g.vetDR(e)
 	}
 	e.LastHit = g.Turn
 	e.HP -= dmg
@@ -265,6 +322,17 @@ func (g *Game) damageUnit(e *Unit, dmg float64, bySide int) {
 	g.Sides[e.Side].Losses++
 	g.Sides[bySide].Kills++
 	g.Sides[bySide].KillValue += def.Cost
+	if g.v15() {
+		killer := g.unitByID(byUnitID)
+		if killer != nil {
+			killer.Kills++
+		}
+		g.addKillVS(bySide, killer, e.Kind)
+		g.addKillXP(killer, e.Kind)
+		if e.Kind == "SALVAGER" {
+			g.dropRelic(e)
+		}
+	}
 	ev := Event{T: g.Turn, Type: "kill", By: bySide, ID: e.ID, Kind: e.Kind}
 	g.LastEvents = append(g.LastEvents, ev)
 	g.Events = append(g.Events, ev)
@@ -361,6 +429,29 @@ func (g *Game) stepShots() {
 				g.explode(p, hit.X, hit.Y, hit)
 				break
 			}
+			// 3b) v1.5 旗目标：旗不是单位，单独做线段-圆判定。
+			if g.v15() && p.TargetFlagID != 0 {
+				if f := g.flagByID(p.TargetFlagID); f != nil {
+					vx, vy := x1-x0, y1-y0
+					len2 := vx*vx + vy*vy
+					tt := 0.0
+					if len2 > 0 {
+						tt = ((f.X-x0)*vx + (f.Y-y0)*vy) / len2
+					}
+					tt = math.Max(0, math.Min(1, tt))
+					cx, cy := x0+vx*tt, y0+vy*tt
+					if math.Hypot(f.X-cx, f.Y-cy) <= HitRM/MPerPX {
+						hAt := h0 + (p.H-h0)*tt
+						if math.Abs(hAt-(g.groundH(f.X, f.Y)+UnitH)) <= 8 {
+							p.VImpact = ShellSpeed(ShellState{Vx: p.VX, Vh: p.VH})
+							fv := DamageOf(p.Shell, Types[p.SrcKind].Dmg, Types[p.SrcKind].V0, p.VImpact, "heavy")
+							g.damageFlag(p, f, fv)
+							p.Dead = true
+							break
+						}
+					}
+				}
+			}
 		}
 		if p.T >= BallMaxT {
 			p.Dead = true
@@ -404,7 +495,9 @@ func (g *Game) updateVP() {
 			vp.Owner = 1
 		}
 		if vp.Owner >= 0 {
-			g.Sides[vp.Owner].VPScore++
+			if !g.v15() {
+				g.Sides[vp.Owner].VPScore++
+			}
 			g.Sides[vp.Owner].VPTicks++
 		}
 		if prev != vp.Owner {
@@ -464,17 +557,27 @@ func (g *Game) endGame(winner, level int, reason string) {
 		return
 	}
 	cards := g.computeCards()
+	if g.v15() {
+		cards = g.computeCardsV15()
+	}
 	techs := [2][]string{sortStrings(keysOf(g.Sides[0].TechDone)), sortStrings(keysOf(g.Sides[1].TechDone))}
+	score := [2]int{g.Sides[0].VPScore, g.Sides[1].VPScore}
+	var vs *[2]VictoryScore
+	if g.v15() {
+		score = [2]int{g.Sides[0].VS.Total, g.Sides[1].VS.Total}
+		vs = &[2]VictoryScore{g.Sides[0].VS, g.Sides[1].VS}
+	}
 	g.ResultData = &Result{
 		Winner: winner, Level: level, Reason: reason, Turn: g.Turn, Seed: g.Seed,
 		Mode: "duel", Players: g.Players, Turns: g.Turn, MapAttempt: g.Map.Attempt,
-		Score: [2]int{g.Sides[0].VPScore, g.Sides[1].VPScore},
-		VP:    [2]int{g.Sides[0].VPScore, g.Sides[1].VPScore},
+		Score: score,
+		VP:    score,
 		Cards: cards, Events: len(g.Events),
 		Alloc: [2]Alloc{g.Sides[0].Alloc, g.Sides[1].Alloc},
 		Techs: techs,
 		Shots: [2]int{g.Sides[0].Shots, g.Sides[1].Shots},
 		Hits:  [2]int{g.Sides[0].Hits, g.Sides[1].Hits},
+		VS:    vs,
 		Timing: ResultTiming{
 			TickMS: g.Cfg.TickMS, DecideMS: g.Cfg.DecideMS, InitMS: g.Cfg.InitMS,
 			OrderLatency: OrderLatency, WallMS: g.Turn * g.Cfg.TickMS,
@@ -537,6 +640,10 @@ func (g *Game) checkEnd() {
 	}
 	if dead1 {
 		g.endGame(0, 1, "蓝方母舰被摧毁")
+		return
+	}
+	if g.v15() {
+		g.checkEndV15(c0, c1)
 		return
 	}
 	if g.Turn >= g.Cfg.TickLimit {
@@ -608,6 +715,12 @@ func normalizeOrders(orders []Action) []Action {
 			out = append(out, Action{Type: "research", Tech: a.Tech})
 		case "harvest":
 			out = append(out, Action{Type: "harvest", ID: a.ID, ResID: a.ResID})
+		case "relic":
+			out = append(out, Action{Type: "relic", ID: a.ID, RelicID: a.RelicID})
+		case "attackFlag":
+			out = append(out, Action{Type: "attackFlag", ID: a.ID, FlagID: a.FlagID})
+		case "face":
+			out = append(out, Action{Type: "face", ID: a.ID, Deg: a.Deg})
 		case "weapon":
 			out = append(out, Action{Type: "weapon"})
 		case "mode":
@@ -674,7 +787,7 @@ func (g *Game) Step(orders [2][]Action) *Frame {
 					g.noteRejected(s, 0, "research: "+chk.reason)
 					continue
 				}
-				def := Techs[a.Tech]
+				def := g.techTable()[a.Tech]
 				g.Sides[s].CU -= float64(def.CU)
 				g.Sides[s].TechDoing = append(g.Sides[s].TechDoing, TechJob{ID: a.Tech, Remain: float64(def.Tick)})
 				ev := Event{T: g.Turn, Type: "research-start", Side: s, Kind: a.Tech}
@@ -705,6 +818,32 @@ func (g *Game) Step(orders [2][]Action) *Frame {
 							u.Mode = a.Mode
 						}
 					}
+				}
+			case "relic":
+				if !g.v15() || a.ID == nil || a.RelicID == nil {
+					continue
+				}
+				u := g.unitByID(*a.ID)
+				if u == nil || u.Side != s || u.Kind != "SALVAGER" || u.Relic != nil {
+					continue
+				}
+				if r := g.relicByID(*a.RelicID); r == nil || r.State != "ground" {
+					continue
+				}
+				// 转去拉遗产：取消采集运输线，避免两个状态机打架。
+				u.Harvest = nil
+				u.HState = "idle"
+				u.FlagTimer = 0
+				rid := *a.RelicID
+				u.Relic = &rid
+				u.RState = "toRelic"
+				u.RelicTimer = 0
+			case "face":
+				if !g.v15() || a.ID == nil || a.Deg == nil {
+					continue
+				}
+				if u := g.unitByID(*a.ID); u != nil && u.Side == s {
+					u.Facing = math.Mod(*a.Deg+360, 360)
 				}
 			}
 		}
@@ -753,13 +892,19 @@ func (g *Game) Step(orders [2][]Action) *Frame {
 				u.HState = "toResource"
 			}
 		}
-		// 引擎托管的采集车不走 Bot 移动指令
-		if u.Kind == "SALVAGER" && u.Harvest != nil {
+		// 引擎托管的采集车/遗产运输车不走 Bot 移动指令
+		if u.Kind == "SALVAGER" && (u.Harvest != nil || u.Relic != nil) {
 			continue
 		}
 		it := g.unitIntent(u)
 		if it.hasMove {
 			g.applyMove(u, it.moveX, it.moveY)
+		}
+		if g.v15() {
+			dx, dy := u.X-u.PX, u.Y-u.PY
+			if dx*dx+dy*dy > 0.01 {
+				u.Facing = math.Mod(math.Atan2(dy, dx)*180/math.Pi+360, 360)
+			}
 		}
 		u.AITargetID = it.targetID
 	}
@@ -789,6 +934,14 @@ func (g *Game) Step(orders [2][]Action) *Frame {
 			continue
 		}
 		// 首选：Bot 显式目标 → 行为层目标 → 射程内最近敌人（都要过视线）
+		fired := false
+		// v1.5：显式拆旗优先。旗不是单位，走独立弹道目标。
+		if g.v15() && u.Order != nil && u.Order.Type == "attackFlag" && u.Order.FlagID != nil {
+			if f := g.flagByID(*u.Order.FlagID); f != nil && f.Side != u.Side {
+				fired = g.fireAtFlag(u, f)
+			}
+		}
+		// 首选：Bot 显式目标 → 行为层目标 → 射程内最近敌人（都要过视线）
 		var prefID int
 		hasPref := false
 		if u.Order != nil && u.Order.TargetID != nil {
@@ -797,7 +950,7 @@ func (g *Game) Step(orders [2][]Action) *Frame {
 			prefID, hasPref = u.AITargetID, true
 		}
 		var pref *Unit
-		if hasPref {
+		if !fired && hasPref {
 			for _, e := range g.Units {
 				if e.ID == prefID && !e.Dead && e.Side != u.Side {
 					pref = e
@@ -805,17 +958,16 @@ func (g *Game) Step(orders [2][]Action) *Frame {
 				}
 			}
 		}
-		fired := false
-		if pref != nil && (!g.Vision.Enabled || g.canSeeBySide(u.Side, pref.X, pref.Y)) {
+		if !fired && pref != nil && (!g.Vision.Enabled || g.canSeeBySide(u.Side, pref.X, pref.Y)) {
 			fired = g.fire(u, pref)
 		}
 		if !fired {
 			lim := t.Range * (1 + g.Sides[u.Side].Mods.Range)
 			type candT struct {
-				e    *Unit
-				d    float64
-				adx  float64
-				ady  float64
+				e   *Unit
+				d   float64
+				adx float64
+				ady float64
 			}
 			var cands []candT
 			for _, e := range g.Units {
@@ -843,8 +995,34 @@ func (g *Game) Step(orders [2][]Action) *Frame {
 				}
 				return cands[a].ady < cands[b].ady
 			})
-			for i := 0; i < len(cands) && i < 3 && !fired; i++ {
+			// v15 的炮塔转速有限：一次只咬一个目标，不能在同一拍里
+			// 对 3 个候选各转一点，否则炮塔会来回摆、永远对不准。
+			candLimit := 3
+			if g.v15() {
+				if pref != nil {
+					candLimit = 0
+				} else {
+					candLimit = 1
+				}
+			}
+			for i := 0; i < len(cands) && i < candLimit && !fired; i++ {
 				fired = g.fire(u, cands[i].e)
+			}
+		}
+		// v1.5 兜底：没有单位可打时，射程内的敌旗也可打（aggressive/neutral）。
+		if !fired && g.v15() && u.Mode != "obey" {
+			lim := t.Range * (1 + g.Sides[u.Side].Mods.Range)
+			for _, f := range g.V15.Flags {
+				if f.Side == u.Side {
+					continue
+				}
+				if math.Hypot(f.X-u.X, f.Y-u.Y)/Cell > lim {
+					continue
+				}
+				if g.fireAtFlag(u, f) {
+					fired = true
+					break
+				}
 			}
 		}
 		if fired {
@@ -861,6 +1039,10 @@ func (g *Game) Step(orders [2][]Action) *Frame {
 		}
 	}
 	g.Units = alive
+	if g.v15() {
+		g.stepRelicSpawn()
+		g.stepFlags()
+	}
 	g.updateVP()
 	g.checkEnd()
 	f := g.buildFrame()

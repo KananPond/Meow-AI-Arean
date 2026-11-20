@@ -30,6 +30,8 @@ type HostConfig struct {
 	InitMs     int    `json:"initMs"`
 	Vision     bool   `json:"vision"`
 	FrameEvery int    `json:"frameEvery,omitempty"`
+	// Ruleset "v14" / "v15"；空值按 v14 处理。
+	Ruleset string `json:"ruleset,omitempty"`
 
 	/* 攻守实验（siege）字段；旧模式留零值即可。 */
 	Mode                 string `json:"mode,omitempty"`
@@ -179,6 +181,9 @@ func (h *Host) New(cfg HostConfig) (*NewReply, error) {
 		"initMs":     cfg.InitMs,
 		"vision":     cfg.Vision,
 		"frameEvery": cfg.FrameEvery,
+	}
+	if cfg.Ruleset != "" {
+		req["ruleset"] = cfg.Ruleset
 	}
 	if cfg.Mode != "" {
 		req["mode"] = cfg.Mode

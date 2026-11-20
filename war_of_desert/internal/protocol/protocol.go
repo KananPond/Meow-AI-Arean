@@ -188,6 +188,14 @@ type DecideStat struct {
 	Faults int     `json:"faults"`
 }
 
+// VSScore 是 v1.5 胜利分三本账。
+type VSScore struct {
+	Kills  int `json:"kills"`
+	Relics int `json:"relics"`
+	Flags  int `json:"flags"`
+	Total  int `json:"total"`
+}
+
 // Result 是 end 段与结果归档的核心字段。
 type Result struct {
 	Winner               int          `json:"winner"`
@@ -213,6 +221,7 @@ type Result struct {
 	Events               int          `json:"events"`
 	OrderTurns           int          `json:"orderTurns"`
 	FrameCount           int          `json:"frameCount"`
+	VS                   []VSScore    `json:"vs,omitempty"`
 	Timing               struct {
 		TickMs       int `json:"tickMs"`
 		DecideMs     int `json:"decideMs"`

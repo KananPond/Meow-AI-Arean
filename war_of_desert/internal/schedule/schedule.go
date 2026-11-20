@@ -42,6 +42,7 @@ type Config struct {
 	StrikeMode string `json:"strikeMode"`
 	Generator  string `json:"generator"`
 	Vision     bool   `json:"vision"`
+	Ruleset    string `json:"ruleset,omitempty"`
 }
 
 // Plan 是 赛程.json 的完整内容。
@@ -50,13 +51,13 @@ type Plan struct {
 	CreatedBy string `json:"createdBy"`
 	// 赛程必须自带规则身份：v1.1 与 v1.2 的赛程文件曾逐字节相同，
 	// 光看赛程分不出这批对局是哪套规则跑的。
-	RulesVersion string `json:"rulesVersion,omitempty"`
-	RulesHash    string `json:"rulesHash,omitempty"`
-	Engine       string `json:"engine,omitempty"`
-	Mirror       bool   `json:"mirror"`
-	Entries   []Entry `json:"entries"`
-	Matches   []Match `json:"matches"`
-	Config    Config  `json:"config"`
+	RulesVersion string  `json:"rulesVersion,omitempty"`
+	RulesHash    string  `json:"rulesHash,omitempty"`
+	Engine       string  `json:"engine,omitempty"`
+	Mirror       bool    `json:"mirror"`
+	Entries      []Entry `json:"entries"`
+	Matches      []Match `json:"matches"`
+	Config       Config  `json:"config"`
 }
 
 // Build 生成赛程。seed 递增规则与 UP 主原版一致：baseSeed + 已排场次数，

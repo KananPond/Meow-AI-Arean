@@ -78,6 +78,35 @@ type Unit struct {
 	HP    float64 `json:"hp"`
 	MaxHP float64 `json:"maxHp"`
 	Mode  string  `json:"mode"`
+	// v1.5
+	Lvl    int  `json:"lvl,omitempty"`
+	Kills  int  `json:"kills,omitempty"`
+	Facing int  `json:"facing,omitempty"`
+	Turret int  `json:"turret,omitempty"`
+	Relic  *int `json:"relic,omitempty"`
+	// 采集车状态
+	Harvest *int   `json:"harvest,omitempty"`
+	HState  string `json:"hstate,omitempty"`
+}
+
+// Relic 是 v1.5 的遗产物。State: ground / carried / stored。
+type Relic struct {
+	ID    int     `json:"id"`
+	X     float64 `json:"x"`
+	Y     float64 `json:"y"`
+	State string  `json:"state"`
+	By    int     `json:"by,omitempty"`
+	VP    int     `json:"vp,omitempty"`
+}
+
+// Flag 是 v1.5 的旗。
+type Flag struct {
+	ID   int     `json:"id"`
+	VP   int     `json:"vp"`
+	Side int     `json:"side"`
+	X    float64 `json:"x"`
+	Y    float64 `json:"y"`
+	HP   float64 `json:"hp"`
 }
 
 // VP 是胜利点。
@@ -104,6 +133,7 @@ type SideScore struct {
 	VP     int `json:"vp"`
 	Kills  int `json:"kills"`
 	Losses int `json:"losses"`
+	VS     int `json:"vs,omitempty"`
 }
 
 // Me 是本方私有信息。
@@ -151,7 +181,19 @@ type State struct {
 	Score     [2]SideScore      `json:"score"`
 	Me        Me                `json:"me"`
 	Events    []json.RawMessage `json:"events"`
+	// v1.5
+	Relics []Relic `json:"relics,omitempty"`
+	Flags  []Flag  `json:"flags,omitempty"`
+	VS     []struct {
+		Kills  int `json:"kills"`
+		Relics int `json:"relics"`
+		Flags  int `json:"flags"`
+		Total  int `json:"total"`
+	} `json:"vs,omitempty"`
 }
+
+// V15 判断本局是否 v1.5（tick 里带胜利分账本）。
+func (st *State) V15() bool { return len(st.VS) == 2 }
 
 // Action 是一条动作。
 //
@@ -167,6 +209,10 @@ type Action struct {
 	Tech     string         `json:"tech,omitempty"`
 	Mode     string         `json:"mode,omitempty"`
 	Alloc    map[string]int `json:"alloc,omitempty"`
+	// v1.5
+	FlagID  int     `json:"flagId,omitempty"`
+	RelicID int     `json:"relicId,omitempty"`
+	Deg     float64 `json:"deg,omitempty"`
 }
 
 // Bot 持有 hello 与地图，是选手侧的只读环境。
@@ -345,12 +391,14 @@ func (b *Bot) StepToward(u Unit, tx, ty, stride float64) (float64, float64) {
 //
 // TYPES.speed 是世界格/s，时间基准取共享 sim 包的 TICK_MS/1000
 // （v1.1 = 0.05s；Plan_Beta §4.1：公式只此一份，禁止复制）。
+// 下限 3.5 px：引擎 applyMove 对 <2.5 px 的位移直接忽略，慢速单位
+// （RAILGUN 1.92 px/tick、ARTILLERY 1.68）如果只发一步会被永久冻住。
 func (b *Bot) Stride(u Unit) float64 {
 	t, ok := b.Rules.Types[u.Kind]
 	if !ok || t.Speed <= 0 {
-		return 1
+		return 3.5
 	}
-	return math.Max(1, t.Speed*float64(b.Hello.Cell)*(sim.TickMS/1000.0))
+	return math.Max(3.5, t.Speed*float64(b.Hello.Cell)*(sim.TickMS/1000.0))
 }
 
 // Own 返回本方存活单位。
@@ -375,6 +423,57 @@ func Enemies(st *State, side int) []Unit {
 		}
 	}
 	return out
+}
+
+// NearestGroundRelic 返回离 (x,y) 最近的无主遗产。
+func NearestGroundRelic(st *State, x, y float64) *Relic {
+	var best *Relic
+	bd := math.Inf(1)
+	for i := range st.Relics {
+		r := &st.Relics[i]
+		if r.State != "ground" {
+			continue
+		}
+		d := math.Hypot(r.X-x, r.Y-y)
+		if d < bd {
+			bd, best = d, r
+		}
+	}
+	return best
+}
+
+// NearestOwnFlag 返回离 (x,y) 最近的己方旗。
+func NearestOwnFlag(st *State, side int, x, y float64) *Flag {
+	var best *Flag
+	bd := math.Inf(1)
+	for i := range st.Flags {
+		f := &st.Flags[i]
+		if f.Side != side || f.HP <= 0 {
+			continue
+		}
+		d := math.Hypot(f.X-x, f.Y-y)
+		if d < bd {
+			bd, best = d, f
+		}
+	}
+	return best
+}
+
+// NearestEnemyFlag 返回离 (x,y) 最近的敌方旗。
+func NearestEnemyFlag(st *State, side int, x, y float64) *Flag {
+	var best *Flag
+	bd := math.Inf(1)
+	for i := range st.Flags {
+		f := &st.Flags[i]
+		if f.Side == side || f.HP <= 0 {
+			continue
+		}
+		d := math.Hypot(f.X-x, f.Y-y)
+		if d < bd {
+			bd, best = d, f
+		}
+	}
+	return best
 }
 
 // Nearest 返回离 (x,y) 最近的单位，没有则 nil。
@@ -420,6 +519,30 @@ func NearestVP(st *State, x, y float64, side int, preferNeutral bool) *VP {
 	}
 	if best == nil && preferNeutral {
 		return NearestVP(st, x, y, side, false)
+	}
+	return best
+}
+
+// NearestUnflaggedVP 返回最近的无旗 VP（v1.5 插旗用）。
+func NearestUnflaggedVP(st *State, x, y float64) *VP {
+	var best *VP
+	bd := math.Inf(1)
+	for i := range st.VP {
+		v := &st.VP[i]
+		used := false
+		for _, f := range st.Flags {
+			if f.VP == v.ID {
+				used = true
+				break
+			}
+		}
+		if used {
+			continue
+		}
+		d := math.Hypot(v.X-x, v.Y-y)
+		if d < bd {
+			bd, best = d, v
+		}
 	}
 	return best
 }
@@ -516,7 +639,8 @@ func (b *Bot) FieldTo(x, y float64) *Field {
 		cur := q[head]
 		cx, cy := int(cur)%w, int(cur)/w
 		d := dist[cur]
-		for _, n := range [4][2]int{{1, 0}, {-1, 0}, {0, 1}, {0, -1}} {
+		// 8 邻域：只走 4 邻域时，斜向缺口会被判成不可达，整队冻结在基地。
+		for _, n := range [8][2]int{{1, 0}, {-1, 0}, {0, 1}, {0, -1}, {1, 1}, {1, -1}, {-1, 1}, {-1, -1}} {
 			nx, ny := cx+n[0], cy+n[1]
 			if nx < 0 || ny < 0 || nx >= w || ny >= h {
 				continue
@@ -524,6 +648,11 @@ func (b *Bot) FieldTo(x, y float64) *Field {
 			ni := ny*w + nx
 			if dist[ni] != -1 || b.Layers.Base[ni] == 3 {
 				continue
+			}
+			if n[0] != 0 && n[1] != 0 {
+				if b.Layers.Base[cy*w+nx] == 3 || b.Layers.Base[ny*w+cx] == 3 {
+					continue
+				}
 			}
 			dist[ni] = d + 1
 			q = append(q, int32(ni))
