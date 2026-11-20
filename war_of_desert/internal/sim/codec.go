@@ -356,6 +356,7 @@ func (g *Game) EncodeTick(i int) string {
 		WeaponsReady: S.WeaponsReady,
 		SpeedMul:     1,
 		TechDone:     sortStrings(keysOf(S.TechDone)),
+		Mods:         S.Mods,
 	}
 	for _, w := range S.WeaponQueue {
 		ts.Me.WeaponQueue = append(ts.Me.WeaponQueue, int(math.Ceil(w.Remain)))
@@ -686,8 +687,16 @@ type VerifyRec struct {
 	MapAttempt  *int            `json:"mapAttempt,omitempty"`
 	OrderLog    []OrderLogEntry `json:"orderLog"`
 	FrameHashes []string        `json:"frameHashes,omitempty"`
-	Result      *Result         `json:"result,omitempty"`
-	SiegeResult *SiegeResult    `json:"siegeResult,omitempty"` // 攻守复核用
+	// Forfeited 裁判红牌判负的座位（-1/未设置 = 无）。重放时必须复现这一外部收局，
+	// 否则 Forfeit/EndGame 终止的局在重放里 Result 为 nil，复核会空转通过。
+	Forfeited *int `json:"forfeited,omitempty"`
+	// EndWinner 裁判手动 EndGame 的胜者（-1 = 平局），用于双方同时故障的收局。
+	EndWinner *int `json:"endWinner,omitempty"`
+	// SiegeCfg 攻守局的完整配置。母舰 HP / 要塞预算 / 初始 CU 都会影响对局，
+	// 只带 TickLimit 重放会在第 0 帧就与记录不一致。
+	SiegeCfg    *SiegeCfg    `json:"siegeCfg,omitempty"`
+	Result      *Result      `json:"result,omitempty"`
+	SiegeResult *SiegeResult `json:"siegeResult,omitempty"` // 攻守复核用
 }
 
 // VerifyReply 复核结论（形状对齐 JS：ok/turns/frames/mismatch/resultMismatch/result）。
@@ -744,6 +753,15 @@ func VerifyDeterminism(rec *VerifyRec) VerifyReply {
 	if mismatch == nil && len(rec.FrameHashes) > 0 && rec.FrameHashes[0] != g.FrameHashes[0] {
 		mismatch = &Mismatch{Turn: 0, Expected: rec.FrameHashes[0], Got: g.FrameHashes[0]}
 	}
+	// 帧哈希必须与指令日志一一对应（NewGame 的第 0 帧 + 每 Step 一帧）。
+	// 缺哈希等于「删掉证据」：旧实现会跳过对应的逐帧比对并判 OK。
+	if mismatch == nil && len(rec.FrameHashes) != len(rec.OrderLog)+1 {
+		mismatch = &Mismatch{
+			Turn:     0,
+			Expected: "frameHashes=" + itoa(len(rec.OrderLog)+1),
+			Got:      "frameHashes=" + itoa(len(rec.FrameHashes)),
+		}
+	}
 	for k := range rec.OrderLog {
 		if mismatch != nil {
 			break
@@ -757,13 +775,26 @@ func VerifyDeterminism(rec *VerifyRec) VerifyReply {
 			}
 		}
 	}
+	// 裁判收局（红牌/双方出局）不在 orderLog 里，必须在重放末尾补上，
+	// 否则重放不会产生终局，Result 永远为 nil。
+	if mismatch == nil && rec.Forfeited != nil {
+		g.Forfeit(*rec.Forfeited, "")
+	} else if mismatch == nil && rec.EndWinner != nil {
+		g.EndGame(*rec.EndWinner, 0, "")
+	}
 	r := g.Result()
 	var resultMismatch *ResultMis
-	if mismatch == nil && rec.Result != nil && r != nil &&
-		(rec.Result.Winner != r.Winner || rec.Result.Level != r.Level) {
-		resultMismatch = &ResultMis{
-			Expected: itoa(rec.Result.Winner) + "/" + itoa(rec.Result.Level),
-			Got:      itoa(r.Winner) + "/" + itoa(r.Level),
+	if mismatch == nil && rec.Result != nil {
+		if r == nil {
+			resultMismatch = &ResultMis{
+				Expected: itoa(rec.Result.Winner) + "/" + itoa(rec.Result.Level),
+				Got:      "nil",
+			}
+		} else if rec.Result.Winner != r.Winner || rec.Result.Level != r.Level {
+			resultMismatch = &ResultMis{
+				Expected: itoa(rec.Result.Winner) + "/" + itoa(rec.Result.Level),
+				Got:      itoa(r.Winner) + "/" + itoa(r.Level),
+			}
 		}
 	}
 	vr := (*VerifyResult)(nil)

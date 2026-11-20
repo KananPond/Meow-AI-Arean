@@ -101,6 +101,19 @@ func (s *Seal) Verify(root string) []string {
 				bad = append(bad, fmt.Sprintf("%s/%s：封存后新增的源码文件", e.Name, name))
 			}
 		}
+		// 源码型选手也要锁定实际执行的 bin。老封存记录可能没有 binSha256，
+		// 这里只在有值时校验，避免误伤历史记录。
+		if e.BinSHA256 != "" {
+			got, err := hashFile(resolveBin(root, e.Bin))
+			if err != nil {
+				bad = append(bad, fmt.Sprintf("%s：编译产物不可用：%v", e.Name, err))
+				continue
+			}
+			if got != e.BinSHA256 {
+				bad = append(bad, fmt.Sprintf("%s：编译产物封存 %s，实际 %s（bin 与源码不一致，需要重新 arena build）",
+					e.Name, short(e.BinSHA256), short(got)))
+			}
+		}
 	}
 	sort.Strings(bad)
 	return bad

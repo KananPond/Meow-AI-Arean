@@ -61,11 +61,12 @@ type envelope struct {
 }
 
 type server struct {
-	out     *bufio.Writer
-	game    *sim.Game
-	siege   *sim.SiegeGame
-	mode    string
-	pending [2][]sim.Action
+	out        *bufio.Writer
+	game       *sim.Game
+	siege      *sim.SiegeGame
+	mode       string
+	frameEvery int
+	pending    [2][]sim.Action
 }
 
 func (s *server) respond(e envelope) {
@@ -104,6 +105,10 @@ func (s *server) handle(raw []byte) {
 			return
 		}
 		s.mode = cfg.Mode
+		s.frameEvery = cfg.FrameEvery
+		if s.frameEvery <= 0 {
+			s.frameEvery = 5
+		}
 		s.pending = [2][]sim.Action{}
 		if cfg.Mode == "siege" {
 			sg, err := sim.NewSiegeGame(cfg.Seed, sim.SiegeCfg{
@@ -196,8 +201,8 @@ func (s *server) handle(raw []byte) {
 		}
 		s.pending = [2][]sim.Action{}
 		e := envelope{Cmd: "step", Done: done, Turn: turn}
-		// 帧抽点：turn % 5 == 0 或终局（与 oracle_host.js:98-101 一致）
-		if turn%5 == 0 || done {
+		// 帧抽点：turn % frameEvery == 0 或终局（默认 5，与 oracle_host.js 一致）
+		if turn%s.frameEvery == 0 || done {
 			b, _ := json.Marshal(frame)
 			e.Frame = b
 		}
@@ -295,8 +300,23 @@ func (s *server) verifyRec() *sim.VerifyRec {
 		rec.MapAttempt = &s.siege.Map.Attempt
 		rec.OrderLog = s.siege.OrderLog
 		rec.FrameHashes = s.siege.FrameHashes
+		v := s.siege.Vision
+		rec.Vision = &v
+		// 攻守局的母舰 HP / 要塞预算 / 初始 CU 等必须一并带给复核，
+		// 否则重放会用默认规则，与记录对局不是同一局。
+		sc := s.siege.Cfg
+		rec.SiegeCfg = &sc
+		if s.siege.Forfeited >= 0 {
+			f := s.siege.Forfeited
+			rec.Forfeited = &f
+		}
 		if r := s.siege.Result(); r != nil {
 			rec.SiegeResult = r
+			// level=0 且无红牌 = 裁判手动 EndGame（双方同时故障），重放要补同一步。
+			if r.Level == 0 && s.siege.Forfeited < 0 {
+				w := r.Winner
+				rec.EndWinner = &w
+			}
 		}
 		return rec
 	}
@@ -307,8 +327,18 @@ func (s *server) verifyRec() *sim.VerifyRec {
 		rec.MapAttempt = &s.game.Map.Attempt
 		rec.OrderLog = s.game.OrderLog
 		rec.FrameHashes = s.game.FrameHashes
+		v := s.game.Vision
+		rec.Vision = &v
+		if s.game.Forfeited >= 0 {
+			f := s.game.Forfeited
+			rec.Forfeited = &f
+		}
 		if r := s.game.Result(); r != nil {
 			rec.Result = r
+			if r.Level == 0 && s.game.Forfeited < 0 {
+				w := r.Winner
+				rec.EndWinner = &w
+			}
 		}
 	}
 	return rec

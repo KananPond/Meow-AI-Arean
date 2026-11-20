@@ -17,6 +17,7 @@ import (
 	"os/exec"
 	"strings"
 	"sync"
+	"time"
 )
 
 // HostConfig 是一局游戏的规则配置。所有字段都会进规则指纹。
@@ -28,7 +29,7 @@ type HostConfig struct {
 	DecideMs   int    `json:"decideMs"`
 	InitMs     int    `json:"initMs"`
 	Vision     bool   `json:"vision"`
-	FrameEvery int    `json:"-"`
+	FrameEvery int    `json:"frameEvery,omitempty"`
 
 	/* 攻守实验（siege）字段；旧模式留零值即可。 */
 	Mode                 string `json:"mode,omitempty"`
@@ -44,13 +45,18 @@ type HostConfig struct {
 
 // Host 是一个引擎宿主进程。非并发安全，调用方负责串行化。
 type Host struct {
-	cmd *exec.Cmd
-	in  io.WriteCloser
-	out *bufio.Reader
-	mu  sync.Mutex
+	cmd     *exec.Cmd
+	in      io.WriteCloser
+	out     *bufio.Reader
+	outFile io.ReadCloser
+	timeout time.Duration
+	mu      sync.Mutex
 
 	closed bool
 }
+
+// HostCallTimeout 是单条命令的最长等待时间。没有它时，宿主卡死会让裁判永久阻塞。
+const HostCallTimeout = 60 * time.Second
 
 type envelope struct {
 	OK           bool            `json:"ok"`
@@ -97,7 +103,16 @@ func Start(script string, rulesPath ...string) (*Host, error) {
 	if err := cmd.Start(); err != nil {
 		return nil, fmt.Errorf("启动引擎宿主失败: %w", err)
 	}
-	return &Host{cmd: cmd, in: in, out: bufio.NewReaderSize(out, 1<<20)}, nil
+	return &Host{cmd: cmd, in: in, out: bufio.NewReaderSize(out, 1<<20), outFile: out, timeout: HostCallTimeout}, nil
+}
+
+// deadlineSetter 是 os.File 的超时接口（管道在 Windows/Linux 上都支持）。
+type deadlineSetter interface {
+	SetReadDeadline(time.Time) error
+}
+
+type writeDeadlineSetter interface {
+	SetWriteDeadline(time.Time) error
 }
 
 func (h *Host) call(req any, resp *envelope) error {
@@ -110,8 +125,22 @@ func (h *Host) call(req any, resp *envelope) error {
 	if err != nil {
 		return err
 	}
+	// 写也带截止时间：宿主不读 stdin 时，hello 这类大行会把裁判永久卡住。
+	if h.timeout > 0 {
+		if dl, ok := h.in.(writeDeadlineSetter); ok {
+			_ = dl.SetWriteDeadline(time.Now().Add(h.timeout))
+			defer func() { _ = dl.SetWriteDeadline(time.Time{}) }()
+		}
+	}
 	if _, err := h.in.Write(append(raw, '\n')); err != nil {
 		return fmt.Errorf("写引擎宿主失败: %w", err)
+	}
+	// 读带截止时间：宿主卡死时返回错误，而不是让整个裁判永久阻塞。
+	if h.timeout > 0 {
+		if dl, ok := h.outFile.(deadlineSetter); ok {
+			_ = dl.SetReadDeadline(time.Now().Add(h.timeout))
+			defer func() { _ = dl.SetReadDeadline(time.Time{}) }()
+		}
 	}
 	line, err := h.out.ReadString('\n')
 	if err != nil {

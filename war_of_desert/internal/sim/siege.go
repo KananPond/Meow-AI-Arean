@@ -36,6 +36,9 @@ const (
 	SiegeMaxLine = 65536
 )
 
+// SiegeIncome 攻守赛被动收入（/tick，进规则指纹与 stepEconomy）。
+const SiegeIncome = 1.5
+
 // SiegeWeights 八领域权重（第 8 域「算力表现」吃墙钟，复核豁免）。
 var SiegeWeights = [8]float64{0.25, 0.20, 0.15, 0.15, 0.10, 0.05, 0.05, 0.05}
 
@@ -843,7 +846,7 @@ func (g *SiegeGame) stepResearch(side int) {
 
 func (g *SiegeGame) stepEconomy(side int) {
 	S := g.Sides[side]
-	S.CU += 1.5 * (1 + S.Mods.Income)
+	S.CU += SiegeIncome * (1 + S.Mods.Income)
 	// 采集车：站在资源点圈内产 CU（siege 无资源点，此循环为 fork 保留的死路径）
 	for _, u := range g.Units {
 		if u.Dead || u.Side != side || u.Kind != "SALVAGER" {
@@ -1885,8 +1888,8 @@ func SiegeRulesHash(cfg SiegeCfg) string {
 		"|slopes:" + itoa(UnitSlope) + "," + itoa(CarrierSlope) +
 		"|vp:" + fnum(VPRadius) +
 		"|weights:" + fnum(SiegeWeights[0]) + "," + fnum(SiegeWeights[1]) + "," + fnum(SiegeWeights[2]) + "," + fnum(SiegeWeights[3]) + "," + fnum(SiegeWeights[4]) + "," + fnum(SiegeWeights[5]) + "," + fnum(SiegeWeights[6]) + "," + fnum(SiegeWeights[7]) +
-		"|alloc:produce,attack,research,move,5," + itoa(siegeStartAlloc().Produce) + "," + itoa(siegeStartAlloc().Attack) + "," + itoa(siegeStartAlloc().Research) + "," + itoa(siegeStartAlloc().Move) +
-		"|economy:500,1.5,0," + fnum(ResRadius) + "," + itoa(PopMax) +
+		"|alloc:produce,attack,research,move," + itoa(AllocStep) + "," + itoa(siegeStartAlloc().Produce) + "," + itoa(siegeStartAlloc().Attack) + "," + itoa(siegeStartAlloc().Research) + "," + itoa(siegeStartAlloc().Move) +
+		"|economy:" + itoa(StartCU) + "," + fnum(SiegeIncome) + ",0," + fnum(ResRadius) + "," + itoa(PopMax) +
 		"|mine:" + fnum(MineRate) + "," + fnum(MineAmount) + "," + fnum(MineSalvageBonus) +
 		"|fort:" + itoa(c.FortBudget) + "," + itoa(c.PlaceTicks) + "," + itoa(SiegeFortCostWall) + "," + itoa(SiegeFortCostTurret) + "," + fnum(SiegeFortRadius) +
 		"|hp:" + fnum(c.MothershipHP) + "," + fnum(c.AttackerMothershipHP) + "," + itoa(c.AttackerStartLav) + "," + itoa(c.DefenderStartLav) + "," + fnum(c.AttackerCU) + "," + fnum(c.DefenderCU) +
@@ -2320,7 +2323,13 @@ func VerifySiegeDeterminism(rec *VerifyRec) VerifyReply {
 	if rec == nil || rec.OrderLog == nil {
 		return VerifyReply{OK: false}
 	}
-	cfg := SiegeCfg{TickLimit: rec.TickLimit}
+	cfg := SiegeCfg{}
+	if rec.SiegeCfg != nil {
+		cfg = *rec.SiegeCfg
+	}
+	if rec.TickLimit > 0 {
+		cfg.TickLimit = rec.TickLimit
+	}
 	if rec.Generator != "" {
 		cfg.Generator = rec.Generator
 	}
@@ -2340,6 +2349,13 @@ func VerifySiegeDeterminism(rec *VerifyRec) VerifyReply {
 	if mismatch == nil && len(rec.FrameHashes) > 0 && rec.FrameHashes[0] != g.FrameHashes[0] {
 		mismatch = &Mismatch{Turn: 0, Expected: rec.FrameHashes[0], Got: g.FrameHashes[0]}
 	}
+	if mismatch == nil && len(rec.FrameHashes) != len(rec.OrderLog)+1 {
+		mismatch = &Mismatch{
+			Turn:     0,
+			Expected: "frameHashes=" + itoa(len(rec.OrderLog)+1),
+			Got:      "frameHashes=" + itoa(len(rec.FrameHashes)),
+		}
+	}
 	for k := range rec.OrderLog {
 		if mismatch != nil {
 			break
@@ -2353,13 +2369,24 @@ func VerifySiegeDeterminism(rec *VerifyRec) VerifyReply {
 			}
 		}
 	}
+	if mismatch == nil && rec.Forfeited != nil {
+		g.Forfeit(*rec.Forfeited, "")
+	} else if mismatch == nil && rec.EndWinner != nil {
+		g.EndGame(*rec.EndWinner, 0, "")
+	}
 	r := g.Result()
 	var resultMismatch *ResultMis
-	if mismatch == nil && rec.SiegeResult != nil && r != nil &&
-		(rec.SiegeResult.Winner != r.Winner || rec.SiegeResult.Level != r.Level) {
-		resultMismatch = &ResultMis{
-			Expected: itoa(rec.SiegeResult.Winner) + "/" + itoa(rec.SiegeResult.Level),
-			Got:      itoa(r.Winner) + "/" + itoa(r.Level),
+	if mismatch == nil && rec.SiegeResult != nil {
+		if r == nil {
+			resultMismatch = &ResultMis{
+				Expected: itoa(rec.SiegeResult.Winner) + "/" + itoa(rec.SiegeResult.Level),
+				Got:      "nil",
+			}
+		} else if rec.SiegeResult.Winner != r.Winner || rec.SiegeResult.Level != r.Level {
+			resultMismatch = &ResultMis{
+				Expected: itoa(rec.SiegeResult.Winner) + "/" + itoa(rec.SiegeResult.Level),
+				Got:      itoa(r.Winner) + "/" + itoa(r.Level),
+			}
 		}
 	}
 	var vr *VerifyResult
