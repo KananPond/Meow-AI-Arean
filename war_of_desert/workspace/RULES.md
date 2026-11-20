@@ -1,4 +1,4 @@
-# 选手规则与协议 v1.2（Go 原生引擎）
+# 选手规则与协议 v1.4（Go 原生引擎）
 
 > 你写一个独立程序，裁判用 stdin/stdout 和你对话。本文是完整契约；`botkit/` 是可选工具库。
 > 当前规则 = **v1.4**：四子系统分配（armour/repair/attack/range）、CU/RU 双资源运输线经济、
@@ -107,7 +107,6 @@ go build -o bots/bin/submission.exe ./workspace/submission
   {"id":9,"type":"attack","targetId":12},
   {"type":"alloc","alloc":{"armour":25,"repair":25,"attack":30,"range":20}},
   {"type":"produce","kind":"LAV"},
-  {"type":"produce","kind":"CARRIER"},
   {"type":"research","tech":"I1"},
   {"type":"weapon"},
   {"type":"mode","mode":"neutral"},
@@ -186,16 +185,16 @@ go build -o bots/bin/submission.exe ./workspace/submission
 ```bash
 cd war_of_desert
 go build -o bots/bin/submission.exe ./workspace/submission
-go run ./cmd/arena check -config tournament/formal_v12.json -seed 20261109
+go run ./cmd/arena check -config tournament/formal_v14.json -seed 20261109
 ```
 
-期望：两局跑满 1200 tick、`故障=0/0`、`确定性复核：true`。`formal_v12.json` 的
+期望：两局跑满 1200 tick、`故障=0/0`、`确定性复核：true`。`formal_v14.json` 的
 `engine.kind` 是 `native`——规则引擎是 Go 原生 `cmd/enginehost`，不再依赖 Node 快照。
 
 想换对手：
 
 ```bash
-go run ./cmd/arena check -config tournament/formal_v12.json -a bots/bin/submission.exe -b bots/bin/nomad.exe -seed 20261110
+go run ./cmd/arena check -config tournament/formal_v14.json -a bots/bin/submission.exe -b bots/bin/nomad.exe -seed 20261110
 ```
 
 ---

@@ -213,4 +213,29 @@ func TestSiegeReplayDeterminism(t *testing.T) {
 	}
 }
 
+func TestSiegeVerifyCarriesCfg(t *testing.T) {
+	/* 攻守复核必须使用记录里的完整 SiegeCfg：只带 TickLimit 会用默认兵力重放。 */
+	g, err := NewSiegeGame(20261109, SiegeCfg{Generator: "minecraft", AttackerStartLav: 5})
+	if err != nil {
+		t.Fatalf("NewSiegeGame: %v", err)
+	}
+	for i := 0; i < 10; i++ {
+		g.Step([2][]Action{nil, nil})
+	}
+	c := g.Cfg
+	rec := &VerifyRec{
+		Seed: g.Seed, TickLimit: g.Cfg.TickLimit, Generator: g.Cfg.Generator,
+		MapAttempt: &g.Map.Attempt, OrderLog: g.OrderLog, FrameHashes: g.FrameHashes,
+		SiegeCfg: &c,
+	}
+	if rep := VerifySiegeDeterminism(rec); !rep.OK {
+		t.Fatalf("带 SiegeCfg 的复核应通过: %+v", rep)
+	}
+	noCfg := *rec
+	noCfg.SiegeCfg = nil
+	if rep := VerifySiegeDeterminism(&noCfg); rep.OK {
+		t.Fatal("缺少 SiegeCfg 时起点兵力不同，复核不应通过")
+	}
+}
+
 func ptrF(v float64) *float64 { return &v }

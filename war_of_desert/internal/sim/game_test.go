@@ -411,3 +411,47 @@ func scriptedOrders(g *Game, side, tick int) []Action {
 	}
 	return out
 }
+
+func TestVerifyRejectsTruncatedHashes(t *testing.T) {
+	/* 删掉帧哈希等于删证据：旧实现只比对现存索引，剩余哈希全对就判 OK。 */
+	g := newTestGame(t, 7)
+	for i := 0; i < 5; i++ {
+		g.Step([2][]Action{nil, nil})
+	}
+	rec := &VerifyRec{
+		Seed: g.Seed, TickLimit: g.Cfg.TickLimit, Generator: g.Cfg.Generator,
+		MapAttempt: &g.Map.Attempt, OrderLog: g.OrderLog,
+		FrameHashes: g.FrameHashes[:len(g.FrameHashes)-1],
+	}
+	if rep := VerifyDeterminism(rec); rep.OK {
+		t.Fatal("frameHashes 少于 orderLog+1 时必须复核失败")
+	}
+}
+
+func TestVerifyForfeitNotVacuous(t *testing.T) {
+	/* 红牌终止的局：orderLog 里没有收局动作，复核必须靠 rec.Forfeited 复现，
+	   否则重放 Result 为 nil，旧实现会静默判 OK。 */
+	g := newTestGame(t, 20261109)
+	for i := 0; i < 5; i++ {
+		g.Step([2][]Action{nil, nil})
+	}
+	g.Forfeit(1, "")
+	r := g.Result()
+	if r == nil || r.Winner != 0 {
+		t.Fatalf("红牌后终局异常: %+v", r)
+	}
+	seat := g.Forfeited
+	rec := &VerifyRec{
+		Seed: g.Seed, TickLimit: g.Cfg.TickLimit, Generator: g.Cfg.Generator,
+		MapAttempt: &g.Map.Attempt, OrderLog: g.OrderLog, FrameHashes: g.FrameHashes,
+		Forfeited: &seat, Result: r,
+	}
+	if rep := VerifyDeterminism(rec); !rep.OK {
+		t.Fatalf("带 forfeited 的复核应通过: %+v", rep)
+	}
+	bad := *rec
+	bad.Forfeited = nil
+	if rep := VerifyDeterminism(&bad); rep.OK || rep.ResultMismatch == nil {
+		t.Fatalf("缺少 forfeited 时复核必须失败: %+v", rep)
+	}
+}

@@ -73,10 +73,10 @@ func main() {
 func usage() {
 	fmt.Fprint(os.Stderr, `Desert Arena 正式赛
 
-  arena build  [-config tournament/formal.json]
-  arena plan   [-config tournament/formal.json]
-	arena run    [-config tournament/formal.json] [-resume] [-limit N]
-	arena rate   [-config tournament/formal.json]
+  arena build  [-config tournament/formal_v14.json]
+  arena plan   [-config tournament/formal_v14.json]
+	arena run    [-config tournament/formal_v14.json] [-resume] [-limit N]
+	arena rate   [-config tournament/formal_v14.json]
   arena check  [-a <bot.exe>] [-b <bot.exe>] [-seed N] [-config ...]
   arena local  [-bot bot.exe] [-vs a.exe,b.exe] [-seeds N] [-out 目录]
                选手本地调试：与基线对打，出逐局 VP + 回放（不校验封存）
@@ -99,7 +99,7 @@ func exeSuffix() string {
 // cmdSeal 只做封存校验，不跑对局。裁判台用它点亮「封存」状态灯。
 func cmdSeal(args []string) error {
 	fs := flag.NewFlagSet("seal", flag.ExitOnError)
-	cfgPath := fs.String("config", "tournament/formal.json", "赛事配置")
+	cfgPath := fs.String("config", "tournament/formal_v14.json", "赛事配置")
 	_ = fs.Parse(args)
 
 	cfg, root, err := contest.Load(*cfgPath)
@@ -145,7 +145,7 @@ type sealEntry struct {
 
 func cmdBuild(args []string) error {
 	fs := flag.NewFlagSet("build", flag.ExitOnError)
-	cfgPath := fs.String("config", "tournament/formal.json", "赛事配置")
+	cfgPath := fs.String("config", "tournament/formal_v14.json", "赛事配置")
 	_ = fs.Parse(args)
 
 	cfg, root, err := contest.Load(*cfgPath)
@@ -197,7 +197,15 @@ func cmdBuild(args []string) error {
 		if err != nil {
 			return err
 		}
-		rec.Entries = append(rec.Entries, sealEntry{Name: e.Name, Source: e.Source, Bin: binRel, Files: files})
+		// 源码型选手同样封存可执行文件哈希：只锁源码而不锁 bin，
+		// 赛后无法证明实际跑的就是这份源码编译出的程序。
+		binSum, err := hashFile(bin)
+		if err != nil {
+			return fmt.Errorf("读取 %s 编译产物失败: %w", e.Name, err)
+		}
+		rec.Entries = append(rec.Entries, sealEntry{
+			Name: e.Name, Source: e.Source, Bin: binRel, Files: files, BinSHA256: binSum,
+		})
 	}
 	raw, _ := json.MarshalIndent(rec, "", "  ")
 	sealPath := filepath.Join(root, "bots", "封存记录.json")
@@ -255,7 +263,7 @@ func hashTree(dir string) (map[string]string, error) {
 
 func cmdPlan(args []string) error {
 	fs := flag.NewFlagSet("plan", flag.ExitOnError)
-	cfgPath := fs.String("config", "tournament/formal.json", "赛事配置")
+	cfgPath := fs.String("config", "tournament/formal_v14.json", "赛事配置")
 	_ = fs.Parse(args)
 
 	cfg, root, err := contest.Load(*cfgPath)
@@ -332,7 +340,7 @@ func resolveOutDir(root, dirFlag, def string) (string, error) {
 
 func cmdRun(args []string) error {
 	fs := flag.NewFlagSet("run", flag.ExitOnError)
-	cfgPath := fs.String("config", "tournament/formal.json", "赛事配置")
+	cfgPath := fs.String("config", "tournament/formal_v14.json", "赛事配置")
 	resume := fs.Bool("resume", false, "跳过 结果.jsonl 中已完成的对阵")
 	limit := fs.Int("limit", 0, "最多再跑 N 场（0 = 不限）")
 	skipSeal := fs.Bool("skip-seal", false, "跳过封存校验（仅限演练，正式赛禁用）")
@@ -365,6 +373,14 @@ func cmdRun(args []string) error {
 	if err != nil {
 		return fmt.Errorf("读不到冻结赛程（先跑 arena plan）: %w", err)
 	}
+	// 冻结赛程必须与当前引擎同一套规则；否则 seed 与规则指纹都会对不上。
+	wantHash := sim.RulesHash(cfg.Rules.TickLimit, sim.NormalizeVision(sim.Vision{
+		Enabled: cfg.Rules.Vision, Fog: cfg.Rules.Vision, LOS: cfg.Rules.Vision,
+	}))
+	if plan.RulesHash != "" && plan.RulesHash != wantHash {
+		return fmt.Errorf("冻结赛程 rulesHash=%s 与当前引擎 rulesHash=%s 不一致（规则已变，先重新 arena plan）",
+			plan.RulesHash, wantHash)
+	}
 	byName := map[string]schedule.Entry{}
 	for _, e := range plan.Entries {
 		byName[e.Name] = e
@@ -375,13 +391,70 @@ func cmdRun(args []string) error {
 		if f, err := os.Open(resultsPath); err == nil {
 			sc := bufio.NewScanner(f)
 			sc.Buffer(make([]byte, 1<<20), 1<<20)
+			type resultLine struct {
+				raw   string
+				match int
+				game  int
+			}
+			var all []resultLine
+			seen := map[int]map[int]bool{}
+			bad := map[int]bool{}
 			for sc.Scan() {
 				var l gameLine
-				if json.Unmarshal(sc.Bytes(), &l) == nil {
-					done[l.Match] = true
+				if json.Unmarshal(sc.Bytes(), &l) != nil {
+					continue
 				}
+				rl := resultLine{raw: sc.Text(), match: l.Match, game: l.Game}
+				if cfg.Verify && (l.VerifyOK == nil || !*l.VerifyOK) {
+					bad[l.Match] = true
+				}
+				all = append(all, rl)
+				if seen[l.Match] == nil {
+					seen[l.Match] = map[int]bool{}
+				}
+				seen[l.Match][l.Game] = true
 			}
 			f.Close()
+			// 一场必须换边两局（Mirror=true）且复核通过才算完成；只写了一局就崩溃、
+			// 或复核失败的场次，旧逻辑会整场跳过，这里改为丢弃残余行后重跑。
+			want := 1
+			if plan.Mirror {
+				want = 2
+			}
+			for id, games := range seen {
+				if bad[id] {
+					continue
+				}
+				complete := true
+				for gi := 0; gi < want; gi++ {
+					if !games[gi] {
+						complete = false
+						break
+					}
+				}
+				if complete {
+					done[id] = true
+				}
+			}
+			var kept []string
+			for _, rl := range all {
+				if done[rl.match] {
+					kept = append(kept, rl.raw)
+				}
+			}
+			if len(kept) != len(all) {
+				data := []byte{}
+				if len(kept) > 0 {
+					data = []byte(strings.Join(kept, "\n") + "\n")
+				}
+				tmp := resultsPath + ".tmp"
+				if err := os.WriteFile(tmp, data, 0o644); err != nil {
+					return fmt.Errorf("整理结果.jsonl 失败: %w", err)
+				}
+				if err := os.Rename(tmp, resultsPath); err != nil {
+					return fmt.Errorf("替换结果.jsonl 失败: %w", err)
+				}
+			}
 		}
 	}
 	var out *os.File
@@ -467,6 +540,11 @@ func cmdRun(args []string) error {
 					line.VerifyOK = &v.OK
 				}
 			}
+			// 正式赛把确定性复核当门禁：复核失败/缺失都中止，不写进结果。
+			if cfg.Verify && (line.VerifyOK == nil || !*line.VerifyOK) {
+				return fmt.Errorf("第 %d 场（%s vs %s）第 %d 局确定性复核未通过，已中止",
+					m.ID, m.A, m.B, g.Index+1)
+			}
 			raw, _ := json.Marshal(line)
 			w.Write(append(raw, '\n'))
 			written++
@@ -534,7 +612,7 @@ type standing struct {
 
 func cmdRate(args []string) error {
 	fs := flag.NewFlagSet("rate", flag.ExitOnError)
-	cfgPath := fs.String("config", "tournament/formal.json", "赛事配置")
+	cfgPath := fs.String("config", "tournament/formal_v14.json", "赛事配置")
 	_ = fs.Parse(args)
 
 	cfg, root, err := contest.Load(*cfgPath)
@@ -549,6 +627,9 @@ func cmdRate(args []string) error {
 	if err != nil {
 		return err
 	}
+	wantHash := sim.RulesHash(cfg.Rules.TickLimit, sim.NormalizeVision(sim.Vision{
+		Enabled: cfg.Rules.Vision, Fog: cfg.Rules.Vision, LOS: cfg.Rules.Vision,
+	}))
 	f, err := os.Open(filepath.Join(outDir, "结果.jsonl"))
 	if err != nil {
 		return err
@@ -561,6 +642,17 @@ func cmdRate(args []string) error {
 		var l gameLine
 		if err := json.Unmarshal(sc.Bytes(), &l); err != nil {
 			return fmt.Errorf("结果.jsonl 某行非法: %w", err)
+		}
+		// 不同规则版本的局不能混在一起拟合，否则实力值没有可比性。
+		if l.RulesHash != wantHash {
+			return fmt.Errorf("结果.jsonl 中 match=%d game=%d 的 rulesHash=%q 与当前引擎 %q 不一致，拒绝评分",
+				l.Match, l.Game, l.RulesHash, wantHash)
+		}
+		if l.VerifyOK != nil && !*l.VerifyOK {
+			return fmt.Errorf("结果.jsonl 中 match=%d game=%d 的确定性复核未通过，拒绝评分", l.Match, l.Game)
+		}
+		if cfg.Verify && l.VerifyOK == nil {
+			return fmt.Errorf("结果.jsonl 中 match=%d game=%d 缺少确定性复核结果，拒绝评分", l.Match, l.Game)
 		}
 		lines = append(lines, l)
 	}
@@ -600,7 +692,8 @@ func cmdRate(args []string) error {
 		} else if l.WinnerSeat == 1 {
 			score = 0
 		}
-		btGames = append(btGames, rating.Game{A: a, B: b, Score: score})
+		// Group = 场次 + 1：同一场换边两局作为整块抽样，避免把同图两局当独立样本。
+		btGames = append(btGames, rating.Game{A: a, B: b, Score: score, Group: l.Match + 1})
 		sa, sb := get(a), get(b)
 		sa.Played++
 		sb.Played++
@@ -712,7 +805,7 @@ func loadConfigOrDefault(p string) (*contest.Config, string, error) {
 	if st, err := os.Stat(p); err == nil && !st.IsDir() {
 		return contest.Load(p)
 	}
-	if p == "tournament/formal.json" {
+	if p == "tournament/formal_v14.json" {
 		return contest.Default(), ".", nil
 	}
 	return nil, "", fmt.Errorf("找不到配置 %s", p)
@@ -720,7 +813,7 @@ func loadConfigOrDefault(p string) (*contest.Config, string, error) {
 
 func cmdCheck(args []string) error {
 	fs := flag.NewFlagSet("check", flag.ExitOnError)
-	cfgPath := fs.String("config", "tournament/formal.json", "赛事配置")
+	cfgPath := fs.String("config", "tournament/formal_v14.json", "赛事配置")
 	aPath := fs.String("a", "", "左方程序（默认 workspace/submission 编译产物）")
 	bPath := fs.String("b", "", "右方程序（默认第一个参考 Bot）")
 	seed := fs.Int("seed", 20261109, "seed")
@@ -769,9 +862,9 @@ func cmdCheck(args []string) error {
 	if err != nil {
 		return err
 	}
-	fmt.Println("CHECK_OK")
 	fmt.Printf("  引擎：%s ｜ 地图：%d×%d ｜ 规则指纹：%s ｜ seed=%d ｜ 生成器：%s\n",
 		protocol.ProtoName, protocol.Grid, protocol.Grid, rec.RulesHash, rec.Seed, rec.Generator)
+	verifyFailed := false
 	for _, g := range rec.Games {
 		fmt.Printf("  第 %d 局  座位=%s / %s  tick=%d  winner=%s  层级=%d  VP=%v  总分=%.2f : %.2f  故障=%d/%d\n",
 			g.Index+1, g.Seats[0], g.Seats[1], g.Result.Turn,
@@ -794,8 +887,18 @@ func cmdCheck(args []string) error {
 			}
 			_ = json.Unmarshal(g.Verify, &v)
 			fmt.Printf("    确定性复核：%v\n", v.OK)
+			if !v.OK {
+				verifyFailed = true
+			}
+		} else {
+			fmt.Println("    确定性复核：缺失")
+			verifyFailed = true
 		}
 	}
+	if verifyFailed {
+		return fmt.Errorf("确定性复核未通过，check 失败")
+	}
+	fmt.Println("CHECK_OK")
 	return nil
 }
 
@@ -1077,7 +1180,7 @@ func localHost() (string, error) {
 
 func cmdSelftest(args []string) error {
 	fs := flag.NewFlagSet("selftest", flag.ExitOnError)
-	cfgPath := fs.String("config", "tournament/formal.json", "赛事配置")
+	cfgPath := fs.String("config", "tournament/formal_v14.json", "赛事配置")
 	_ = fs.Parse(args)
 
 	cfg, root, err := contest.Load(*cfgPath)

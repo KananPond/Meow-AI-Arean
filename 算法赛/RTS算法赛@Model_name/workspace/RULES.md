@@ -166,7 +166,6 @@ go build -o bot.exe ./submission
   {"id":9,"type":"attack","targetId":12},
   {"type":"alloc","alloc":{"armour":25,"repair":25,"attack":30,"range":20}},
   {"type":"produce","kind":"LAV"},
-  {"type":"produce","kind":"CARRIER"},
   {"type":"research","tech":"I1"},
   {"type":"weapon"},
   {"type":"mode","mode":"neutral"},

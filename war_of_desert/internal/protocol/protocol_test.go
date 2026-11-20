@@ -66,3 +66,22 @@ func TestWinnerName(t *testing.T) {
 		t.Fatalf("座位 1 应为 B，得到 %s", got)
 	}
 }
+
+func TestDecodeMapLayersRejectsLengthMismatch(t *testing.T) {
+	const w, h = 4, 3
+	n := w * h
+	m := EncodedMap{
+		W: w, H: h, Enc: "rle+b64/1",
+		Base: base64.StdEncoding.EncodeToString(rle([]byte{0, 1, 2})), // 只覆盖 3 格
+		Surf: base64.StdEncoding.EncodeToString(rle(make([]byte, n))),
+		Elev: base64.StdEncoding.EncodeToString(make([]byte, n)),
+	}
+	if _, err := DecodeMapLayers(m); err == nil {
+		t.Fatal("base 层长度不足必须报错，不能补零")
+	}
+	m.Base = base64.StdEncoding.EncodeToString(rle(make([]byte, n)))
+	m.Elev = base64.StdEncoding.EncodeToString(make([]byte, n-1))
+	if _, err := DecodeMapLayers(m); err == nil {
+		t.Fatal("elev 层长度不符必须报错，不能截断")
+	}
+}

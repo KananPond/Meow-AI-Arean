@@ -295,19 +295,22 @@ func RulesHash(tickLimit int, vision Vision) string {
 	body := fmt.Sprintf(
 		"ver:%s|proto:%s.%d|grid:%d,%d,%d|slopes:%d,%d,%d,%d|vp:%.4f|tickLimit:%d|timing:%d,%d,%d,%d|"+
 			"weights:%v|fields:%v|"+
-			"alloc:%d,%d,%d,%d,%d,%v|economy:%v,%v,%v,%v,%v,%v,%d,%v|"+
-			"weapon:%d,%d,%d|repair:%v,%d,%d|modes:%v,%s,%d|"+
-			"ballistics:%v,%v,%v,%v,%v,%v|shells:%v|"+
+			"alloc:%d,%d,%d,%d,%d,%v|economy:%v,%v,%v,%v,%v,%v,%d,%v,%v|"+
+			"weapon:%d,%d,%d|repair:%v,%d,%d,%d|modes:%v,%s,%d|"+
+			"mothership:%v,%v,%v,%v|"+
+			"ballistics:%v,%v,%v,%v,%v,%v,%v,%v|los:%v,%v,%v,%v,%v|shells:%v|"+
 			"types:%v|rps:%v|producible:%v,%v|techs:%v|vision:%v",
 		RulesVersion, ProtoName, ProtoVersion, Grid, Cell, World,
 		UnitSlope, CarrierSlope, MothershipSlope, PlatformSlope,
 		VPRadius, tickLimit, TickMS, DecideMS, InitMS, OrderLatency,
 		Weights, FieldNames,
 		AllocStep, SlotStep, MaxSlots, MaxWeapons, ResearchSlots, startAlloc(),
-		float64(StartCU), float64(StartRU), BaseIncome, SalvageRate, SalvagerCapacity, ResAmount, PopMax, RUBaseIncome,
-		WeaponCost, WeaponBuild, WeaponQueueMax, RepairRadius, RepairRate, MSRepairDelay,
+		float64(StartCU), float64(StartRU), BaseIncome, SalvageRate, SalvagerCapacity, ResAmount, PopMax, RUBaseIncome, ResRadius,
+		WeaponCost, WeaponBuild, WeaponQueueMax, RepairRadius, RepairRate, MSRepairDelay, MSRepairRate,
 		Modes, DefaultMode, ModeRetreatCells,
-		AirK, GravityG, MPerCell, ElevM, MountainH, HitRM,
+		ArmourReduce, AttackDmgBase, RangeMulBase, RangeMulSpan,
+		AirK, GravityG, MPerCell, ElevM, MountainH, HitRM, BallMaxT, UnitH,
+		EyeH, LosTol, LosRangeCells, HeightBonusCells, HeightDiffMin,
 		shellFingerprint(), Types, rpsFingerprint(), Producible, SmallProducible,
 		techFingerprint(), vision,
 	)

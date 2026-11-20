@@ -110,11 +110,11 @@ cd war_of_desert
 # 运行正式赛源码的 Go 测试
 go test ./cmd/... ./internal/... ./workspace/...
 
-# 编译 v1.2 基准赛配置中的 Bot，并封存源码哈希
-go run ./cmd/arena build -config tournament/formal_v12.json
+# 编译当前赛季（第 5 季 v1.4）配置中的 Bot，并封存源码哈希
+go run ./cmd/arena build -config tournament/formal_v14.json
 
 # 运行模板 Bot 与参考 Bot 的换边自检
-go run ./cmd/arena check -config tournament/formal_v12.json -seed 20261109
+go run ./cmd/arena check -config tournament/formal_v14.json -seed 20261109
 ```
 
 使用 `engine.kind = "oracle"` 的配置时还需要 Node.js。Python 仅用于可选的菜单脚本 `start.py` 和部分辅助工具。
@@ -133,22 +133,22 @@ go run ./cmd/arena check -config tournament/formal_v12.json -seed 20261109
 
 ```bash
 cd war_of_desert
-go run ./cmd/arena build -config tournament/formal_v12.json
-go run ./cmd/arena check -config tournament/formal_v12.json -seed 20261109
+go run ./cmd/arena build -config tournament/formal_v14.json
+go run ./cmd/arena check -config tournament/formal_v14.json -seed 20261109
 ```
 
 `check` 默认使用提交模板和配置中的第一个参考 Bot，换边运行两局并进行确定性复核。它验证的是运行流程，不代表 Bot 的策略强度。
 
 ## 运行整季基准赛
 
-组织方可按顺序执行以下命令。配置使用当前第 3 季 v1.2 基准赛，生成物写入 `war_of_desert/results/formal-v12/`。
+组织方可按顺序执行以下命令。配置使用当前第 5 季 v1.4 基准赛，生成物写入 `war_of_desert/results/formal-v14/`。
 
 ```bash
 cd war_of_desert
-go run ./cmd/arena build -config tournament/formal_v12.json
-go run ./cmd/arena plan -config tournament/formal_v12.json
-go run ./cmd/arena run -config tournament/formal_v12.json
-go run ./cmd/arena rate -config tournament/formal_v12.json
+go run ./cmd/arena build -config tournament/formal_v14.json
+go run ./cmd/arena plan -config tournament/formal_v14.json
+go run ./cmd/arena run -config tournament/formal_v14.json
+go run ./cmd/arena rate -config tournament/formal_v14.json
 ```
 
 ## 文档入口
@@ -157,7 +157,7 @@ go run ./cmd/arena rate -config tournament/formal_v12.json
 |---|---|
 | 规则与参赛约束 | [选手规则](war_of_desert/workspace/RULES.md) |
 | 选手模板、参考 Bot 与本地命令 | [选手工作区](war_of_desert/workspace/README.md) |
-| 赛季配置 | [v1.2 配置（当前）](war_of_desert/tournament/formal_v12.json) · [v1.1 配置（历史）](war_of_desert/tournament/formal_v11.json) · [v1.0 配置（历史）](war_of_desert/tournament/formal.json) |
+| 赛季配置 | [v1.4 配置（当前）](war_of_desert/tournament/formal_v14.json) · [v1.3 配置（历史）](war_of_desert/tournament/formal_v13.json) · [v1.2 配置（历史）](war_of_desert/tournament/formal_v12.json) · [v1.1 配置（历史）](war_of_desert/tournament/formal_v11.json) · [v1.0 配置（历史）](war_of_desert/tournament/formal.json) |
 | 历季成绩摘要 | [赛季榜单](war_of_desert/LEADERBOARD.md) |
 | 赛事产物格式与复核 | [结果目录说明](war_of_desert/results/README.md) |
 | 引擎和 oracle 结构 | [引擎说明](war_of_desert/engine/README.md) |

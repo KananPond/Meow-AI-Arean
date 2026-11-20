@@ -179,6 +179,13 @@ func startBot(spec BotSpec, hello string, initMs int, env []string) (*botProc, e
 		p.Kill()
 		return nil, fmt.Errorf("%s 未按协议回报 ready: %s", spec.Name, truncate(line, 120))
 	}
+	var hs struct {
+		Ready *bool `json:"ready"`
+	}
+	if json.Unmarshal([]byte(line), &hs) != nil || hs.Ready == nil || !*hs.Ready {
+		p.Kill()
+		return nil, fmt.Errorf("%s 未按协议回报 {\"ready\":true}: %s", spec.Name, truncate(line, 120))
+	}
 	return p, nil
 }
 
@@ -201,7 +208,18 @@ func (p *botProc) readLoop(r io.Reader) {
 	}
 }
 
+// botWriteTimeout 单次写选手 stdin 的上限：Bot 不读 stdin 时不能把裁判卡死。
+const botWriteTimeout = 5 * time.Second
+
+type writeDeadlineSetter interface {
+	SetWriteDeadline(time.Time) error
+}
+
 func (p *botProc) writeLine(line string) error {
+	if dl, ok := p.stdin.(writeDeadlineSetter); ok {
+		_ = dl.SetWriteDeadline(time.Now().Add(botWriteTimeout))
+		defer func() { _ = dl.SetWriteDeadline(time.Time{}) }()
+	}
 	_, err := io.WriteString(p.stdin, line+"\n")
 	return err
 }
@@ -217,6 +235,23 @@ func (p *botProc) readLine(d time.Duration) (string, error) {
 		return line, nil
 	case <-timer.C:
 		return "", ErrTimeout
+	}
+}
+
+// drain 丢弃上一拍遗留的回复行。
+//
+// Bot 超时/非法回复后可能仍在写迟到的行；如果不清掉，下一拍会把它当成本拍的
+// 指令，造成指令与 tick 错位（协议本身没有 turn 字段可供校验）。
+func (p *botProc) drain() {
+	for {
+		select {
+		case _, ok := <-p.lines:
+			if !ok {
+				return
+			}
+		default:
+			return
+		}
 	}
 }
 
@@ -267,10 +302,11 @@ func (w *limitedWriter) Write(b []byte) (int, error) {
 }
 
 func truncate(s string, n int) string {
-	if len(s) <= n {
+	r := []rune(s)
+	if len(r) <= n {
 		return s
 	}
-	return s[:n] + "…"
+	return string(r[:n]) + "…"
 }
 
 /* ------------------------------------------------------------------ */
@@ -281,6 +317,15 @@ func truncate(s string, n int) string {
 func RunMatch(index, seed int, a, b BotSpec, cfg Config) (*MatchRecord, error) {
 	if cfg.MaxStrikes <= 0 {
 		cfg.MaxStrikes = 3
+	}
+	// 只有「连续 N 次」一种红牌语义；配置写了别的模式必须报错，
+	// 否则会被静默当成 consecutive 执行。
+	if cfg.StrikeMode != "" && cfg.StrikeMode != "consecutive" {
+		return nil, fmt.Errorf("不支持的 strikeMode %q（仅支持 consecutive）", cfg.StrikeMode)
+	}
+	// 没有 OS 级沙箱时拒绝开赛，而不是让 startBot 失败后退化成「双方故障平局」。
+	if !sandbox.Available() {
+		return nil, fmt.Errorf("当前平台没有内置沙箱，拒绝执行选手进程：%s", sandbox.Describe(sandbox.DefaultLimits()))
 	}
 	host, err := engine.Start(cfg.HostScript, cfg.RulesPath)
 	if err != nil {
@@ -345,6 +390,14 @@ func runGame(host *engine.Host, gi int, swap bool, seed int, seats []string, spe
 
 	/* 起进程。初始化失败直接红牌，与冻结 oracle 的 init 语义一致。 */
 	var procs [2]*botProc
+	// 任何提前返回（宿主错误、编码错误、终局解析失败）都必须回收 Bot 进程与临时目录。
+	defer func() {
+		for s := 0; s < 2; s++ {
+			if procs[s] != nil {
+				procs[s].Kill()
+			}
+		}
+	}()
 	for s := 0; s < 2; s++ {
 		p, err := startBot(specs[s], nr.Hello, cfg.Rules.InitMs, cfg.Env)
 		if err != nil {
@@ -396,6 +449,7 @@ func runGame(host *engine.Host, gi int, swap bool, seed int, seats []string, spe
 				return nil, err
 			}
 			t0 := time.Now()
+			procs[s].drain()
 			werr := procs[s].writeLine(line)
 			var reply string
 			var rerr error

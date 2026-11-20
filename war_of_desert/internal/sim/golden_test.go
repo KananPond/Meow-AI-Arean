@@ -45,19 +45,24 @@ func TestGoldenTraces(t *testing.T) {
 			MapAttempt: &attempt, OrderLog: tr.OrderLog, FrameHashes: tr.FrameHashes,
 		}
 		var rep VerifyReply
+		hasResult := len(tr.Result) > 0 && string(tr.Result) != "null"
 		if tr.Mode == "siege" {
-			var sr SiegeResult
-			if err := json.Unmarshal(tr.Result, &sr); err != nil {
-				t.Fatalf("%s result 解析失败: %v", f.Name(), err)
+			if hasResult {
+				var sr SiegeResult
+				if err := json.Unmarshal(tr.Result, &sr); err != nil {
+					t.Fatalf("%s result 解析失败: %v", f.Name(), err)
+				}
+				rec.SiegeResult = &sr
 			}
-			rec.SiegeResult = &sr
 			rep = VerifySiegeDeterminism(rec)
 		} else {
-			var r Result
-			if err := json.Unmarshal(tr.Result, &r); err != nil {
-				t.Fatalf("%s result 解析失败: %v", f.Name(), err)
+			if hasResult {
+				var r Result
+				if err := json.Unmarshal(tr.Result, &r); err != nil {
+					t.Fatalf("%s result 解析失败: %v", f.Name(), err)
+				}
+				rec.Result = &r
 			}
-			rec.Result = &r
 			rep = VerifyDeterminism(rec)
 		}
 		if !rep.OK {
