@@ -17,13 +17,14 @@ workspace/
 ├── submission/decide.go   你的提交物
 ├── botkit/                可选工具库：协议、地图解码、一步寻路
 ├── refbot/                参考 Bot 共用策略库（只读）
-└── bots/                  五个参考 Bot
+└── bots/                  六个参考 Bot
     ├── vanguard/          正面推进
     ├── bulwark/           经济防守
     ├── swarm/             数量压制
     ├── nomad/             机动抢点
-    └── sapper/            攻坚拆舰（v1.3 新增）
-                          （第 6 名选手 Starter 就是 submission/decide.go）
+    ├── sapper/            攻坚拆舰（v1.3 新增）
+    └── hunter/            遗产／插旗优先（v1.5 实验专用，不进正式赛配置）
+                          （正式赛第 6 名选手 Starter 就是 submission/decide.go）
 ```
 
 ## 三条命令

@@ -1,7 +1,8 @@
 # results · 赛事产物
 
 > 按赛季/规则分目录，互不通用：
-> - `formal-v14/`：**当前赛季 · v1.4 正式赛**（对称 VP、七领域计分、BT 双榜），由 `arena` 生成
+> - `formal-v14/`：**当前正式赛季 · v1.4**（对称 VP、七领域计分、BT 双榜），由 `arena` 生成
+> - [`exp-v15/`](exp-v15/)：**v1.5 实验基线（非正式赛季，不跑 `arena rate`、无 BT 榜）**，1500 tick / 6 Bot × 3 seed / 90 局，规则 `24d4935b`；说明见 [`exp-v15/README.md`](exp-v15/README.md)，规则见 [`../../Dev/实验/Plan_V15.md`](../../Dev/实验/Plan_V15.md)
 > - `formal-v13/`：第 4 季 v1.3 正式赛（母舰削弱前）
 > - `formal-v12/`：第 3 季 v1.2 的冻结赛程（仅 `赛程.json`，未执行；公平性缺陷修复后作废）
 > - [`formal-v11/`](formal-v11/)：历史 · 第 2 季 v1.1（七领域计分）
@@ -36,6 +37,14 @@ go run ./cmd/arena rate -config $CFG
 ```
 
 `回放/` 体积较大且完全可由 `run` 重建，默认不入库；需要归档时整目录打包。
+
+### v1.5 实验批次（非正式赛季）
+
+`exp-v15/` 用 [`../tournament/experiment_v15.json`](../tournament/experiment_v15.json) 生成，
+只入库 `赛程.json`／`结果.jsonl`／`README.md` 三份；`回放/` 按上面规则不入库。
+它用胜利分三本账（击杀／遗产／插旗），**不跑 `arena rate`**，所以没有
+`成绩.md`／`成绩_加权总分.md`／`成绩.json`／`封存记录.json`，审计口径也不适用。
+复现与指标脚本见 [`exp-v15/README.md`](exp-v15/README.md)。
 
 ## 审计
 

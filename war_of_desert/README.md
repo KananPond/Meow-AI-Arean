@@ -1,6 +1,8 @@
 # Desert Arena · 正式赛事（Go 执行链 + Go 原生引擎）
 
-> **状态：可开赛**（当前 = **v1.4 · 第 5 季**：母舰削弱（HP/攻击/移速/坡限）+ 对称经济 + 脱战自愈 + 攻坚对舰倍率 + 进程沙箱；v1.0 第 1 季 / v1.1 第 2 季 / v1.3 第 4 季 / v1.4 第 5 季已完赛，见 [`LEADERBOARD.md`](LEADERBOARD.md)）。
+> **状态：可开赛**（当前正式赛 = **v1.4 · 第 5 季**：母舰削弱（HP/攻击/移速/坡限）+ 对称经济 + 脱战自愈 + 攻坚对舰倍率 + 进程沙箱；v1.0 第 1 季 / v1.1 第 2 季 / v1.3 第 4 季 / v1.4 第 5 季已完赛，见 [`LEADERBOARD.md`](LEADERBOARD.md)）。
+>
+> **另有 v1.5 实验分支**（非正式赛季）：胜利分三本账、遗产物、插旗、CEP／射界、单位等级，由 `GameCfg.Ruleset == "v15"`（`sim.RulesetV15`）开关隔离，v1.4 语义与指纹 `553785d4` 不变。规则与 90 局标定见 [`../Dev/实验/Plan_V15.md`](../Dev/实验/Plan_V15.md)，产物见 [`results/exp-v15/`](results/exp-v15/README.md)，配置 [`tournament/experiment_v15.json`](tournament/experiment_v15.json)。**参赛仍以 v1.4 为准。**
 >
 > **AI 参与声明**：本仓库的引擎移植、参考 Bot、测试与文档由 AI（ZCode 智能体）在人类指导下参与编写；
 > 规则设计、赛制与验收由人类主导，全部对局结果均经引擎内置的确定性复核门禁（golden trace + orderLog 重放）。
@@ -8,7 +10,7 @@
 > **赛事手册**：[`赛事手册.md`](赛事手册.md) ｜ **规则基线（v1.0 历史）**：[`../Dev/Plan_Beta.md`](../Dev/Plan_Beta.md) 快照
 > **引擎双轨**：`engine.kind` 二选一——`oracle`（只读快照 `MVP@288db07f`，`engine/oracle_host.js` 承载，校验 `python -X utf8 scripts/verify_oracle.py`）
 > 或 `native`（**Go 原生引擎**：规则语义在 `internal/sim`，宿主 `cmd/enginehost`，当前赛季配置 [`tournament/formal_v14.json`](tournament/formal_v14.json)）
-> **执行链**：Go 标准库，零第三方依赖。当前规则 = **v1.4**（四子系统分配 / CU-RU 运输线经济 / 1200 tick / 七领域计分 / 队列跳过 / 母舰 RU 基础收入 / 资源成对同类 / 脱战自愈 / 母舰削弱）
+> **执行链**：Go 标准库，零第三方依赖。当前正式赛规则 = **v1.4**（四子系统分配 / CU-RU 运输线经济 / 1200 tick / 七领域计分 / 队列跳过 / 母舰 RU 基础收入 / 资源成对同类 / 脱战自愈 / 母舰削弱）
 
 ---
 
@@ -64,7 +66,7 @@ python -X utf8 start.py season   # 整季流水线：build → plan → run → 
 ```bash
 CFG=tournament/formal_v14.json   # 当前赛季（v1.4）
 go run ./cmd/arena selftest -config $CFG   # 验证超时 kill / 崩溃重启 / 非法结构红牌
-go run ./cmd/arena build    -config $CFG   # 编译 6 名选手（5 个参考 Bot + Starter）并封存源码哈希
+go run ./cmd/arena build    -config $CFG   # 编译 6 名选手（5 个参考 Bot + Starter）并封存源码哈希；v1.5 实验的 Hunter 不在此配置内
 go run ./cmd/arena plan     -config $CFG   # 冻结赛程 → results/formal-v14/赛程.json
 go run ./cmd/arena run      -config $CFG   # 跑完 45 场 / 90 局 → 结果.jsonl + 回放（开赛前校验封存）
 go run ./cmd/arena rate     -config $CFG   # BT + 加权总分 → 成绩.md / 成绩_加权总分.md / 成绩.json
@@ -133,6 +135,29 @@ go run ./cmd/siegepool -from results/siege/bt_pool.csv -out results/siege/bt_poo
 
 ---
 
+## v1.5 规则实验（非正式赛季）
+
+独立于正式赛的规则验证分支，**不改 v1.4 语义，也不发给选手**。开关是
+`GameCfg.Ruleset == "v15"`（`sim.RulesetV15`），配置 [`tournament/experiment_v15.json`](tournament/experiment_v15.json)，
+规则实现 `internal/sim/rules15.go`，设计与参数见 [`../Dev/实验/Plan_V15.md`](../Dev/实验/Plan_V15.md)。
+
+- 胜负改为**胜利分三本账**（击杀／遗产／插旗），删除被动 VP 加分；判胜顺序：母舰毁 → VS≥300 → 时间到比 VS → KD → 母舰 HP → 平。
+- 遗产物（刷新／运输入库）、可摧毁的旗（160 HP）、CEP 与射界／炮塔转速、火控科技 C1–C3、5 级单位等级。
+- 1500 tick、6 Bot × 3 seed（含新增 [`workspace/bots/hunter/`](workspace/bots/hunter/)）、90 局，规则指纹 `24d4935b`；v1.4 指纹仍是 `553785d4`。
+
+```bash
+CFG=tournament/experiment_v15.json
+go run ./cmd/arena build -config $CFG
+go run ./cmd/arena plan  -config $CFG
+go run ./cmd/arena run   -config $CFG
+py -3 -X utf8 scripts/exp_metrics.py results/exp-v15
+```
+
+产物与标定数据见 [`results/exp-v15/README.md`](results/exp-v15/README.md)。实验批次**不跑 `arena rate`**，
+因此没有 BT 榜／加权总分。
+
+---
+
 ## 目录
 
 ```text
@@ -149,6 +174,7 @@ go run ./cmd/siegepool -from results/siege/bt_pool.csv -out results/siege/bt_poo
 │   │   ├── siegepool/       攻守：循环赛 + 双参数 BT 评分
 │   │   └── faultbot/        自检用故障注入 Bot
 │   ├── internal/
+│   │   ├── sim/             Go 原生规则引擎（rules15.go = v1.5 实验分支；v14 语义不变）
 │   │   ├── protocol/        hello / tick / actions / end 的线上契约与地图解码
 │   │   ├── engine/          引擎宿主客户端（行分隔 JSON）
 │   │   ├── judge/           进程隔离、死线、红牌、重启、回放、确定性复核
@@ -162,12 +188,16 @@ go run ./cmd/siegepool -from results/siege/bt_pool.csv -out results/siege/bt_poo
 │   ├── tournament/formal_v11.json   第 2 季（v1.1，历史）
 │   ├── tournament/formal_v12.json   第 3 季（v1.2，赛程作废）
 │   ├── tournament/formal_v13.json   第 4 季（v1.3）
-│   ├── tournament/formal_v14.json   第 5 季（v1.4，当前）
+│   ├── tournament/formal_v14.json   第 5 季（v1.4，当前正式赛）
+│   ├── tournament/experiment_v15.json  v1.5 实验（非正式赛季，1500 tick）
 │   ├── workspace/           引擎侧参考工作区（Starter 选手 + botkit/refbot 共用库）
 │   │   ├── bots/sapper/     攻坚参考 Bot（RAILGUN 拆舰，v1.3 新增）
+│   │   ├── bots/hunter/     遗产／插旗参考 Bot（v1.5 实验新增）
 │   │   └── siege/           攻守参考 Bot：siegebot 库 + attacker / defender / pool
 │   ├── bots/                封存记录与编译产物（bin 不入库）
 │   ├── results/formal/      第 1 季：赛程、结果、成绩、回放
+│   ├── results/formal-v14/  第 5 季（v1.4，当前）：赛程、结果、成绩
+│   ├── results/exp-v15/     v1.5 实验：赛程、结果、回放（本地产物，回放不入库）
 │   ├── results/siege/       攻守：HP 扫描、工事预算标定、BT 榜单与结论
 │   ├── replays/             历史赛季归档（预留）
 │   ├── notes/               赛前狠话、赛后复盘（预留）
