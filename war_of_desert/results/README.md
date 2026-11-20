@@ -19,15 +19,17 @@
 | `成绩.md` | `arena rate` | BT 实力值、95% 区间、胜平负、总分 |
 | `成绩_加权总分.md` | `arena rate` | 七领域合计与场均 |
 | `成绩.json` | `arena rate` | 机器可读的 BT 结果 |
+| `封存记录.json` | `arena build` | 本季开跑时的源码/共用库 SHA-256 快照，见下方「审计」 |
 | `回放/match-NNN.json` | `arena run` | 原始 hello + 每局结果 + 每 5 tick 帧 + 复核 |
 
-（v1.0 的 `formal/` 为八领域计分，其余字段口径相同。）
+（v1.0 的 `formal/` 为八领域计分，其余字段口径相同。`封存记录.json` 自
+`formal-v14/` 起按赛季归档。）
 
 ## 重建（当前赛季）
 
 ```bash
 cd war_of_desert
-CFG=tournament/formal_v12.json
+CFG=tournament/formal_v14.json
 go run ./cmd/arena plan -config $CFG
 go run ./cmd/arena run  -config $CFG   # 默认覆盖结果；-resume 可续跑
 go run ./cmd/arena rate -config $CFG
@@ -40,4 +42,16 @@ go run ./cmd/arena rate -config $CFG
 1. `结果.jsonl` 行数 = `赛程.json` 场次数 × 2；
 2. 每行 `verifyOk=true`、`rulesHash` 一致；
 3. `成绩.md` 的局数 = 结果行数；
-4. 任何缺场、重跑、作废都要在 `workspace/CONDITIONS.md` 里留记录。
+4. `封存记录.json` 的源码哈希与本季提交逐一对得上；
+5. 任何缺场、重跑、作废都要在 `workspace/CONDITIONS.md` 里留记录。
+
+第 4 条为什么单列一份：`bots/封存记录.json` 每次 `build` 都会被重写
+（`binSha256` 随环境变），入库就会一直脏。赛季目录里的这份是**开跑时**
+的拷贝，字节冻结、只随赛季变，才拿得住「跑的是哪份源码」。
+校验命令：
+
+```bash
+cd war_of_desert
+py -3 -X utf8 scripts/verify_seal.py results/formal-v14/封存记录.json
+```
+

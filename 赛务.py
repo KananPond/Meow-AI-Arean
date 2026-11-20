@@ -156,18 +156,6 @@ def engine_rules_version() -> str:
     return "?"
 
 
-def engine_rules_version() -> str:
-    """从 internal/sim/rules.go 读版本号，避免文档和代码各说一套。"""
-    try:
-        raw = (ENGINE / "internal" / "sim" / "rules.go").read_text(encoding="utf-8")
-        for line in raw.splitlines():
-            if line.startswith("const RulesVersion"):
-                return line.split('"')[1]
-    except OSError:
-        pass
-    return "?"
-
-
 def contestant_name(ws: Path) -> str:
     """选手名 = 目录名 @ 之后的部分；没有 @ 就用目录名。"""
     return ws.name.split("@")[-1] if "@" in ws.name else ws.name
@@ -190,6 +178,48 @@ def submission_path(ws: Path) -> Path:
         return new
     legacy = ws / WS / "submission" / "decide.go"
     return legacy if legacy.is_file() else new
+
+
+# 工作区自检要看的项。缺哪一项，智能体那边的体验就是断的：
+# 没 prompt.md 就不知道要干什么，没 arena/ 本地跑不起来，没 submission/ 无处可写。
+KEY_ITEMS = ["RULES.md", "README.md", "prompt.md", "clock.py", "go.mod",
+             "arena", "bots", "submission", "tournament", "本地对局.bat"]
+
+
+def prompt_path(ws: Path) -> Path:
+    return ws / WS / "prompt.md"
+
+
+def check_package(ws: Path) -> dict:
+    """选手包是否齐备。只做结构检查，不编译、不跑对局。"""
+    dest = ws / WS
+    missing = [n for n in KEY_ITEMS if not (dest / n).exists()]
+    sub = submission_path(ws)
+    has_sub = sub.is_file()
+    return {
+        "ready": not missing and has_sub,
+        "missing": missing,
+        "issued": (dest / CLOCK).is_file(),
+        "submission": sub.name if has_sub else None,
+        "submission_bytes": sub.stat().st_size if has_sub else 0,
+        "is_template": submission_is_template(ws),
+    }
+
+
+def submission_is_template(ws: Path) -> bool:
+    """交付物是不是还是原封不动的模板——也就是智能体根本没写出东西。
+
+    收卷时这一步很关键：模板本身也能编译、也能跑，成绩看起来「正常」，
+    但那是我们发下去的脚手架，不是选手的代码。
+    """
+    cur = submission_path(ws)
+    tmpl = PACKAGE / "submission" / "Model_name_bot.go"
+    if not cur.is_file() or not tmpl.is_file():
+        return False
+    try:
+        return cur.read_bytes() == tmpl.read_bytes()
+    except OSError:
+        return False
 
 
 def record_path(ws: Path) -> Path:
@@ -385,6 +415,7 @@ def freeze(ws: Path) -> dict:
         "limit_minutes": LIMIT_MINUTES,
         "accepted": src.is_file() and used <= LIMIT_MINUTES,
         "missing_submission": not src.is_file(),
+        "is_template": submission_is_template(ws),
     }
     if src.is_file():
         dst = out / src.name

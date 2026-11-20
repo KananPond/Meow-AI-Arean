@@ -13,8 +13,19 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 ARENA = ["go", "run", "./cmd/arena"]
-CONFIG = "tournament/formal_v12.json"
-OUT_DIR = "results/formal-v12"
+# 只有这一处指定赛季。输出目录从配置的 output 字段读，不在这里另写一份，
+# 否则换了赛季配置还得记得同步改第二处（v1.2 时代就是这样漂掉的）。
+CONFIG = "tournament/formal_v14.json"
+DEFAULT_OUT = "results/formal-v14"
+
+
+def out_dir() -> str:
+    """结果目录以赛季配置的 output 为准。"""
+    try:
+        cfg = json.loads((ROOT / CONFIG).read_text(encoding="utf-8"))
+        return str(cfg.get("output") or DEFAULT_OUT)
+    except (OSError, ValueError):
+        return DEFAULT_OUT
 
 MENU = [
     ("1", "build", "编译选手并封存源码哈希"),
@@ -39,21 +50,25 @@ def season() -> int:
         if code != 0:
             print(f"流水线在 {cmd} 阶段中止（退出码 {code}）")
             return code
-    print(f"整季完成：结果在 {OUT_DIR}/", flush=True)
+    print(f"整季完成：结果在 {out_dir()}/", flush=True)
     return 0
 
 
 def status() -> None:
-    record = ROOT / "赛务记录.json"
-    if not record.exists():
-        print("赛务：尚未开赛（没有 赛务记录.json）")
-    else:
-        data = json.loads(record.read_text(encoding="utf-8"))
-        print("赛务记录：", json.dumps(data, ensure_ascii=False, indent=2)[:800])
-    result = ROOT / "results" / "formal-v12" / "结果.jsonl"
+    cfg_path = ROOT / CONFIG
+    if not cfg_path.exists():
+        print(f"赛季配置缺失：{CONFIG}")
+        return
+    cfg = json.loads(cfg_path.read_text(encoding="utf-8"))
+    print(f"赛季：{cfg.get('season', '?')} · 规则 v{cfg.get('version', '?')}")
+    print(f"配置：{CONFIG}")
+    print(f"输出：{out_dir()}/")
+    result = ROOT / out_dir() / "结果.jsonl"
     if result.exists():
-        lines = result.read_text(encoding="utf-8").strip().splitlines()
+        lines = [x for x in result.read_text(encoding="utf-8").splitlines() if x.strip()]
         print(f"对局：{len(lines)} 局已记录")
+    else:
+        print("对局：尚无结果（还没跑过 run）")
 
 
 def main() -> int:

@@ -171,8 +171,8 @@ go run ./cmd/siegepool -from results/siege/bt_pool.csv -out results/siege/bt_poo
 │   ├── results/siege/       攻守：HP 扫描、工事预算标定、BT 榜单与结论
 │   ├── replays/             历史赛季归档（预留）
 │   ├── notes/               赛前狠话、赛后复盘（预留）
-│   ├── start.py             组织方菜单
-│   ├── 开赛.py               组织方计时、暂停、强制收卷
+│   ├── start.py             组织方菜单（默认走当前赛季 formal_v14.json）
+│   ├── 开赛.py               旧版计时脚本，已被根目录 赛务.py 取代（保留备查）
 │   └── workspace/clock.py   选手侧计时展示
 └── Dev/                     开发/历史资料区（见 ../Dev/README.md）
 ```

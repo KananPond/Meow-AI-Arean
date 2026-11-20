@@ -86,9 +86,9 @@ go build -o bot.exe ./submission
 
 ## 交卷前自检
 
-1. `go build -o bots/bin/submission.exe ./workspace/submission` 通过；
-2. `go run ./cmd/arena check -seed 20261109` 输出 `CHECK_OK`，两局 `故障=0/0`、`确定性复核：true`；
-3. `decide` 平均耗时远低于 120 ms（参考 Bot 约 0.1 ms）；
+1. `go build -o bot.exe ./submission` 通过（在 `workspace/` 目录下执行）；
+2. 双击 `本地对局.bat`，或 `cd arena` 后 `go run ./cmd/arena check -seed 20261109`，输出 `CHECK_OK`，两局 `故障=0/0`、`确定性复核：true`；
+3. 每拍决策耗时远低于 120 ms（参考 Bot 约 0.1 ms）；
 4. 换 2–3 个 seed 各跑一次，确认不是背地图。
 
 时间规则：解压选手包开始计时，**90 分钟**目标完成，**120 分钟**强制收卷。到点时 `submission/<选手名>_bot.go` 是什么就算什么。

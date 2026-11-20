@@ -2,12 +2,17 @@
 # -*- coding: utf-8 -*-
 """Desert Arena · 裁判台（GUI）。
 
-版本：v1.5
-功能：两个工作模式，同一个窗口——
+版本：v1.6
+功能：三个页签，同一个窗口——
 
-  ① 赛季：对 war_of_desert/ 里冻结好的正式赛季跑 自检/编译/冻结/开赛/评分。
-  ② 工作区：扫描 算法赛/RTS算法赛@<模型名>/ 这类选手工作区，
-     勾选其中若干个（不必全选），临时编排成一场评测跑完出成绩。
+  ① 工作区（默认页签）：一个选手、一条流水线——
+       选工作区 → ① 自检发卷 → ② 复制提示词 → ③ 启动计时 → ④ 计时 → ⑤ 到点自动封存。
+     **这一段只管给参赛 AI 开一段写代码的时间窗，不跑任何对局。**
+     「发卷」是把选手包铺进 workspace，让 AI 有东西可写；「启动」是开始计时，
+     不是开打。提示词由人手动粘贴发送，裁判台不代发。
+  ② 赛季：对 war_of_desert/ 里冻结好的正式赛季跑 自检/编译/冻结/开赛/评分。
+  ③ 对战：把若干工作区临时编排成一场评测跑完出成绩。与计时流程完全隔离，
+     必须在这里手动触发，并且要二次确认。
 
     python -X utf8 referee_desk.py        # 或双击 裁判台.bat
 
@@ -23,6 +28,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 from pathlib import Path
@@ -63,6 +69,38 @@ FG = "#e6e6e6"
 MUTED = "#9aa0a6"
 OK = "#5cb85c"
 BAD = "#e05252"
+
+# 版本号写进窗口标题：改完代码没重启，一眼就能看出来跑的是旧的。
+DESK_VERSION = "1.7"
+
+
+class _StopCheck(Exception):
+    """自检撞上「再往下跑也没意义」的环境问题，直接收尾。"""
+
+
+def find_go():
+    """确定性地找到 go.exe，返回 (路径, 来源)。
+
+    不能只信 PATH：双击 bat 起来的进程，PATH 常常和终端里不一样；PATH 里
+    也可能先命中一个残留的 shim。找到之后一律用**绝对路径**调用，别让
+    CreateProcess 再自己猜一遍。
+    """
+    cands = [
+        (r"C:\Program Files\Go\bin\go.exe", "默认安装路径"),
+        (r"C:\Program Files (x86)\Go\bin\go.exe", "默认安装路径(x86)"),
+        (os.path.expandvars(r"%LOCALAPPDATA%\Programs\Go\bin\go.exe"), "用户安装路径"),
+        (os.path.expandvars(r"%USERPROFILE%\scoop\apps\go\current\bin\go.exe"), "scoop"),
+    ]
+    for path, why in cands:
+        try:
+            if path and Path(path).is_file():
+                return path, why
+        except OSError:
+            continue
+    hit = shutil.which("go")
+    if hit:
+        return hit, "PATH"
+    return None, "未找到"
 
 
 # ---------------------------------------------------------------- 工作区发现
@@ -192,9 +230,9 @@ def build_schedule(root: Path, seeds: int) -> dict:
 class RefereeDesk(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title("Desert Arena · 裁判台")
-        self.geometry("1000x720")
-        self.minsize(880, 620)
+        self.title("Desert Arena · 裁判台 v%s" % DESK_VERSION)
+        self.geometry("1060x780")
+        self.minsize(940, 680)
         self.configure(bg=BG)
 
         self.status = tk.StringVar(value="就绪")
@@ -209,14 +247,32 @@ class RefereeDesk(tk.Tk):
         self.total_matches = 0
         self.workspaces = []  # [(path, label, src, note)]
         self.last_out = None
+        # 每个工作区本次会话是否自检通过：str(路径) -> bool。
+        # 只用来在「启动比赛」时提醒一句，不作为硬门槛——硬门槛是选手包真的齐备。
+        self.checked = {}
+        self._auto_frozen = set()  # 已自动封存过的路径，避免重复写盘
         self._emit = self.log_q.put
-        # 无头模式（--scan / --smoke-contest）不往 Tk 里投回调
-        self.headless = "--smoke-contest" in sys.argv or "--scan" in sys.argv
+        # 一开始就把 go 定下来：双击 bat 启动的进程 PATH 常常和终端不一样，
+        # 等真去编译时才发现就没法解释「为什么终端能过、界面不能过」。
+        self.go_exe, self.go_from = find_go()
+        # 无头模式（--scan / --init / --selfcheck / --smoke-contest）不往 Tk 里投回调。
+        # 这些模式没有 mainloop，任何 self.after() 都会报 "main thread is not in
+        # main loop"，所以必须在建界面前就认出来，让 check_seal 之类直接跳过。
+        self.headless = any(a in sys.argv for a in
+                            ("--smoke-contest", "--scan", "--init", "--selfcheck"))
 
         self._build_styles()
         self._build_ui()
         self.reload_configs()
         self.scan_workspaces()
+        if not self.headless:
+            # 开局就把版本和 go 的位置写进日志：以后看到「编译失败但没这行」，
+            # 就知道点的是旧窗口，不用再猜。
+            self._log("— 裁判台 v%s · %s —\n" % (DESK_VERSION, time.strftime("%H:%M:%S")), "dim")
+            if self.go_exe:
+                self._log("   go：%s（%s）\n" % (self.go_exe, self.go_from), "dim")
+            else:
+                self._log("   go：未找到（自检会因此失败）\n", "err")
         self.after(80, self._drain_log)
         self.after(1000, self._tick)
 
@@ -241,8 +297,10 @@ class RefereeDesk(tk.Tk):
         nb = ttk.Notebook(self)
         nb.pack(fill="x", padx=14, pady=(12, 4))
         self.nb = nb
-        nb.add(self._build_season_tab(nb), text="  赛季  ")
+        # 工作区排第一：日常开赛走的就是这条五步流水线，打开即见。
         nb.add(self._build_contest_tab(nb), text="  工作区  ")
+        nb.add(self._build_season_tab(nb), text="  赛季  ")
+        nb.add(self._build_battle_tab(nb), text="  对战  ")
 
         prog = tk.Frame(self, bg=BG)
         prog.pack(fill="x", padx=14, pady=(8, 0))
@@ -304,30 +362,129 @@ class RefereeDesk(tk.Tk):
         return tab
 
     def _build_contest_tab(self, parent):
+        """一个选手、一条流水线。左边选目录，右边五步，按钮按状态开合。
+
+        这里的五个步骤和页面上的一二三五是同一套编号：选工作区、自检、提示词、
+        启动计时、封存。中间不允许夹带任何对局——对战在「对战」页签，独立触发。
+        """
         tab = tk.Frame(parent, bg=BG)
 
         row = tk.Frame(tab, bg=BG)
         row.pack(fill="x", padx=12, pady=(10, 4))
         tk.Label(row, text="比赛根目录", bg=BG, fg=MUTED).pack(side="left")
         tk.Entry(row, textvariable=self.contest_root, bg=PANEL, fg=FG,
-                 insertbackground=FG, relief="flat", width=56).pack(side="left", padx=8, ipady=3)
+                 insertbackground=FG, relief="flat", width=48).pack(side="left", padx=8, ipady=3)
         ttk.Button(row, text="浏览", command=self.browse_root).pack(side="left")
         ttk.Button(row, text="扫描", command=self.scan_workspaces).pack(side="left", padx=8)
 
-        tk.Label(tab, text="勾选要评测的工作区（可多选）；只想跑一个就双击它。目录名建议 RTS算法赛@<模型名>",
-                 bg=BG, fg=MUTED, font=(None, 9)).pack(anchor="w", padx=12)
+        body = tk.Frame(tab, bg=BG)
+        body.pack(fill="both", expand=True, padx=12, pady=(4, 10))
+        body.grid_rowconfigure(0, weight=1)
+        body.grid_columnconfigure(0, weight=1)
 
-        wrap = tk.Frame(tab, bg=BG)
-        wrap.pack(fill="x", padx=12, pady=(4, 0))
-        self.lst = tk.Listbox(wrap, selectmode="extended", height=6, bg=PANEL, fg=FG,
+        # 左：工作区列表（单选）
+        left = tk.Frame(body, bg=BG)
+        left.grid(row=0, column=0, sticky="nsew", padx=(0, 12))
+        tk.Label(left, text="选择工作区（目录名形如 RTS算法赛@<模型名>）",
+                 bg=BG, fg=MUTED, font=(None, 9)).pack(anchor="w")
+        wrap = tk.Frame(left, bg=BG)
+        wrap.pack(fill="both", expand=True, pady=(4, 0))
+        self.lst = tk.Listbox(wrap, selectmode="browse", height=6, bg=PANEL, fg=FG,
                               selectbackground="#3a5f8a", relief="flat",
-                              font=("Consolas", 10), activestyle="none")
-        self.lst.pack(side="left", fill="x", expand=True)
+                              font=("Consolas", 10), activestyle="none",
+                              exportselection=False)
+        self.lst.pack(side="left", fill="both", expand=True)
         sb = tk.Scrollbar(wrap, command=self.lst.yview, bg=PANEL)
         sb.pack(side="left", fill="y")
         self.lst.configure(yscrollcommand=sb.set)
         self.lst.bind("<<ListboxSelect>>", self._on_select)
-        self.lst.bind("<Double-Button-1>", self.run_single)
+        # 单击只负责选中。这里绑过双击开跑，代价太大：双击是浏览器式肌肉记忆，
+        # 手快点两下就会把一场对局真跑起来，还会改写封存记录。
+
+        # 右：五步。宽度由内容自然撑开，不硬设——子控件是 pack 管理的，
+        # 对 grid 调 propagate(False) 管不到它们，反而会让说明文字按更宽的字宽
+        # 排版、在窄面板里被横向截掉。
+        right = tk.Frame(body, bg=BG)
+        right.grid(row=0, column=1, sticky="nsew")
+        self._build_steps(right)
+
+        tk.Label(tab, text="这一段只负责「给参赛 AI 开一段写代码的时间窗」：发卷是把包铺好，"
+                           "启动是开始计时，都不跑对局。提示词要你自己复制、自己发送。",
+                 bg=BG, fg=MUTED, font=(None, 9)).pack(anchor="w", padx=12, pady=(0, 8))
+        return tab
+
+    def _step_block(self, parent, key, title):
+        """一步 = 标题与按钮同排 + 一行状态。状态行由 _refresh_steps 统一刷新。
+
+        标题独占一行的话，五步就要吃掉 400 多像素，把下面的日志挤没了，
+        所以按钮贴右边、说明压到下面一行。
+        """
+        box = tk.Frame(parent, bg=PANEL)
+        box.pack(fill="x", pady=(0, 4))
+        head = tk.Frame(box, bg=PANEL)
+        head.pack(fill="x", padx=9, pady=(6, 2))
+        tk.Label(head, text=title, bg=PANEL, fg=FG, font=(None, 9, "bold"),
+                 anchor="w").pack(side="left")
+        btns = tk.Frame(head, bg=PANEL)
+        btns.pack(side="right")
+        lbl = tk.Label(box, text="—", bg=PANEL, fg=MUTED, font=(None, 8),
+                       anchor="w", justify="left", wraplength=330)
+        lbl.pack(fill="x", padx=9, pady=(0, 6))
+        self.steps[key] = {"btns": btns, "lbl": lbl}
+        return btns
+
+    def _build_steps(self, parent):
+        self.steps = {}
+
+        # 同一组里的按钮给同样的 width：ttk 默认按文字宽度自适应，
+        # 「复制/查看」会一宽一窄，「暂停/恢复」也一样，看着像没对齐。
+        b = self._step_block(parent, "chk", "① 工作区自检")
+        self.chk_btn = ttk.Button(b, text="自检并准备选手包", width=16,
+                                  command=self.selfcheck)
+        self.chk_btn.pack(side="left")
+
+        b = self._step_block(parent, "prompt", "② 提示词")
+        self.copy_btn = ttk.Button(b, text="复制", width=5, command=self.copy_prompt)
+        self.copy_btn.pack(side="left")
+        self.view_btn = ttk.Button(b, text="查看", width=5, command=self.view_prompt)
+        self.view_btn.pack(side="left", padx=(4, 0))
+
+        b = self._step_block(parent, "start", "③ 启动比赛")
+        self.start_btn = ttk.Button(b, text="启动", width=7, style="Go.TButton",
+                                    command=self.start_contest_clock)
+        self.start_btn.pack(side="left")
+
+        b = self._step_block(parent, "clock", "④ 计时")
+        self.pause_btn = ttk.Button(b, text="暂停", width=5, command=self.pause_timer)
+        self.pause_btn.pack(side="left")
+        self.resume_btn = ttk.Button(b, text="恢复", width=5, command=self.resume_timer)
+        self.resume_btn.pack(side="left", padx=(4, 0))
+
+        b = self._step_block(parent, "freeze", "⑤ 封存")
+        self.freeze_btn = ttk.Button(b, text="立即封存", width=8, command=self.freeze_timer)
+        self.freeze_btn.pack(side="left")
+
+    def _build_battle_tab(self, parent):
+        """对战：和 ①②③④⑤ 的计时流程完全隔离，必须在这里手动点、二次确认。"""
+        tab = tk.Frame(parent, bg=BG)
+
+        tk.Label(tab, text="把工作区临时编排成一场评测：跟基线对打、出 BT 榜。"
+                           "与「工作区」页签的计时/封存互不相干，不会自动开始。",
+                 bg=BG, fg=MUTED, font=(None, 9), justify="left").pack(
+            anchor="w", padx=12, pady=(12, 6))
+
+        wrap = tk.Frame(tab, bg=BG)
+        wrap.pack(fill="both", expand=True, padx=12)
+        self.battle_lst = tk.Listbox(wrap, selectmode="extended", height=8, bg=PANEL, fg=FG,
+                                     selectbackground="#3a5f8a", relief="flat",
+                                     font=("Consolas", 10), activestyle="none",
+                                     exportselection=False)
+        self.battle_lst.pack(side="left", fill="both", expand=True)
+        sb = tk.Scrollbar(wrap, command=self.battle_lst.yview, bg=PANEL)
+        sb.pack(side="left", fill="y")
+        self.battle_lst.configure(yscrollcommand=sb.set)
+        self.battle_lst.bind("<<ListboxSelect>>", self._on_battle_select)
+        self.battle_lst.bind("<Double-Button-1>", lambda _e: "break")
 
         bar = tk.Frame(tab, bg=BG)
         bar.pack(fill="x", padx=12, pady=(8, 10))
@@ -339,28 +496,18 @@ class RefereeDesk(tk.Tk):
         self.eval_btn = ttk.Button(bar, text="评测选中（0）", style="Go.TButton",
                                    command=self.run_contest)
         self.eval_btn.pack(side="left", padx=(16, 0))
-        ttk.Button(bar, text="只跑双击的那一个", command=self.run_single).pack(
-            side="left", padx=6)
         ttk.Button(bar, text="打开评测结果", command=self.open_contest_results).pack(
             side="left", padx=8)
 
-        srv = tk.Frame(tab, bg=BG)
-        srv.pack(fill="x", padx=12, pady=(0, 4))
-        tk.Label(srv, text="赛务", bg=BG, fg=MUTED).pack(side="left")
-        for text, fn in (("初始化工作区与赛程", self.init_contest),
-                         ("发卷并开赛", self.issue_start),
-                         ("暂停", self.pause_timer),
-                         ("恢复", self.resume_timer),
-                         ("收卷", self.freeze_timer),
-                         ("刷新状态", self.scan_workspaces)):
-            ttk.Button(srv, text=text, command=fn).pack(side="left", padx=(8, 0))
-        self.clock_lbl = tk.Label(srv, text="选中一个工作区查看计时", bg=BG, fg=MUTED)
-        self.clock_lbl.pack(side="right")
-
-        tk.Label(tab, text="「发卷并开赛」会把选手包铺进 <工作区>/workspace 并开始计时"
-                           "（90 分钟目标 / 120 分钟收卷）；目录为空也可以直接开赛。",
-                 bg=BG, fg=MUTED, font=(None, 9)).pack(anchor="w", padx=12, pady=(0, 8))
+        bar2 = tk.Frame(tab, bg=BG)
+        bar2.pack(fill="x", padx=12, pady=(0, 10))
+        tk.Label(bar2, text="赛前准备", bg=BG, fg=MUTED).pack(side="left")
+        ttk.Button(bar2, text="初始化全部工作区与赛程", command=self.init_contest).pack(
+            side="left", padx=8)
+        tk.Label(bar2, text="（给还没发卷的目录铺包，并按当前报名者冻结 算法赛/赛程.json）",
+                 bg=BG, fg=MUTED, font=(None, 9)).pack(side="left")
         return tab
+
 
     # ---------------- 赛季 ----------------
     def reload_configs(self):
@@ -445,9 +592,36 @@ class RefereeDesk(tk.Tk):
             self.contest_root.set(d)
             self.scan_workspaces()
 
-    def scan_workspaces(self):
+    def _row_text(self, d: Path):
+        """列表一行的文案。返回 (文本, 是否可编译)。
+
+        不用 %-34s 对齐：中文是双宽，按字符数补空格对不齐。直接用分隔符切段，
+        「N go」放最后——它变，说明智能体真的在写东西。
+        """
+        src, note = detect_source(d)
+        try:
+            srv = service.describe(d)
+        except Exception:  # noqa: BLE001
+            srv = "—"
+        note = note.replace("入口 ", "")
+        if src is None:
+            return "%s  ×  %s  ·  %s" % (d.name, note, srv), False
+        return "%s  ✓  %s  ·  %s  ·  %d go" % (
+            d.name, note, srv, len(go_files(d))), True
+
+    def scan_workspaces(self, keep=None):
+        """扫描比赛根目录，同时刷新工作区列表和对战列表。
+
+        keep 指定要重新选中的目录名；不传就沿用当前选中项。这样自动封存
+        触发的刷新不会把用户正在看的那一行弄丢。
+        """
+        if keep is None:
+            cur = self.selected_one()
+            keep = cur[1] if cur else None
         root = Path(self.contest_root.get().strip() or DEFAULT_CONTEST_ROOT)
         self.lst.delete(0, "end")
+        if hasattr(self, "battle_lst"):
+            self.battle_lst.delete(0, "end")
         self.workspaces = []
         if not root.is_dir():
             self._log("比赛根目录不存在：%s\n" % root, "err")
@@ -457,53 +631,46 @@ class RefereeDesk(tk.Tk):
         dirs = [root] if detect_source(root)[0] else [
             d for d in sorted(root.iterdir()) if d.is_dir() and not d.name.startswith("_")]
         for d in dirs:
-            src, note = detect_source(d)
-            label = d.name
-            try:
-                srv = service.describe(d)
-            except Exception:  # noqa: BLE001
-                srv = "—"
-            if src is None:
-                self.lst.insert("end", "%-38s  × %-16s  %s" % (label, note, srv))
+            text, ok = self._row_text(d)
+            self.lst.insert("end", text)
+            if hasattr(self, "battle_lst"):
+                self.battle_lst.insert("end", text)
+            if not ok:
                 self.lst.itemconfig("end", foreground="#8a8f98")
-                self.workspaces.append((d, label, None, note))
-            else:
-                n = len(go_files(d))
-                self.lst.insert("end", "%-38s  ✓ %-16s  %s  （%d 个 .go）"
-                                % (label, note, srv, n))
-                self.workspaces.append((d, label, src, note))
-        ok = sum(1 for w in self.workspaces if w[2])
-        self.status.set("扫描到 %d 个，可用 %d 个" % (len(self.workspaces), ok))
+                if hasattr(self, "battle_lst"):
+                    self.battle_lst.itemconfig("end", foreground="#8a8f98")
+            src, note = detect_source(d)
+            self.workspaces.append((d, d.name, src, note))
+        ok_n = sum(1 for w in self.workspaces if w[2])
+        self.status.set("扫描到 %d 个，可用 %d 个" % (len(self.workspaces), ok_n))
+
+        if keep:
+            for i, w in enumerate(self.workspaces):
+                if w[1] == keep:
+                    self.lst.selection_set(i)
+                    self.lst.see(i)
+                    break
         self._on_select()
-        self._log("扫描 %s：%d 个目录，%d 个可编译\n" % (root, len(self.workspaces), ok), "dim")
+        self._on_battle_select()
 
     def _on_select(self, _evt=None):
+        """工作区页签是单选：选谁就对着谁走 ①~⑤。"""
+        if hasattr(self, "steps"):
+            self._refresh_steps()
+
+    def _on_battle_select(self, _evt=None):
         n = len(self.picked())
         if hasattr(self, "eval_btn"):
             self.eval_btn.configure(text="评测选中（%d）" % n)
 
-    def run_single(self, evt=None):
-        """只跑一个：双击哪一行就只评测哪一行。"""
-        if self.running:
-            return
-        if evt is not None:
-            idx = self.lst.nearest(evt.y)
-            self.lst.selection_clear(0, "end")
-            self.lst.selection_set(idx)
-        self._on_select()
-        picked = self.picked()
-        if len(picked) != 1:
-            messagebox.showwarning("裁判台", "请双击（或只勾选）一个可编译的工作区")
-            return
-        self.run_contest()
-
     def select_all(self):
         for i, w in enumerate(self.workspaces):
             if w[2]:
-                self.lst.selection_set(i)
+                self.battle_lst.selection_set(i)
 
     def select_none(self):
-        self.lst.selection_clear(0, "end")
+        self.battle_lst.selection_clear(0, "end")
+        self._on_battle_select()
 
     def selected_one(self):
         """当前选中的单个工作区（允许还是空的——发卷就是给空目录用的）。"""
@@ -516,7 +683,7 @@ class RefereeDesk(tk.Tk):
     def _need_one(self, action: str):
         w = self.selected_one()
         if w is None:
-            messagebox.showwarning("裁判台", "%s：先在列表里选中一个工作区" % action)
+            messagebox.showwarning("裁判台", "%s：先在左边列表里选中一个工作区" % action)
             return None
         return w
 
@@ -553,67 +720,312 @@ class RefereeDesk(tk.Tk):
                   % (len(plan["players"]), len(plan["matches"]), root / "赛程.json"), "ok")
         self.scan_workspaces()
 
-    def issue_start(self):
+    # ---------------- ① 工作区自检 ----------------
+    def _dump_diag(self, ws: Path, shots: list) -> Path:
+        """把这次自检的原始证据落到文件里。
+
+        只写一句「编译失败」帮不上忙，尤其当子进程一声不吭地退出时。这里把
+        实际用的 go 路径、关键环境变量、每条命令的 argv/cwd/退出码/原始文本
+        全留下来，出问题直接看这个文件。
+        """
+        env_keys = ("PATH", "GOROOT", "GOPATH", "GOCACHE", "GOFLAGS", "GOWORK",
+                    "GOTOOLCHAIN", "GOOS", "GOARCH", "TEMP", "USERPROFILE")
+        out = ["Desert Arena 裁判台 · 工作区自检诊断",
+               "生成时间：%s" % time.strftime("%Y-%m-%d %H:%M:%S"),
+               "裁判台版本：v%s" % DESK_VERSION,
+               "Python：%s" % sys.version.replace("\n", " "),
+               "工作区：%s" % ws,
+               "go 解析：%s（%s）" % (self.go_exe or "未找到", self.go_from),
+               "", "—— 环境变量 ——"]
+        for k in env_keys:
+            out.append("%-12s = %s" % (k, os.environ.get(k, "（未设置）")))
+        out += ["", "—— 命令 ——"]
+        for s in shots:
+            out.append("")
+            out.append("[%s]" % s["label"])
+            out.append("  argv : %s" % s["argv"])
+            out.append("  cwd  : %s" % s["cwd"])
+            out.append("  code : %s (0x%08X)" % (s["code"], s["code"] & 0xFFFFFFFF))
+            out.append("  bytes: %d" % s["out_len"])
+            body = s["out"].strip()
+            if body:
+                for ln in body.splitlines():
+                    out.append("  | " + ln)
+            else:
+                out.append("  | （子进程没有任何输出）")
+        p = APP_DIR / "自检诊断.txt"
+        try:
+            p.write_text("\n".join(out) + "\n", encoding="utf-8")
+        except OSError:
+            return APP_DIR
+        return p
+
+    def _check_workspace(self, ws: Path):
+        """自检的实际动作：发卷 + 查结构 + 验 go + 两处编译。
+
+        抽成独立方法，是因为 GUI 和 `--selfcheck` 命令行要跑同一套判定。
+        返回 (行列表, 是否通过)，每行是 (文本, log 标签)。
+        """
+        lines = []
+        shots = []  # 失败时写进 自检诊断.txt 的原始记录
+        ok = True
+        go = self.go_exe or "go"
+
+        def run(argv, cwd, label):
+            code, out = self._exec(argv, cwd=cwd)
+            shots.append({"label": label, "argv": argv, "cwd": str(cwd),
+                          "code": code, "out": out or "", "out_len": len(out or "")})
+            return code, out
+
+        try:
+            if not service.status(ws)["issued"]:
+                got = service.issue(ws)
+                lines.append(("发卷：%s" % ("、".join(got) if got else "已存在"), "dim"))
+            else:
+                lines.append(("发卷：已发过，不覆盖已有文件", "dim"))
+
+            chk = service.check_package(ws)
+            if chk["missing"]:
+                ok = False
+                lines.append(("结构：缺 %s" % "、".join(chk["missing"]), "err"))
+            else:
+                lines.append(("结构：%d 项齐备，交付文件 %s"
+                              % (len(service.KEY_ITEMS), chk["submission"]), "ok"))
+            if chk["is_template"]:
+                lines.append(("提示：交付文件还是模板内容，等智能体来改", "dim"))
+
+            # 用绝对路径调 go：CreateProcess 每次自己猜 PATH，猜错就只会
+            # 留一个空白的「编译失败：」。这里先探一次，探不通就停。
+            lines.append(("go：%s（%s）" % (self.go_exe or "未找到", self.go_from), "dim"))
+            code, out = run([go, "version"], ws / "workspace", "go version")
+            if code != 0:
+                ok = False
+                lines.append(("环境：go 不可用。%s" % self._cmd_fail(code, out), "err"))
+                raise _StopCheck()
+            first = (out.strip().splitlines() or ["go"])[0]
+            lines.append(("环境：%s" % first, "dim"))
+
+            # 编译选手代码。产物丢临时目录，别在工作区里留 bot.exe 骗人。
+            tmp = Path(tempfile.mkdtemp(prefix="wod-selfcheck-"))
+            try:
+                code, out = run([go, "build", "-o", str(tmp / "sub.exe"), "./submission"],
+                                ws / "workspace", "go build ./submission")
+            finally:
+                shutil.rmtree(tmp, ignore_errors=True)
+            if code == 0:
+                lines.append(("编译：go build ./submission 通过", "ok"))
+            else:
+                ok = False
+                lines.append(("编译失败：%s" % self._cmd_fail(code, out), "err"))
+
+            # 引擎副本能不能编：AI 要双击 本地对局.bat，这份坏了就是白等两小时。
+            arena_out = Path(tempfile.gettempdir()) / "wod-arena-selfcheck.exe"
+            code, out = run([go, "build", "-o", str(arena_out), "./cmd/arena"],
+                            ws / "workspace" / "arena", "go build ./cmd/arena")
+            if code == 0:
+                lines.append(("引擎：arena 副本可编译", "ok"))
+            else:
+                ok = False
+                lines.append(("引擎副本编译失败：%s" % self._cmd_fail(code, out), "err"))
+        except _StopCheck:
+            ok = False
+        except Exception as e:  # noqa: BLE001
+            ok = False
+            lines.append(("自检出错：%s" % e, "err"))
+
+        if not ok and shots:
+            p = self._dump_diag(ws, shots)
+            lines.append(("诊断：完整证据已写入 %s" % p, "dim"))
+        return lines, ok
+
+    def selfcheck(self):
+        """发卷 + 查结构 + 编译。
+
+        这是「启动计时」之前唯一的硬门槛。选手包缺件的话，AI 那边一上来就是断的：
+        没 prompt.md 不知道要干什么，没 arena/ 本地跑不起来，没 submission/ 无处可写。
+        只做检查，不跑任何对局。
+        """
         if self.running:
             return
-        w = self._need_one("发卷并开赛")
+        w = self._need_one("工作区自检")
         if not w:
             return
         ws, label = w[0], w[1]
-        st = service.status(ws)
-        if st["state"] != "未开赛":
-            if not messagebox.askokcancel(
-                    "重置计时", "%s 已经开赛（%s）。\n重新开赛会把计时起点重置为现在，确认？"
-                    % (label, service.describe(ws))):
-                return
+        self._set_running(True)
+        self.status.set("自检中…")
+        self._log("— 工作区自检：%s —\n" % label, "dim")
+
+        def work():
+            lines, ok = self._check_workspace(ws)
+
+            def apply():
+                for text, tag in lines:
+                    self._log(text + "\n", tag)
+                self.checked[str(ws)] = ok
+                self.status.set("自检通过" if ok else "自检未通过")
+                self._log("— 自检%s —\n" % ("通过" if ok else "未通过"),
+                          "ok" if ok else "err")
+                self._set_running(False)
+                self.scan_workspaces(keep=label)
+
+            self.after(0, apply)
+
+        threading.Thread(target=work, daemon=True).start()
+
+    # ---------------- ② 提示词（人手动发，裁判台不代发） ----------------
+    def _prompt_text(self, ws: Path):
+        p = service.prompt_path(ws)
+        if not p.is_file():
+            messagebox.showwarning("裁判台", "还没有 prompt.md。先做 ① 工作区自检。")
+            return None
         try:
-            if not st["issued"]:
-                got = service.issue(ws)
-                self._log("发卷 %s：%s\n" % (label, "、".join(got) if got else "已存在"), "dim")
+            return p.read_text(encoding="utf-8")
+        except OSError as e:
+            messagebox.showerror("裁判台", "读 prompt.md 失败：%s" % e)
+            return None
+
+    def copy_prompt(self):
+        w = self._need_one("复制提示词")
+        if not w:
+            return
+        text = self._prompt_text(w[0])
+        if text is None:
+            return
+        self.clipboard_clear()
+        self.clipboard_append(text)
+        self.update()
+        self._log("提示词已复制（%d 字）：去智能体那边粘贴发送，裁判台不代发\n"
+                  % len(text), "ok")
+
+    def view_prompt(self):
+        w = self._need_one("查看提示词")
+        if not w:
+            return
+        text = self._prompt_text(w[0])
+        if text is None:
+            return
+        win = tk.Toplevel(self)
+        win.title("提示词 · %s" % w[1])
+        win.configure(bg=BG)
+        win.geometry("780x640")
+        bar = tk.Frame(win, bg=BG)
+        bar.pack(fill="x", padx=10, pady=(8, 4))
+        tk.Label(bar, text="只读。要发出去点「复制」，然后自己去粘贴。",
+                 bg=BG, fg=MUTED, font=(None, 9)).pack(side="left")
+        box = tk.Text(win, bg=PANEL, fg=FG, wrap="word", relief="flat",
+                      font=self.log_font, padx=10, pady=8)
+        box.pack(fill="both", expand=True, padx=10, pady=(0, 10))
+        box.insert("1.0", text)
+        box.configure(state="disabled")
+
+        def do_copy():
+            win.clipboard_clear()
+            win.clipboard_append(text)
+            self._log("提示词已复制（%d 字）\n" % len(text), "ok")
+
+        ttk.Button(bar, text="复制", command=do_copy).pack(side="right")
+
+    # ---------------- ③ 启动比赛 = 开始计时 ----------------
+    def start_contest_clock(self):
+        """开始计时。**不跑对局**——对局在「对战」页签，必须另外手动触发。"""
+        if self.running:
+            return
+        w = self._need_one("启动比赛")
+        if not w:
+            return
+        ws, label = w[0], w[1]
+        chk = service.check_package(ws)
+        if not chk["ready"]:
+            messagebox.showwarning(
+                "裁判台",
+                "%s 的选手包还不完整：\n  %s\n\n先点 ① 工作区自检把包铺好。"
+                % (label, "、".join(chk["missing"]) or "没有交付文件"))
+            return
+        st = service.status(ws)
+        lines = ["为 %s 开始计时。" % label, "",
+                 "  · 只开始计时，不会跑任何对局",
+                 "  · 90 分钟目标，120 分钟到点自动封存",
+                 "  · 提示词要你自己复制、自己发送"]
+        if st["state"] != "未开赛":
+            lines.insert(1, "它已经在计时（%s），这次会把起点重置为现在。"
+                         % service.describe(ws))
+            lines.insert(2, "")
+        if not self.checked.get(str(ws)):
+            lines += ["", "这次会话还没做过 ① 工作区自检。仍然开始？"]
+        if not messagebox.askokcancel("启动比赛（开始计时）", "\n".join(lines),
+                                      default=messagebox.CANCEL):
+            self._log("已取消：没有开始计时\n", "dim")
+            return
+        try:
             service.start(ws)
         except Exception as e:  # noqa: BLE001
-            messagebox.showerror("裁判台", "开赛失败：%s" % e)
+            messagebox.showerror("裁判台", "启动失败：%s" % e)
             return
-        self._log("开赛 %s：90 分钟目标 / 120 分钟收卷\n" % label, "ok")
-        self.scan_workspaces()
+        self._auto_frozen.discard(str(ws))
+        self._log("启动 %s：已开始计时（90 目标 / 120 强制封存），本次不跑对局\n"
+                  % label, "ok")
+        self.scan_workspaces(keep=label)
 
+    # ---------------- ④ 计时 ----------------
     def pause_timer(self):
         w = self._need_one("暂停")
         if not w:
             return
         service.pause(w[0], "裁判台手动暂停")
-        self._log("暂停 %s：已用 %.1f 分钟\n" % (w[1], service.elapsed_seconds(w[0]) / 60), "dim")
-        self.scan_workspaces()
+        self._log("暂停 %s：已用 %.1f 分钟\n"
+                  % (w[1], service.elapsed_seconds(w[0]) / 60), "dim")
+        self.scan_workspaces(keep=w[1])
 
     def resume_timer(self):
         w = self._need_one("恢复")
         if not w:
             return
         service.resume(w[0])
-        self._log("恢复 %s：已用 %.1f 分钟\n" % (w[1], service.elapsed_seconds(w[0]) / 60), "dim")
-        self.scan_workspaces()
+        self._log("恢复 %s：已用 %.1f 分钟\n"
+                  % (w[1], service.elapsed_seconds(w[0]) / 60), "dim")
+        self.scan_workspaces(keep=w[1])
+
+    # ---------------- ⑤ 封存 ----------------
+    def _seal_one(self, ws: Path, label: str, auto: bool = False):
+        """冻结交付文件到 交卷/。返回 info 或 None。"""
+        try:
+            info = service.freeze(ws)
+        except Exception as e:  # noqa: BLE001
+            self._log("%s封存 %s 失败：%s\n" % ("自动" if auto else "", label, e), "err")
+            return None
+        head = "自动封存" if auto else "收卷"
+        if info["missing_submission"]:
+            self._log("%s %s：没有交付文件，记为未提交\n" % (head, label), "err")
+        else:
+            self._log("%s %s：%d 字节，用 %.1f 分钟，sha256=%s\n"
+                      % (head, label, info["bytes"], info["used_minutes"],
+                         info["sha256"][:16]), "ok")
+            if info.get("is_template"):
+                self._log("           注意：交付物与模板逐字节相同，参赛 AI 可能没写出东西\n",
+                          "err")
+        return info
 
     def freeze_timer(self):
-        w = self._need_one("收卷")
+        w = self._need_one("立即封存")
         if not w:
             return
-        st = service.status(w[0])
-        if not st["has_submission"]:
-            if not messagebox.askokcancel("收卷", "%s 没有 decide.go，会记为未提交。继续？" % w[1]):
-                return
-        elif not messagebox.askokcancel("收卷", "%s 已用 %.1f 分钟。\n收卷后 submission 里的改动不再进入成绩，确认？"
-                                        % (w[1], st["used_min"])):
+        ws, label = w[0], w[1]
+        st = service.status(ws)
+        if st["state"] == "已收卷":
+            messagebox.showinfo("裁判台", "%s 已经封存过了。" % label)
             return
-        info = service.freeze(w[0])
-        if info["missing_submission"]:
-            self._log("收卷 %s：没有 decide.go，记为未提交\n" % w[1], "err")
-        else:
-            self._log("收卷 %s：%d 字节，用 %.1f 分钟，sha256=%s\n"
-                      % (w[1], info["bytes"], info["used_minutes"], info["sha256"][:16]), "ok")
-        self.scan_workspaces()
+        if not st["has_submission"]:
+            if not messagebox.askokcancel("封存", "%s 没有交付文件，会记为未提交。继续？" % label):
+                return
+        elif not messagebox.askokcancel(
+                "封存", "%s 已用 %.1f 分钟。\n封存后 submission 里的改动不再进入成绩，确认？"
+                        % (label, st["used_min"]), default=messagebox.CANCEL):
+            return
+        self._seal_one(ws, label)
+        self.scan_workspaces(keep=label)
 
     def picked(self):
-        return [self.workspaces[i] for i in self.lst.curselection()
+        return [self.workspaces[i] for i in self.battle_lst.curselection()
                 if i < len(self.workspaces) and self.workspaces[i][2]]
 
     def run_contest(self):
@@ -624,10 +1036,19 @@ class RefereeDesk(tk.Tk):
             messagebox.showwarning("裁判台", "先勾选至少一个可编译的工作区")
             return
         who = "只跑这一个" if len(picked) == 1 else "评测 %d 个选手" % len(picked)
+        k = len(picked) + len(REF_BOTS)
+        matches = k * (k - 1) // 2
+        # default=CANCEL：Enter / 空格默认落在「取消」上，双击列表后弹出
+        # 立刻回车也不会开跑。
         if not messagebox.askokcancel(
-                who, "%s\n%s\n\n对手：%s%s\n确认开跑？"
+                "真的要开跑？",
+                "%s\n%s\n\n对手：%s%s\n\n"
+                "将进行 %d 场对阵、%d 局真实对局（每场换边打 2 局）。\n"
+                "对局期间会临时改写 bots/封存记录.json，跑完自动恢复当前赛季封存。"
                 % (who, "\n".join("  · " + w[1] for w in picked), "、".join(REF_BOTS),
-                   "" if len(picked) == 1 else " + 彼此")):
+                   "" if len(picked) == 1 else " + 彼此", matches, matches * 2),
+                default=messagebox.CANCEL):
+            self._log("已取消：没有发起对局\n", "dim")
             return
         seeds = int(self.seed_count.get() or "1")
 
@@ -763,7 +1184,19 @@ class RefereeDesk(tk.Tk):
 
         threading.Thread(target=work, daemon=True).start()
 
+    def _go_argv(self, argv) -> list:
+        """把 argv 里的 "go" 换成开机时解析出来的绝对路径。
+
+        CreateProcess 每次都要自己按 PATH 找 go，而双击 bat 起来的进程 PATH
+        未必和终端一致；固定成绝对路径，行为才和 `--selfcheck` 一致。
+        """
+        argv = list(argv)
+        if argv and argv[0] == "go" and self.go_exe:
+            argv[0] = self.go_exe
+        return argv
+
     def _stream(self, argv) -> bool:
+        argv = self._go_argv(argv)
         self._emit(("line", "$ " + " ".join(argv)))
         try:
             proc = subprocess.Popen(argv, cwd=str(ENGINE), stdout=subprocess.PIPE,
@@ -776,18 +1209,66 @@ class RefereeDesk(tk.Tk):
             return False
         self.proc = proc
         assert proc.stdout is not None
+        seen = 0
         for line in proc.stdout:
+            seen += 1
             self._emit(("line", line.rstrip("\n")))
         code = proc.wait()
         if code != 0:
+            if seen == 0:
+                self._emit(("line", "（这条命令没有任何输出就退出了，退出码 %s / 0x%08X）"
+                            % (code, code & 0xFFFFFFFF)))
+                p = self._dump_stream_fail(argv)
+                if p:
+                    self._emit(("line", "诊断已写入 %s" % p))
             self._emit(("exit", code, None))
             return False
         return True
 
-    def _exec(self, argv):
+    def _dump_stream_fail(self, argv) -> Path | None:
+        """`go run ...` 静默失败时留证据，免得又只能看一个空白。"""
+        env_keys = ("PATH", "GOROOT", "GOPATH", "GOCACHE", "GOFLAGS", "GOWORK",
+                    "GOTOOLCHAIN", "TEMP")
+        out = ["Desert Arena 裁判台 · 命令静默失败诊断",
+               "生成时间：%s" % time.strftime("%Y-%m-%d %H:%M:%S"),
+               "裁判台版本：v%s" % DESK_VERSION,
+               "argv：%s" % argv,
+               "cwd ：%s" % ENGINE,
+               "go  ：%s（%s）" % (self.go_exe or "未找到", self.go_from),
+               "", "—— 环境变量 ——"]
+        for k in env_keys:
+            out.append("%-12s = %s" % (k, os.environ.get(k, "（未设置）")))
+        p = APP_DIR / "自检诊断.txt"
         try:
-            p = subprocess.run(argv, cwd=str(ENGINE), capture_output=True, text=True,
-                               encoding="utf-8", errors="replace", timeout=180,
+            p.write_text("\n".join(out) + "\n", encoding="utf-8")
+            return p
+        except OSError:
+            return None
+
+    def _cmd_fail(self, code, out) -> str:
+        """把「非零退出但没有任何输出」翻译成人能看懂的话。
+
+        Windows 上进程被外部干掉（杀软、OOM、作业对象限制）时，退出码是
+        0xC0000005 这类大负数，而 stdout/stderr 是空的。只留一个空白的
+        「编译失败：」等于什么都没说——上次就是这样，看不出到底是代码写错
+        还是工具链根本没跑起来。
+        """
+        text = (out or "").strip()
+        if text:
+            return "\n" + text[-1200:]
+        if code is not None and code < 0:
+            return ("\n  （退出码 %d / 0x%08X：进程被系统或安全软件终止，不是编译错误）"
+                    "\n  先把工作区加入杀毒软件白名单，再重试。"
+                    % (code, code & 0xFFFFFFFF))
+        return ("\n  （退出码 %s，命令没有任何输出）"
+                "\n  在 cmd 里进到该工作区手动跑一遍同样的命令，那里能看到真实报错。"
+                % code)
+
+    def _exec(self, argv, cwd=None):
+        argv = self._go_argv(argv)
+        try:
+            p = subprocess.run(argv, cwd=str(cwd or ENGINE), capture_output=True, text=True,
+                               encoding="utf-8", errors="replace", timeout=300,
                                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
             return p.returncode, (p.stdout or "") + (p.stderr or "")
         except Exception as e:  # noqa: BLE001
@@ -799,21 +1280,140 @@ class RefereeDesk(tk.Tk):
             self.status.set("已中止")
             self._log("\n— 已中止（已完成的对局保留在 结果.jsonl）—\n", "err")
 
-    def _tick(self):
+    # ---------------- 流水线状态 ----------------
+    def _set_step_label(self, key, text, color):
+        """只在文字/颜色真的变了才写，避免每秒刷新把控件抖一遍。"""
+        lbl = self.steps.get(key, {}).get("lbl")
+        if lbl is None:
+            return
+        if lbl.cget("text") != text:
+            lbl.config(text=text)
+        if lbl.cget("fg") != color:
+            lbl.config(fg=color)
+
+    def _refresh_steps(self):
+        """按磁盘上的真实状态开合 ①~⑤。
+
+        不记「上次点了什么」，只看事实：包齐不齐、计时到哪、封没封。
+        所以关掉裁判台再打开，界面和 .赛务.json 仍然对得上。
+        """
+        if not getattr(self, "steps", None):
+            return
         w = self.selected_one()
         if w is None:
-            self.clock_lbl.config(text="选中一个工作区查看计时", fg=MUTED)
+            self._set_step_label("chk", "先在左边选一个工作区", MUTED)
+            for key in ("prompt", "start", "clock", "freeze"):
+                self._set_step_label(key, "", MUTED)
+            for btn in (self.chk_btn, self.copy_btn, self.view_btn, self.start_btn,
+                        self.pause_btn, self.resume_btn, self.freeze_btn):
+                btn.configure(state="disabled")
+            return
+
+        ws, _label = w[0], w[1]
+        busy = self.running
+        try:
+            chk = service.check_package(ws)
+            st = service.status(ws)
+        except Exception as e:  # noqa: BLE001
+            self._set_step_label("chk", "读状态失败：%s" % e, BAD)
+            return
+        state = st["state"]
+
+        # ① 自检
+        self.chk_btn.configure(state="disabled" if busy else "normal")
+        if chk["ready"]:
+            txt = "包齐备（%d 项）· 交付 %s" % (len(service.KEY_ITEMS), chk["submission"])
+            if chk["is_template"]:
+                txt += " · 仍是模板"
+            self._set_step_label("chk", txt, OK)
         else:
+            miss = chk["missing"]
+            shown = "、".join(miss[:3]) + ("等 %d 项" % len(miss) if len(miss) > 3 else "")
+            self._set_step_label("chk", "缺：%s%s" % (shown or "交付文件", "（点自检补全）"), BAD)
+
+        # ② 提示词
+        p = service.prompt_path(ws)
+        has_p = p.is_file()
+        self.copy_btn.configure(state="normal" if (has_p and not busy) else "disabled")
+        self.view_btn.configure(state="normal" if (has_p and not busy) else "disabled")
+        if has_p:
+            self._set_step_label("prompt", "prompt.md · %d 字节 · 复制后自己去粘"
+                                 % p.stat().st_size, MUTED)
+        else:
+            self._set_step_label("prompt", "还没有 prompt.md（先做 ①）", BAD)
+
+        # ③ 启动比赛
+        can_start = chk["ready"] and not busy and state != "已收卷"
+        self.start_btn.configure(state="normal" if can_start else "disabled")
+        if not chk["ready"]:
+            self._set_step_label("start", "选手包不完整，先做 ①", BAD)
+        elif state == "已收卷":
+            self._set_step_label("start", "已封存，不能再启动", MUTED)
+        elif state == "未开赛":
+            self._set_step_label("start", "未开赛 · 只开始计时，不跑对局 · 90 目标 / 120 强制", MUTED)
+        else:
+            self._set_step_label("start", "正在计时（%s）· 再点会重置起点" % state,
+                                 OK if state == "进行中" else BAD)
+
+        # ④ 计时
+        self.pause_btn.configure(state="normal" if (state == "进行中" and not busy) else "disabled")
+        self.resume_btn.configure(state="normal" if (state == "已暂停" and not busy) else "disabled")
+        if state == "未开赛":
+            self._set_step_label("clock", "还没开始计时", MUTED)
+        elif st["frozen"]:
+            f = st["frozen"]
+            self._set_step_label(
+                "clock",
+                "已封存 · 用时 %.1f 分钟%s" % (f.get("used_minutes", 0),
+                                              "" if f.get("accepted") else "（超时，不计成绩）"),
+                MUTED)
+        else:
+            self._set_step_label(
+                "clock",
+                "已用 %.1f 分钟 · 距 120 分钟还有 %.1f 分钟（90 分钟是目标）"
+                % (st["used_min"], st["left_min"]),
+                OK if st["used_min"] < 90 else BAD)
+
+        # ⑤ 封存
+        can_seal = state in ("进行中", "已暂停") and not busy
+        self.freeze_btn.configure(state="normal" if can_seal else "disabled")
+        if state == "已收卷":
+            self._set_step_label("freeze", "已封存，交卷/ 里有副本", MUTED)
+        elif state == "未开赛":
+            self._set_step_label("freeze", "开始计时后才能封存", MUTED)
+        elif state.startswith("已超时"):
+            self._set_step_label("freeze", "已到点，正在自动封存…", BAD)
+        else:
+            self._set_step_label("freeze", "到 120 分钟自动封存，也可以现在手动封", MUTED)
+
+    def _auto_freeze(self):
+        """120 分钟到点自动封存。
+
+        判据是 .赛务.json 里的开始时间，不是内存里的状态：裁判台关着时错过的，
+        下次打开第一秒就补上，算出来的用时也是真实用时。
+        """
+        keep = (self.selected_one() or (None, None, None, None))[1]
+        fired = False
+        for path, label, _src, _note in list(self.workspaces):
+            key = str(path)
+            if key in self._auto_frozen:
+                continue
             try:
-                st = service.status(w[0])
-                color = MUTED
-                if st["state"] == "进行中":
-                    color = OK if st["used_min"] < 90 else BAD
-                elif st["state"].startswith("已超时"):
-                    color = BAD
-                self.clock_lbl.config(text="%s：%s" % (w[1], service.describe(w[0])), fg=color)
+                st = service.status(path)
             except Exception:  # noqa: BLE001
-                pass
+                continue
+            if st["state"] != "已超时（待收卷）":
+                continue
+            self._auto_frozen.add(key)
+            self._log("⏰ %s 已到 120 分钟，自动封存\n" % label, "dim")
+            self._seal_one(path, label, auto=True)
+            fired = True
+        if fired:
+            self.scan_workspaces(keep=keep)
+
+    def _tick(self):
+        self._auto_freeze()
+        self._refresh_steps()
         self.after(1000, self._tick)
 
     def _drain_log(self):
@@ -859,6 +1459,7 @@ class RefereeDesk(tk.Tk):
         for b in self.season_btns.values():
             b.configure(state=state)
         self.stop_btn.configure(state="normal" if running else "disabled")
+        self._refresh_steps()
 
     def _log(self, text, tag=""):
         self.log.configure(state="normal")
@@ -945,6 +1546,25 @@ def main():
             print("        %-44s %s" % (p_["name"], p_["kind"]))
         app.destroy()
         return
+    if "--selfcheck" in argv:
+        # 命令行自检：--selfcheck <工作区目录>
+        # 和界面上的 ① 完全同一套判定，但在 cmd 里跑，能看到子进程的原始输出。
+        i = argv.index("--selfcheck")
+        if len(argv) <= i + 1:
+            print("用法：py -3 -X utf8 referee_desk.py --selfcheck <工作区目录>")
+            app.destroy()
+            return 2
+        ws = Path(argv[i + 1]).resolve()
+        app.headless = True
+        print("工作区自检：%s\n" % ws)
+        lines, ok = app._check_workspace(ws)
+        for text, tag in lines:
+            mark = {"err": "  × ", "ok": "  ✓ "}.get(tag, "  · ")
+            for j, ln in enumerate(text.splitlines()):
+                print((mark if j == 0 else "    ") + ln)
+        print("\n— 自检%s —" % ("通过" if ok else "未通过"))
+        app.destroy()
+        return 0 if ok else 1
     if "--smoke-contest" in argv:
         # 无头跑一次评测管线：--smoke-contest <工作区目录> [seed 数]
         i = argv.index("--smoke-contest")

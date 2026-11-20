@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-20T11:35:46+08:00",
+  "generatedAt": "2026-11-20T12:25:16+08:00",
   "shared": {
     "workspace/botkit/botkit.go": "db88fc35c66be4242c10dd62b1037f5a872dbb82602f0e9b5409b05674ba9648",
     "workspace/refbot/refbot.go": "7ef552f1125bbae6f022e7117393e54fa4c64732c120bda6c561796ae534b102"
@@ -12,7 +12,7 @@
       "files": {
         "main.go": "b983eb15127ea963a8fa35c915dc239f9a22e88a5597b78873680e09c573bd7f"
       },
-      "binSha256": "97a479d39b060e30740827f09a5eb867ad49232dcf87e692c82ae19fa3b2aaf4"
+      "binSha256": "07cd48303f2df0a78052b1f2bb2a66c282e17eb2e35869415bfb53b17ae52854"
     },
     {
       "name": "Bulwark",
@@ -21,7 +21,7 @@
       "files": {
         "main.go": "1c948f12341609ddb0e93a2e17bd56bca1d3310ec37e123d571ee4865d99f9a6"
       },
-      "binSha256": "b77e30ee9bbf4504510b6682cb8c9bac9a2b74a5a0ee16f345a77c8b8f9e3338"
+      "binSha256": "fbdeb0d94adce5bd835d7d91ea0889205b529fa909f3dfba3f5d8d8c6f349138"
     },
     {
       "name": "Swarm",
@@ -30,7 +30,7 @@
       "files": {
         "main.go": "38ddb6f6cca11a00d6f885dc7758fd44f65cd961bbcf376352b86893d7d592f0"
       },
-      "binSha256": "1576bb716ed9585fddc7a0aa5980e7a875fda53d103aba0fa40d62d36e53ed02"
+      "binSha256": "4e998abc102b7e2b1d62a871ee16c3ab3fb72678c2e5829932f98002e1ee796d"
     },
     {
       "name": "Nomad",
@@ -39,7 +39,7 @@
       "files": {
         "main.go": "611b0a3ef73d1b6e81a79503f513c2bc684166bb942bea2fd8cf2738f52b376d"
       },
-      "binSha256": "840954e83da8b9961e07d5778d6c957e2951f76d75d3e8326aa91a2a450c6324"
+      "binSha256": "b4b3f2cfee51794e0e1652fd05acf29172af8e66bb00b0b022aa7832ce84d35d"
     },
     {
       "name": "Sapper",
@@ -48,7 +48,7 @@
       "files": {
         "main.go": "d15f636b9bb986d719752597f294eea6c2429015159a4457c651365efc4304fc"
       },
-      "binSha256": "0bad30e751e0d4def10f6022e988756af2a2e937f8bb7e7331d786ed335d3023"
+      "binSha256": "3133b985ef26c85956aa2cfae24e1054bea4a2d4e2f43cd93cd505b5c8fc3148"
     },
     {
       "name": "Starter",
@@ -57,7 +57,7 @@
       "files": {
         "decide.go": "ac9e1bb48b0e185ed5ff78d7506fe7446224b71fc52a8a7e71dcf4a9bec04821"
       },
-      "binSha256": "fbfd4249bffb06797b00766633fb2e9eb65c5b8d12de75c9c2bc56ee0ff0671a"
+      "binSha256": "84e5efd3962a4503164e6d6b6209c411628761ec497e748e57d430054107c56a"
     }
   ],
   "note": "封存源码哈希；bin 为编译产物，可随时由 source 重建；shared 为参考 Bot 共用的策略库"
