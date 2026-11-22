@@ -333,7 +333,7 @@ func VetLevel(kind string, xp float64) int {
 	return lv
 }
 
-// KillVP 击杀一个单位的胜利分（v1.6：造价/2，单次封顶 150；母舰固定 300）。
+// KillVP 击杀一个单位的胜利分（v1.9.1：造价 ×2/3，封顶 KillVPCap=200；母舰固定 300）。
 func KillVP(kind string) int {
 	if kind == "MOTHERSHIP" {
 		return MothershipKillVP
@@ -535,8 +535,10 @@ func (g *Game) buildRelicSites() []PathPt {
 	for _, c := range cands {
 		x, y := g.nearestOpenPoint(c[0], c[1], 14*Cell)
 		if !g.pointReachable(reach0, reach1, x, y) {
-			if x, y, ok := g.findReachablePoint(c[0], c[1], 30*Cell, reach0, reach1); ok {
-				// use snapped reachable point
+			// 这里必须写回外层 x/y：如果写成 `if x, y, ok := ...` 会在 if 作用域里
+			// 重新声明同名变量，修补结果出了 if 就丢，遗迹点仍然不可达。
+			if px, py, ok := g.findReachablePoint(c[0], c[1], 30*Cell, reach0, reach1); ok {
+				x, y = px, py
 			} else {
 				// 最后退到最近的 VP（Connected 已保证 VP 可达）。
 				x, y = g.nearestReachableVP(x, y, reach0, reach1)

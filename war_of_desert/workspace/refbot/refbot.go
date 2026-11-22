@@ -65,6 +65,17 @@ func Run(s Strategy) error {
 			}
 		}
 
+		// 生产表里没有 SALVAGER 时由 refbot 兜底补足采矿车。
+		// v1.4 局面不满足 st.V15()，如果只看 Build 表会一台采矿车都不出，
+		// 基础收入为 0，开局资金花完经济就死了。
+		buildHasSalvager := false
+		for _, k := range s.Build {
+			if k == "SALVAGER" {
+				buildHasSalvager = true
+				break
+			}
+		}
+
 		/* ---- 阵营动作：分配 / 模式 / 生产 / 研究 / 造炮 ---- */
 		if !sameAlloc(st.Me.AllocTarget, s.Alloc) {
 			acts = append(acts, botkit.Action{Type: "alloc", Alloc: s.Alloc})
@@ -81,7 +92,7 @@ func Run(s Strategy) error {
 			// v1.5：两台采 cu/ru，第三台专职插旗+拉遗产。
 			maxSalvagers = 3
 		}
-		if st.V15() && salvagerCount(b, st) < maxSalvagers && st.Me.CU >= 100 {
+		if (st.V15() || !buildHasSalvager) && salvagerCount(b, st) < maxSalvagers && st.Me.CU >= 100 {
 			acts = append(acts, botkit.Action{Type: "produce", Kind: "SALVAGER"})
 		} else if len(s.Build) > 0 {
 			for tries := 0; tries < len(s.Build); tries++ {
@@ -93,6 +104,13 @@ func Run(s Strategy) error {
 				}
 				// v1.6：研究舰一台即可，避免建造表循环时刷满人口。
 				if kind == "RESEARCH" && countKind(st, "RESEARCH") >= 1 {
+					buildIdx++
+					stall = 0
+					continue
+				}
+				// 当前规则集没有这个兵种（例如 v1.4 没有 RESEARCH）：直接跳过，
+				// 不要空转 stallTicks 拍把整条生产链卡住。
+				if _, ok := b.Rules.Types[kind]; !ok {
 					buildIdx++
 					stall = 0
 					continue

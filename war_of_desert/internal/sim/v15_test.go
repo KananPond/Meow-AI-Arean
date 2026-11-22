@@ -316,7 +316,8 @@ func TestV16KillVP(t *testing.T) {
 }
 
 func TestV16RelicSitesReachable(t *testing.T) {
-	for _, seed := range []int{20261121, 20261122, 20261142, 20261150} {
+	// 20261277 的遗迹候选点原始位置不可达，是回归「修补结果被 if 作用域遮蔽」的用例。
+	for _, seed := range []int{20261121, 20261122, 20261142, 20261150, 20261277} {
 		g := newV15Game(t, seed)
 		r0, r1 := g.reachFromSpawn(0), g.reachFromSpawn(1)
 		for i, s := range g.V15.Sites {
