@@ -37,6 +37,8 @@ type FrameUnit struct {
 	HState  string `json:"hstate,omitempty"`
 	CarryCU int    `json:"carryCu,omitempty"`
 	CarryRU int    `json:"carryRu,omitempty"`
+	// v1.6 诊断：研究舰是否已接到 relicresearch 职责
+	RDuty bool `json:"rduty,omitempty"`
 }
 
 type FrameRelic struct {
@@ -49,12 +51,24 @@ type FrameRelic struct {
 }
 
 type FrameFlag struct {
-	ID   int `json:"id"`
-	VP   int `json:"vp"`
-	Side int `json:"side"`
-	X    int `json:"x"`
-	Y    int `json:"y"`
-	HP   int `json:"hp"`
+	ID     int `json:"id"`
+	VP     int `json:"vp"`
+	Side   int `json:"side"`
+	X      int `json:"x"`
+	Y      int `json:"y"`
+	HP     int `json:"hp"`
+	Stored int `json:"stored,omitempty"`
+}
+
+type FrameResearch struct {
+	Side     int     `json:"side"`
+	Node     string  `json:"node"`
+	VP       int     `json:"vp"`
+	Ship     int     `json:"ship"`
+	Progress float64 `json:"progress"`
+	Total    float64 `json:"total"`
+	Active   bool    `json:"active"`
+	Paused   bool    `json:"paused,omitempty"`
 }
 
 type FrameVP struct {
@@ -95,9 +109,10 @@ type Frame struct {
 	Weapons      [2]int        `json:"weapons"`
 	Shells       []FrameShell  `json:"shells"`
 	// v1.5；v14 为 nil，omitempty 保证旧回放字节不变。
-	Relics []FrameRelic   `json:"relics,omitempty"`
-	Flags  []FrameFlag    `json:"flags,omitempty"`
-	VS     []VictoryScore `json:"vs,omitempty"`
+	Relics   []FrameRelic    `json:"relics,omitempty"`
+	Flags    []FrameFlag     `json:"flags,omitempty"`
+	VS       []VictoryScore  `json:"vs,omitempty"`
+	Research []FrameResearch `json:"research,omitempty"`
 }
 
 func (g *Game) buildFrame() *Frame {
@@ -113,6 +128,7 @@ func (g *Game) buildFrame() *Frame {
 			fu.Facing = int(math.Round(u.Facing))
 			fu.Turret = int(math.Round(u.Turret))
 			fu.Relic = u.Relic
+			fu.RDuty = u.RDuty
 			if u.Kind == "SALVAGER" {
 				fu.Harvest, fu.HState = u.Harvest, u.HState
 				fu.CarryCU = int(math.Round(u.CarryCU))
@@ -144,7 +160,7 @@ func (g *Game) buildFrame() *Frame {
 			//（与跳过式 stepProduction 的等待条件一致）。
 			blocked := true
 			for _, k := range S.Queue {
-				t := Types[k]
+				t := g.ut(k)
 				cost := math.Round(float64(t.Cost) * (1 - S.Mods.Cost))
 				if S.CU >= cost && S.RU >= float64(t.RU) {
 					blocked = false
@@ -174,8 +190,20 @@ func (g *Game) buildFrame() *Frame {
 			f.Flags = append(f.Flags, FrameFlag{
 				ID: fl.ID, VP: fl.VPID, Side: fl.Side,
 				X: int(math.Round(fl.X)), Y: int(math.Round(fl.Y)),
-				HP: int(math.Round(fl.HP)),
+				HP: int(math.Round(fl.HP)), Stored: g.relicsAtVP(fl.VPID),
 			})
+		}
+		for s := 0; s < 2; s++ {
+			if rs := g.V15.Research[s]; rs != nil {
+				f.Research = append(f.Research, FrameResearch{
+					Side: s, Node: rs.Node, VP: rs.VPID, Ship: rs.ShipID,
+					Progress: rs.Progress, Total: rs.Total, Active: rs.Active, Paused: rs.Paused,
+				})
+			}
+		}
+		for s := 0; s < 2; s++ {
+			g.Sides[s].VS.Delivered = g.Sides[s].DeliveredRelics
+			g.Sides[s].VS.Stored = g.storedRelics(s)
 		}
 		f.VS = []VictoryScore{g.Sides[0].VS, g.Sides[1].VS}
 	}
@@ -224,7 +252,7 @@ func (g *Game) Header() json.RawMessage {
 			"mountainH": MountainH, "hitRadius": HitRM,
 			"shells": Shells, "shellIds": ShellIDs,
 		},
-		"types": Types, "producible": Producible, "smallProducible": SmallProducible,
+		"types": g.typeTable(), "producible": g.producible(), "smallProducible": SmallProducible,
 		"alloc": map[string]any{
 			"keys": AllocKeys, "step": AllocStep, "start": startAlloc(),
 			"slotStep": SlotStep, "maxSlots": MaxSlots, "maxWeapons": MaxWeapons,
@@ -238,7 +266,7 @@ func (g *Game) Header() json.RawMessage {
 			"startCu": StartCU, "startRu": StartRU, "income": BaseIncome,
 			"ruIncome": RUBaseIncome,
 			"salvage":  SalvageRate, "capacity": SalvagerCapacity, "resAmount": ResAmount,
-			"resRadius": ResRadius, "popMax": PopMax,
+			"resRadius": ResRadius, "popMax": g.popMax(),
 		},
 		"weapon": map[string]any{"cost": WeaponCost, "build": WeaponBuild, "queueMax": WeaponQueueMax},
 		"repair": map[string]any{"radius": RepairRadius, "rate": RepairRate},
@@ -258,13 +286,16 @@ func (g *Game) Header() json.RawMessage {
 			sites = append(sites, map[string]any{"id": i, "x": s.X, "y": s.Y})
 		}
 		rules["v15"] = map[string]any{
-			"vsWin": VSWinScore, "relicValue": RelicValue, "flagValue": FlagValue,
-			"flagHP": FlagHP, "flagPlaceTicks": FlagPlaceTicks, "stolenShare": FlagStolenShare,
+			"vsWin": VSWinScore, "relicValue": RelicValue, "relicVSCap": RelicVSCap,
+			"flagPlaceVP": FlagPlaceVP, "flagPenalty": FlagPenalty, "flagBounty": FlagBounty,
+			"flagHP": FlagHP, "flagPlaceTicks": FlagPlaceTicks,
 			"relicLoadTicks": RelicLoadTicks, "relicDropTicks": RelicDropTicks,
 			"relicSpawnTicks": RelicSpawnTicks, "relicMaxGround": RelicMaxGround,
 			"relicRadius": RelicRadius, "relicCarrySpeedMul": RelicCarrySpeedMul,
 			"relicSites": sites, "cep": CEPMax, "arcHalf": ArcHalf, "traverse": TraverseRate,
 			"vetTitles": VetTitles, "vetThresholds": VetThresholds, "killVP": killVPTable(),
+			"killVPCap": KillVPCap, "weights": WeightsV15, "fieldNames": FieldNamesV15,
+			"researchUnit": "RESEARCH", "researchRadius": ResearchRadius,
 		}
 	}
 	hello := map[string]any{
@@ -309,9 +340,10 @@ type TickState struct {
 	Shells    []FrameShell  `json:"shells"`
 	Events    []Event       `json:"events"`
 	// v1.5
-	Relics []TickRelic    `json:"relics,omitempty"`
-	Flags  []TickFlag     `json:"flags,omitempty"`
-	VS     []VictoryScore `json:"vs,omitempty"`
+	Relics   []TickRelic     `json:"relics,omitempty"`
+	Flags    []TickFlag      `json:"flags,omitempty"`
+	VS       []VictoryScore  `json:"vs,omitempty"`
+	Research []FrameResearch `json:"research,omitempty"`
 }
 
 type TickTiming struct {
@@ -351,12 +383,23 @@ type TickRelic struct {
 }
 
 type TickFlag struct {
-	ID   int     `json:"id"`
-	VP   int     `json:"vp"`
-	Side int     `json:"side"`
-	X    float64 `json:"x"`
-	Y    float64 `json:"y"`
-	HP   float64 `json:"hp"`
+	ID     int     `json:"id"`
+	VP     int     `json:"vp"`
+	Side   int     `json:"side"`
+	X      float64 `json:"x"`
+	Y      float64 `json:"y"`
+	HP     float64 `json:"hp"`
+	Stored int     `json:"stored,omitempty"`
+}
+
+type TickResearch struct {
+	Node     string  `json:"node"`
+	VP       int     `json:"vp"`
+	Ship     int     `json:"ship"`
+	Progress float64 `json:"progress"`
+	Total    float64 `json:"total"`
+	Active   bool    `json:"active"`
+	Paused   bool    `json:"paused,omitempty"`
 }
 
 type TickCarry struct {
@@ -407,6 +450,7 @@ type TickMe struct {
 	Carriers     []TickCarrier `json:"carriers"`
 	Mods         Mods          `json:"mods"`
 	VS           *VictoryScore `json:"vs,omitempty"`
+	Research     *TickResearch `json:"research,omitempty"`
 }
 
 type TickTechJob struct {
@@ -479,12 +523,17 @@ func (g *Game) EncodeTick(i int) string {
 		for _, fl := range g.V15.Flags {
 			ts.Flags = append(ts.Flags, TickFlag{
 				ID: fl.ID, VP: fl.VPID, Side: fl.Side, X: fl.X, Y: fl.Y, HP: fl.HP,
+				Stored: g.relicsAtVP(fl.VPID),
 			})
+		}
+		for s := 0; s < 2; s++ {
+			g.Sides[s].VS.Delivered = g.Sides[s].DeliveredRelics
+			g.Sides[s].VS.Stored = g.storedRelics(s)
 		}
 		ts.VS = []VictoryScore{g.Sides[0].VS, g.Sides[1].VS}
 	}
 	ts.Me = TickMe{
-		CU: int(math.Round(S.CU)), RU: int(math.Round(S.RU)), Pop: S.Pop, PopMax: PopMax,
+		CU: int(math.Round(S.CU)), RU: int(math.Round(S.RU)), Pop: S.Pop, PopMax: g.popMax(),
 		Alloc: S.Alloc, AllocTarget: S.Target, Mode: S.Mode,
 		Slots:        TickSlots{Produce: g.productionLines(i), Research: ResearchSlots, AttackSlots: MaxWeapons, AttackCap: MaxWeapons},
 		WeaponSlots:  MaxWeapons,
@@ -496,6 +545,14 @@ func (g *Game) EncodeTick(i int) string {
 	if g.v15() {
 		vs := S.VS
 		ts.Me.VS = &vs
+		// 注意：必须放在 ts.Me = TickMe{...} 之后。之前写在前面会被整体赋值清掉，
+		// 导致 tick.me.research 从来没有真正下发过。
+		if rs := g.V15.Research[i]; rs != nil {
+			ts.Me.Research = &TickResearch{
+				Node: rs.Node, VP: rs.VPID, Ship: rs.ShipID,
+				Progress: rs.Progress, Total: rs.Total, Active: rs.Active, Paused: rs.Paused,
+			}
+		}
 	}
 	for _, w := range S.WeaponQueue {
 		ts.Me.WeaponQueue = append(ts.Me.WeaponQueue, int(math.Ceil(w.Remain)))
@@ -629,11 +686,11 @@ func (g *Game) Decode(i int, line string) ([]Action, error) {
 			}
 			seenCamp["produce"] = true
 			kind, _ := a["kind"].(string)
-			if !inList(Producible, kind) {
+			if !inList(g.producible(), kind) {
 				g.noteRejected(i, 0, "not producible")
 				continue
 			}
-			if g.Sides[i].Pop+Types[kind].Pop > PopMax {
+			if g.Sides[i].Pop+g.ut(kind).Pop > g.popMax() {
 				g.noteRejected(i, 0, "pop full")
 				continue
 			}
@@ -808,6 +865,29 @@ func (g *Game) Decode(i int, line string) ([]Action, error) {
 				continue
 			}
 			out = append(out, act)
+		case "relicresearch":
+			if !g.v15() {
+				g.noteRejected(i, 0, "relicresearch: not in v15")
+				continue
+			}
+			idf, ok := a["id"].(float64)
+			if !ok || idf != math.Trunc(idf) {
+				return nil, errors.New("bad unit id")
+			}
+			id := int(idf)
+			if !mine[id] {
+				return nil, errors.New("bad unit id")
+			}
+			if seenUnit[id] {
+				return nil, errors.New("duplicate unit action")
+			}
+			seenUnit[id] = true
+			u := g.unitByID(id)
+			if u == nil || u.Kind != "RESEARCH" {
+				g.noteRejected(i, id, "relicresearch: not a research ship")
+				continue
+			}
+			out = append(out, Action{Type: "relicresearch", ID: &id})
 		case "relic":
 			if !g.v15() {
 				g.noteRejected(i, 0, "relic: not in v15")

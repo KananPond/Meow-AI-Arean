@@ -91,6 +91,12 @@ func Run(s Strategy) error {
 					stall = 0
 					continue
 				}
+				// v1.6：研究舰一台即可，避免建造表循环时刷满人口。
+				if kind == "RESEARCH" && countKind(st, "RESEARCH") >= 1 {
+					buildIdx++
+					stall = 0
+					continue
+				}
 				if t, ok := b.Rules.Types[kind]; ok && st.Me.Pop+t.Pop > st.Me.PopMax {
 					buildIdx++
 					stall = 0
@@ -171,6 +177,10 @@ func Run(s Strategy) error {
 				if v := botkit.NearestVP(st, u.X, u.Y, side, true); v != nil {
 					acts = append(acts, moveAlong(b, u, v.X, v.Y))
 				}
+				continue
+			case "RESEARCH":
+				// v1.6：引擎托管寻路到「己方旗 + 库存最多」的 VP，并在圈内自动研究。
+				acts = append(acts, botkit.Action{ID: u.ID, Type: "relicresearch"})
 				continue
 			case "MOTHERSHIP":
 				target := botkit.Nearest(enemies, u.X, u.Y)
@@ -378,6 +388,26 @@ func salvagerCount(b *botkit.Bot, st *botkit.State) int {
 	}
 	for _, a := range st.Me.Active {
 		if a.Kind == "SALVAGER" {
+			n++
+		}
+	}
+	return n
+}
+
+func countKind(st *botkit.State, kind string) int {
+	n := 0
+	for _, u := range botkit.Own(st, st.Side) {
+		if u.Kind == kind {
+			n++
+		}
+	}
+	for _, k := range st.Me.Queue {
+		if k == kind {
+			n++
+		}
+	}
+	for _, a := range st.Me.Active {
+		if a.Kind == kind {
 			n++
 		}
 	}

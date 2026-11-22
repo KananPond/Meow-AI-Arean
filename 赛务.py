@@ -2,9 +2,9 @@
 # -*- coding: utf-8 -*-
 """Desert Arena · 赛务（发卷 / 开赛 / 暂停 / 收卷）。
 
-版本：v1.6
+版本：v1.7
 功能：以「一个选手目录」为单位管理编码期。目录可以是空的——开赛时先把
-      选手包铺进去，再开始计时；到点把 submission/decide.go 冻结到 交卷/。
+      选手包铺进去，再开始计时；到点把 submission/<选手名>_bot.go 冻结到 交卷/。
 
     python -X utf8 赛务.py --dir "算法赛/RTS算法赛@X" --issue     # 发卷
     python -X utf8 赛务.py --dir "算法赛/RTS算法赛@X" --start     # 开赛计时
@@ -27,6 +27,10 @@
 
 计时口径：90 分钟目标、120 分钟强制收卷。超过 120 分钟仍会冻结留档，
 但 accepted=false，不计正式成绩。
+
+交付文件一律叫 `<选手名>_bot.go`。从模板整份复制出来的目录（clock.py 已经
+在了）不会被重新发卷，所以自检会顺手把 `Model_name_bot.go`／`decide.go`
+就地改名——否则「交付文件 None」，等 AI 又写一份同名逻辑的 bot，同包重复定义。
 """
 
 from __future__ import annotations
@@ -60,7 +64,7 @@ WIN_EPOCH_OFFSET = 11644473600
 # 发给选手的东西 = 模板 workspace/ 下除赛务产物以外的一切。
 # arena/ 不在这里：它是从引擎源码同步出来的，每次发卷都整体刷新（见 sync_engine）。
 # 沙箱自检工具也不在这里：它必须跑在 desertarena 模块内，随 arena/ 一起发（cmd/sandbox）。
-PACKAGE_ITEMS = ["RULES.md", "README.md", "prompt.md", "clock.py", "go.mod",
+PACKAGE_ITEMS = ["RULES.md", "RULES_V15.md", "README.md", "prompt.md", "clock.py", "go.mod",
                  "bots", "submission", "tournament",
                  "本地对局.bat", "本地赛季.bat"]
 
@@ -180,9 +184,31 @@ def submission_path(ws: Path) -> Path:
     return legacy if legacy.is_file() else new
 
 
+def normalize_submission(ws: Path) -> str:
+    """把模板名/旧名的交付文件改成 <选手名>_bot.go，返回被改掉的旧文件名。
+
+    单独抽出来，是因为 issue() 只在「还没发过卷」时跑，而选手目录经常是从
+    模板整份复制出来的（clock.py 已经在了）。这种目录里交付文件还叫
+    Model_name_bot.go：自检报「交付文件 None」，收卷记成未提交；等 AI 按
+    prompt 又写出 <选手名>_bot.go，两个文件在同一个包里重复定义，编译直接挂。
+    """
+    sub = ws / WS / "submission"
+    if not sub.is_dir():
+        return ""
+    target = sub / bot_filename(ws)
+    if target.exists():
+        return ""
+    for stale in ("Model_name_bot.go", "decide.go"):
+        p = sub / stale
+        if p.is_file():
+            p.rename(target)
+            return stale
+    return ""
+
+
 # 工作区自检要看的项。缺哪一项，智能体那边的体验就是断的：
 # 没 prompt.md 就不知道要干什么，没 arena/ 本地跑不起来，没 submission/ 无处可写。
-KEY_ITEMS = ["RULES.md", "README.md", "prompt.md", "clock.py", "go.mod",
+KEY_ITEMS = ["RULES.md", "RULES_V15.md", "README.md", "prompt.md", "clock.py", "go.mod",
              "arena", "bots", "submission", "tournament", "本地对局.bat"]
 
 
@@ -355,13 +381,9 @@ def issue(ws: Path) -> list:
     copied.append("arena/（引擎+裁判+比赛程序）")
 
     # 交付文件按「<选手名>_bot.go」命名：模板里叫 Model_name_bot.go，发卷时改名。
-    sub = dest / "submission"
-    if sub.is_dir():
-        for stale in ("Model_name_bot.go", "decide.go"):
-            p = sub / stale
-            if p.is_file() and p.name != bot_filename(ws):
-                p.rename(sub / bot_filename(ws))
-                break
+    renamed = normalize_submission(ws)
+    if renamed:
+        copied.append("submission/%s → %s" % (renamed, bot_filename(ws)))
     return copied
 
 
@@ -404,7 +426,7 @@ def resume(ws: Path) -> None:
 
 
 def freeze(ws: Path) -> dict:
-    """冻结 submission/decide.go 到 交卷/，记录哈希与用时。"""
+    """冻结 submission/<选手名>_bot.go 到 交卷/，记录哈希与用时。"""
     src = submission_path(ws)
     out = ws / FROZEN_DIR
     out.mkdir(parents=True, exist_ok=True)

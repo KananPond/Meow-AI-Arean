@@ -2,9 +2,9 @@
 
 > **状态：可开赛**（当前正式赛 = **v1.4 · 第 5 季**：母舰削弱（HP/攻击/移速/坡限）+ 对称经济 + 脱战自愈 + 攻坚对舰倍率 + 进程沙箱；v1.0 第 1 季 / v1.1 第 2 季 / v1.3 第 4 季 / v1.4 第 5 季已完赛，见 [`LEADERBOARD.md`](LEADERBOARD.md)）。
 >
-> **另有 v1.5 实验分支**（非正式赛季）：胜利分三本账、遗产物、插旗、CEP／射界、单位等级，由 `GameCfg.Ruleset == "v15"`（`sim.RulesetV15`）开关隔离，v1.4 语义与指纹 `553785d4` 不变。规则与 90 局标定见 [`../Dev/实验/Plan_V15.md`](../Dev/实验/Plan_V15.md)，产物见 [`results/exp-v15/`](results/exp-v15/README.md)，配置 [`tournament/experiment_v15.json`](tournament/experiment_v15.json)。**参赛仍以 v1.4 为准。**
+> **另有 v1.7 实验分支**（非正式赛季）：遗产 +50/上限 100、超上限遗产转遗产科技、研究舰、旗分转移与库存遗产撤回、击杀 `min(造价×2/3,200)`、终局遗产科技/旗控制 tie-break，由 `GameCfg.Ruleset == "v15"`（`sim.RulesetV15`）开关隔离，v1.4 语义与指纹 `553785d4` 不变。规则见 [`workspace/_contestants/GLM-5p3-Flash/workspace/RULES_V15.md`](workspace/_contestants/GLM-5p3-Flash/workspace/RULES_V15.md)，配置 [`tournament/experiment_v17_500.json`](tournament/experiment_v17_500.json)。**参赛仍以 v1.4 为准。**
 >
-> **AI 参与声明**：本仓库的引擎移植、参考 Bot、测试与文档由 AI（ZCode 智能体）在人类指导下参与编写；
+> **AI 参与声明**：本仓库的引擎移植、参考 Bot、测试与文档由 AI（ZCode 智能体、TRAE/DeepSeek-V4.1-Flash）在人类指导下参与编写；
 > 规则设计、赛制与验收由人类主导，全部对局结果均经引擎内置的确定性复核门禁（golden trace + orderLog 重放）。
 >
 > **赛事手册**：[`赛事手册.md`](赛事手册.md) ｜ **规则基线（v1.0 历史）**：[`../Dev/Plan_Beta.md`](../Dev/Plan_Beta.md) 快照
@@ -135,26 +135,35 @@ go run ./cmd/siegepool -from results/siege/bt_pool.csv -out results/siege/bt_poo
 
 ---
 
-## v1.5 规则实验（非正式赛季）
+## v1.9 规则实验（非正式赛季）
 
 独立于正式赛的规则验证分支，**不改 v1.4 语义，也不发给选手**。开关是
-`GameCfg.Ruleset == "v15"`（`sim.RulesetV15`），配置 [`tournament/experiment_v15.json`](tournament/experiment_v15.json)，
-规则实现 `internal/sim/rules15.go`，设计与参数见 [`../Dev/实验/Plan_V15.md`](../Dev/实验/Plan_V15.md)。
+`GameCfg.Ruleset == "v15"`（`sim.RulesetV15`），配置 [`tournament/experiment_v19_700.json`](tournament/experiment_v19_700.json)，
+规则实现 `internal/sim/rules15.go`，完整规则见
+[`workspace/_contestants/GLM-5p3-Flash/workspace/RULES_V15.md`](workspace/_contestants/GLM-5p3-Flash/workspace/RULES_V15.md)。
 
-- 胜负改为**胜利分三本账**（击杀／遗产／插旗），删除被动 VP 加分；判胜顺序：母舰毁 → VS≥300 → 时间到比 VS → KD → 母舰 HP → 平。
-- 遗产物（刷新／运输入库）、可摧毁的旗（160 HP）、CEP 与射界／炮塔转速、火控科技 C1–C3、5 级单位等级。
-- 1500 tick、6 Bot × 3 seed（含新增 [`workspace/bots/hunter/`](workspace/bots/hunter/)）、90 局，规则指纹 `24d4935b`；v1.4 指纹仍是 `553785d4`。
+- 胜利分：第 1/2 件遗产各 +50（上限 100），第 3 件起 0 VS 但推进遗产科技；击杀 `min(造价×2/3,200)`；插旗 0 分；被拔旗 −25，攻方 +25（同 VP 一次）；库存遗产分随旗毁撤回。
+- 新单位 **研究舰（RESEARCH）**：无攻击、80 HP、100 CU / 25 tick；停在己方旗下研究 R1–R4 遗产科技；拔旗/舰毁中断研究。
+- 遗产科技 R1–R4：60 / 85 / 110 / 135 tick，提供伤害/精度/装甲/射程；6 件以上库存给过载伤害。
+- v1.8 系实验增量：人口上限 36（仅 v15）、参考 Bot 全线 Push、RAILGUN 240/40、ARTILLERY 550/180、
+  两者对母舰伤害 ×1.5；时间到判定链只保留 VS → KD → 母舰 HP → 旗控制 → 平。
+- v1.8.3 关键修复：neutral 模式的「高差据守」只在敌人进入自身射程时生效。
+- v1.9：新增第 7 个参考 Bot **Warden**（RAILGUN + ARTILLERY + CARRIER）；遗产补给 70 tick / 场上 3 件。
+- 1500 tick、**7 Bot** × 17 seed × 换边 2 局 = **714 局**；v1.4 指纹仍是 `553785d4`，v15 指纹随版本变化。
 
 ```bash
-CFG=tournament/experiment_v15.json
+CFG=tournament/experiment_v19_700.json
 go run ./cmd/arena build -config $CFG
 go run ./cmd/arena plan  -config $CFG
 go run ./cmd/arena run   -config $CFG
-py -3 -X utf8 scripts/exp_metrics.py results/exp-v15
+go run ./cmd/arena rate  -config $CFG
+python -X utf8 scripts/exp_v16_metrics.py results/exp-v191-700
 ```
 
-产物与标定数据见 [`results/exp-v15/README.md`](results/exp-v15/README.md)。实验批次**不跑 `arena rate`**，
-因此没有 BT 榜／加权总分。
+产物与标定数据见 [`results/exp-v191-700/README.md`](results/exp-v191-700/README.md)（v1.9.1 定稿）与
+[`results/exp-v19-700/README.md`](results/exp-v19-700/README.md)（v1.9.0）。
+v1.9.1：714 局、平局 4.2%、决胜座位 49.9:50.1、母舰斩杀 7.1%、平均 1139 tick、
+Warden BT 第 4；同 Bot 双座位 80 局送达差 t=1.11（不显著）。
 
 ---
 
@@ -258,7 +267,7 @@ cmd/arena ──► judge ──► engine(宿主客户端) ──► node engin
 | `results/formal-v14/成绩_加权总分.md` | 七领域合计与场均 |
 | `results/formal-v14/成绩.json` | 机器可读的 BT 结果 |
 | `results/formal-v14/回放/match-NNN.json` | 原始 hello + 逐局终局 + 每 5 tick 帧 + 复核结果 |
-| `bots/封存记录.json` | 选手源码与共用库的 SHA-256、编译产物路径 |
+| `bots/封存记录/<赛季>.json` | 该赛季选手源码与共用库的 SHA-256、编译产物路径（一季一本） |
 
 ---
 

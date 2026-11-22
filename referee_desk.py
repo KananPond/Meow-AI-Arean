@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """Desert Arena · 裁判台（GUI）。
 
-版本：v1.6
+版本：v1.9
 功能：三个页签，同一个窗口——
 
   ① 工作区（默认页签）：一个选手、一条流水线——
@@ -10,9 +10,11 @@
      **这一段只管给参赛 AI 开一段写代码的时间窗，不跑任何对局。**
      「发卷」是把选手包铺进 workspace，让 AI 有东西可写；「启动」是开始计时，
      不是开打。提示词由人手动粘贴发送，裁判台不代发。
+     顶栏可选规则版本（v1.9 / v1.4）：自检按这个口径比对引擎与工作区 arena 副本，
+     且与「对战」页签共用同一个选择。
   ② 赛季：对 war_of_desert/ 里冻结好的正式赛季跑 自检/编译/冻结/开赛/评分。
   ③ 对战：把若干工作区临时编排成一场评测跑完出成绩。与计时流程完全隔离，
-     必须在这里手动触发，并且要二次确认。
+     必须在这里手动触发，并且要二次确认。编排时可选规则版本（v1.4 / v1.9）。
 
     python -X utf8 referee_desk.py        # 或双击 裁判台.bat
 
@@ -51,7 +53,7 @@ APP_DIR = Path(__file__).resolve().parent
 ENGINE = APP_DIR / "war_of_desert"
 DEFAULT_CONTEST_ROOT = APP_DIR / "算法赛"
 STAGE_ROOT = ENGINE / "workspace" / "_contestants"
-REF_BOTS = ["Vanguard", "Bulwark", "Swarm", "Nomad", "Sapper"]
+REF_BOTS = ["Vanguard", "Bulwark", "Swarm", "Nomad", "Sapper", "Hunter", "Warden"]
 
 # 赛务（发卷 / 开赛 / 暂停 / 收卷）与裁判台同目录。用路径加载，
 # 避免模块名含中文时在某些 Python 上 import 失败。
@@ -71,7 +73,7 @@ OK = "#5cb85c"
 BAD = "#e05252"
 
 # 版本号写进窗口标题：改完代码没重启，一眼就能看出来跑的是旧的。
-DESK_VERSION = "1.7"
+DESK_VERSION = "1.9"
 
 
 class _StopCheck(Exception):
@@ -239,6 +241,8 @@ class RefereeDesk(tk.Tk):
         self.cfg_path = tk.StringVar()
         self.contest_root = tk.StringVar(value=str(DEFAULT_CONTEST_ROOT))
         self.seed_count = tk.StringVar(value="1")
+        self.rules_mode = tk.StringVar(value="v1.9")
+        self.rules_summary = tk.StringVar()
 
         self.info = {}
         self.proc = None
@@ -373,9 +377,22 @@ class RefereeDesk(tk.Tk):
         row.pack(fill="x", padx=12, pady=(10, 4))
         tk.Label(row, text="比赛根目录", bg=BG, fg=MUTED).pack(side="left")
         tk.Entry(row, textvariable=self.contest_root, bg=PANEL, fg=FG,
-                 insertbackground=FG, relief="flat", width=48).pack(side="left", padx=8, ipady=3)
+                 insertbackground=FG, relief="flat", width=40).pack(side="left", padx=8, ipady=3)
         ttk.Button(row, text="浏览", command=self.browse_root).pack(side="left")
         ttk.Button(row, text="扫描", command=self.scan_workspaces).pack(side="left", padx=8)
+        # 规则版本：发卷/自检按这个口径检查工作区，切到「对战」页签时也沿用同一个选择。
+        tk.Label(row, text="规则", bg=BG, fg=MUTED).pack(side="left", padx=(8, 4))
+        ws_rules_cb = ttk.Combobox(row, textvariable=self.rules_mode,
+                                   values=("v1.9", "v1.4"), width=6, state="readonly")
+        ws_rules_cb.pack(side="left")
+        ws_rules_cb.bind("<<ComboboxSelected>>", lambda _e: self._on_rules_change())
+
+        rules_bar = tk.Frame(tab, bg=BG)
+        rules_bar.pack(fill="x", padx=12, pady=(0, 4))
+        tk.Label(rules_bar, text="当前规则：", bg=BG, fg=MUTED).pack(side="left", anchor="n")
+        tk.Label(rules_bar, textvariable=self.rules_summary, bg=BG, fg=FG,
+                 font=(None, 9), justify="left", wraplength=860).pack(
+            side="left", anchor="w")
 
         body = tk.Frame(tab, bg=BG)
         body.pack(fill="both", expand=True, padx=12, pady=(4, 10))
@@ -409,7 +426,8 @@ class RefereeDesk(tk.Tk):
         self._build_steps(right)
 
         tk.Label(tab, text="这一段只负责「给参赛 AI 开一段写代码的时间窗」：发卷是把包铺好，"
-                           "启动是开始计时，都不跑对局。提示词要你自己复制、自己发送。",
+                           "启动是开始计时，都不跑对局。提示词要你自己复制、自己发送。"
+                           "规则版本与「对战」页签共用：v1.4 以 RULES.md 为准，v1.9 另看 RULES_V15.md。",
                  bg=BG, fg=MUTED, font=(None, 9)).pack(anchor="w", padx=12, pady=(0, 8))
         return tab
 
@@ -493,11 +511,25 @@ class RefereeDesk(tk.Tk):
         tk.Label(bar, text="seed 数", bg=BG, fg=MUTED).pack(side="left", padx=(16, 4))
         ttk.Combobox(bar, textvariable=self.seed_count, values=("1", "2", "3"),
                      width=4, state="readonly").pack(side="left")
+        tk.Label(bar, text="规则", bg=BG, fg=MUTED).pack(side="left", padx=(16, 4))
+        rules_cb = ttk.Combobox(bar, textvariable=self.rules_mode,
+                                values=("v1.9", "v1.4"),
+                                width=6, state="readonly")
+        rules_cb.pack(side="left")
+        rules_cb.bind("<<ComboboxSelected>>", lambda _e: self._on_rules_change())
         self.eval_btn = ttk.Button(bar, text="评测选中（0）", style="Go.TButton",
                                    command=self.run_contest)
         self.eval_btn.pack(side="left", padx=(16, 0))
         ttk.Button(bar, text="打开评测结果", command=self.open_contest_results).pack(
             side="left", padx=8)
+
+        rules_bar = tk.Frame(tab, bg=BG)
+        rules_bar.pack(fill="x", padx=12, pady=(0, 6))
+        tk.Label(rules_bar, text="当前规则：", bg=BG, fg=MUTED).pack(side="left", anchor="n")
+        tk.Label(rules_bar, textvariable=self.rules_summary, bg=BG, fg=FG,
+                 font=(None, 9), justify="left", wraplength=980).pack(
+            side="left", anchor="w")
+        self._on_rules_change()
 
         bar2 = tk.Frame(tab, bg=BG)
         bar2.pack(fill="x", padx=12, pady=(0, 10))
@@ -778,21 +810,52 @@ class RefereeDesk(tk.Tk):
             return code, out
 
         try:
-            if not service.status(ws)["issued"]:
-                got = service.issue(ws)
-                lines.append(("发卷：%s" % ("、".join(got) if got else "已存在"), "dim"))
+            # 每次都走一遍发卷：它只补缺件、不覆盖已有文件，顺带把 arena/ 刷新成
+            # 当前引擎版本。老工作区缺新文件（例如后来才加的 RULES_V15.md）时，
+            # 自检就是补发点，否则会一直卡在「缺件」上。
+            got = [x for x in service.issue(ws) if not x.startswith("arena/")]
+            if got:
+                lines.append(("发卷：补发 %s（引擎副本已刷新）" % "、".join(got), "dim"))
             else:
-                lines.append(("发卷：已发过，不覆盖已有文件", "dim"))
+                lines.append(("发卷：选手包已齐备，不覆盖已有文件", "dim"))
+            # 复制来的目录不会走 issue()，交付文件可能还叫 Model_name_bot.go。
+            # 这里顺手改名：否则自检显示「交付文件 None」，AI 再写一份
+            # <选手名>_bot.go 就是同包重复定义，编译直接失败。
+            renamed = service.normalize_submission(ws)
+            if renamed:
+                lines.append(("交付文件：%s → %s"
+                              % (renamed, service.bot_filename(ws)), "dim"))
 
             chk = service.check_package(ws)
             if chk["missing"]:
                 ok = False
                 lines.append(("结构：缺 %s" % "、".join(chk["missing"]), "err"))
+            elif not chk["submission"]:
+                ok = False
+                lines.append(("结构：submission/ 里没有 %s（智能体无处写代码）"
+                              % service.bot_filename(ws), "err"))
             else:
                 lines.append(("结构：%d 项齐备，交付文件 %s"
                               % (len(service.KEY_ITEMS), chk["submission"]), "ok"))
             if chk["is_template"]:
                 lines.append(("提示：交付文件还是模板内容，等智能体来改", "dim"))
+
+            # 规则版本：以引擎源码为准，再比对工作区 arena 副本。
+            # 副本是刚发卷刷新过的，若仍不一致，说明本地调试环境和评测不是同一套规则。
+            mode = str(self.rules_mode.get())
+            want = self._sim_rule_version(ENGINE / "internal" / "sim", mode)
+            have = self._sim_rule_version(
+                ws / "workspace" / "arena" / "internal" / "sim", mode)
+            head = "v1.9 实验" if mode.startswith("v1.9") else "v1.4 正式"
+            if want and have == want:
+                lines.append(("规则：%s · 引擎与 arena 副本都是 %s" % (head, want), "dim"))
+            elif want and have:
+                ok = False
+                lines.append(("规则：%s · 引擎 %s，但 arena 副本是 %s（本地调试与评测不一致）"
+                              % (head, want, have), "err"))
+            else:
+                lines.append(("规则：%s · 版本号读取失败（%s）" % (head, want or have or "无"), "err"))
+                ok = False
 
             # 用绝对路径调 go：CreateProcess 每次自己猜 PATH，猜错就只会
             # 留一个空白的「编译失败：」。这里先探一次，探不通就停。
@@ -1028,6 +1091,46 @@ class RefereeDesk(tk.Tk):
         return [self.workspaces[i] for i in self.battle_lst.curselection()
                 if i < len(self.workspaces) and self.workspaces[i][2]]
 
+    RULE_SUMMARIES = {
+        "v1.9": (
+            "v1.9 实验（1500 tick · ruleset v15，引擎 1.9.1）：遗产第 1/2 件各 +50、每方上限 100；"
+            "第 3 件起 0 VS 但推进 R1–R4 遗产科技（60/85/110/135 tick）；"
+            "研究舰 100 CU / 25 tick / 速度 5.0，拔旗/舰毁中断研究；"
+            "遗产补给 70 tick、场上最多 3 件无主；插旗 0 分；被拔旗守方 −25、攻方 +25（同一 VP 一次）；"
+            "库存遗产分随旗毁撤回；击杀 = min(造价×2/3,200)；人口上限 36；"
+            "RAILGUN 240/40、ARTILLERY 550/180、两者对母舰伤害 ×1.5；"
+            "7 名参考 Bot（含 Warden 攻城）。时间到依次比 VS → KD → 母舰 HP → "
+            "旗控制（领先 >5%） → 平。"
+        ),
+        "v1.4": (
+            "v1.4 正式（1200 tick · ruleset v14）：VP 累计分、七领域计分、"
+            "母舰削弱、对称经济；不使用遗产/研究舰/旗分转移。"
+        ),
+    }
+
+    def _on_rules_change(self):
+        mode = str(self.rules_mode.get())
+        self.rules_summary.set(self.RULE_SUMMARIES.get(mode, self.RULE_SUMMARIES["v1.4"]))
+        # 工作区页签的 ① 步骤标签也带规则口径，切换后要立刻刷新。
+        if getattr(self, "steps", None):
+            self._refresh_steps()
+
+    @staticmethod
+    def _sim_rule_version(sim_dir: Path, mode: str) -> str:
+        """从 internal/sim 的源码读该规则版本号；读不到返回空串。
+
+        裁判台自己写死版本号迟早会和引擎对不上，所以一律拿源码当基准：
+        v1.9 读 rules15.go 的 RulesVersionV15，v1.4 读 rules.go 的 RulesVersion。
+        """
+        name = "rules15.go" if str(mode).startswith("v1.9") else "rules.go"
+        key = "RulesVersionV15" if str(mode).startswith("v1.9") else r"\bRulesVersion\b"
+        try:
+            text = (sim_dir / name).read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            return ""
+        m = re.search(r"%s\s*=\s*\"([^\"]+)\"" % key, text)
+        return m.group(1) if m else ""
+
     def run_contest(self):
         if self.running:
             return
@@ -1038,14 +1141,22 @@ class RefereeDesk(tk.Tk):
         who = "只跑这一个" if len(picked) == 1 else "评测 %d 个选手" % len(picked)
         k = len(picked) + len(REF_BOTS)
         matches = k * (k - 1) // 2
+        rules_mode = self.rules_mode.get()
+        is_exp = str(rules_mode).startswith("v1.9")
+        if is_exp:
+            rule_line = "规则 v1.9 实验（1500 tick · ruleset v15，引擎 1.9.1）"
+        else:
+            rule_line = "规则 v1.4 正式（1200 tick）"
         # default=CANCEL：Enter / 空格默认落在「取消」上，双击列表后弹出
         # 立刻回车也不会开跑。
         if not messagebox.askokcancel(
                 "真的要开跑？",
-                "%s\n%s\n\n对手：%s%s\n\n"
+                "%s\n%s\n%s\n\n对手：%s%s\n\n"
                 "将进行 %d 场对阵、%d 局真实对局（每场换边打 2 局）。\n"
-                "对局期间会临时改写 bots/封存记录.json，跑完自动恢复当前赛季封存。"
-                % (who, "\n".join("  · " + w[1] for w in picked), "、".join(REF_BOTS),
+                "对局期间会另写一本评测封存（bots/封存记录/_desk_*.json），"
+                "跑完删掉并恢复当前赛季封存。"
+                % (who, "\n".join("  · " + w[1] for w in picked), rule_line,
+                   "、".join(REF_BOTS),
                    "" if len(picked) == 1 else " + 彼此", matches, matches * 2),
                 default=messagebox.CANCEL):
             self._log("已取消：没有发起对局\n", "dim")
@@ -1054,7 +1165,7 @@ class RefereeDesk(tk.Tk):
 
         def work():
             try:
-                self._contest_pipeline(picked, seeds)
+                self._contest_pipeline(picked, seeds, rules_mode)
             except Exception as e:  # noqa: BLE001
                 self.log_q.put(("line", "编排失败：%s" % e))
                 self.log_q.put(("exit", 1, None))
@@ -1064,8 +1175,18 @@ class RefereeDesk(tk.Tk):
         self.status.set("评测准备中…")
         threading.Thread(target=work, daemon=True).start()
 
-    def _contest_pipeline(self, picked, seeds):
+    def _contest_pipeline(self, picked, seeds, rules_mode="v1.9"):
+        mode = str(rules_mode)
+        is_exp = mode.startswith("v1.9")
+        if is_exp:
+            version = "1.9.1"
+        else:
+            version = "1.4"
+        mode_label = "v%s 实验" % version if is_exp else "v1.4 正式"
         stamp = time.strftime("%m%d-%H%M%S")
+        self._emit(("line", "规则 %s ｜ %d tick ｜ ruleset %s"
+                    % (mode_label, 1500 if is_exp else 1200,
+                       "v15" if is_exp else "v14"), "dim"))
         out_rel = "results/desk/%s" % stamp
         names, manifest, sources = [], [], {}
         STAGE_ROOT.mkdir(parents=True, exist_ok=True)
@@ -1100,15 +1221,39 @@ class RefereeDesk(tk.Tk):
             manifest.append({"name": slug, "workdir": str(path), "staged": str(stage),
                              "source": src, "sha256": digest})
 
+        rules = {"tickLimit": 1500 if is_exp else 1200, "tickMs": 50, "decideMs": 120,
+                 "initMs": 2000, "maxStrikes": 3, "strikeMode": "consecutive",
+                 "generator": "minecraft", "vision": False}
+        if is_exp:
+            rules["ruleset"] = "v15"
+            rules["rulesVersion"] = version
+        if is_exp:
+            # 把裁判台选中的 v1.9 规则写进评测配置，便于赛后审计。
+            # 数值必须与 internal/sim/rules15.go（1.9.1）保持一致。
+            rules.update({
+                "popMax": 36,
+                "relicValue": 50, "relicVSCap": 100,
+                "relicSpawnTicks": 70, "relicMaxGround": 3,
+                "relicLoadTicks": 30, "relicDropTicks": 30,
+                "flagPlaceVP": 0, "flagPenalty": 25, "flagBounty": 25, "flagHP": 160,
+                "killVPCap": 200,
+                "relicResearch": True, "researchUnit": "RESEARCH", "researchRadius": 252,
+                "relicTechTicks": {"R1": 60, "R2": 85, "R3": 110, "R4": 135},
+                "units": {
+                    "RESEARCH": {"cost": 100, "build": 25, "speed": 5.0},
+                    "RAILGUN": {"cost": 240, "ru": 40, "speed": 2.0},
+                    "ARTILLERY": {"cost": 550, "ru": 180, "build": 75, "speed": 1.8},
+                },
+                "siegeDamageVsMothership": 1.5,
+                "tieBreak": ["flagControl"],
+            })
         cfg = {
             "name": "Desert Arena · 工作区评测",
-            "season": "工作区评测 %s" % stamp,
-            "version": "1.5",
+            "season": "工作区评测 %s（%s）" % (stamp, mode_label),
+            "version": version,
             "engine": {"kind": "native", "host": "bots/bin/enginehost.exe",
                        "snapshot": "engine/golden"},
-            "rules": {"tickLimit": 1200, "tickMs": 50, "decideMs": 120, "initMs": 2000,
-                      "maxStrikes": 3, "strikeMode": "consecutive",
-                      "generator": "minecraft", "vision": False},
+            "rules": rules,
             "schedule": {"seeds": [20261109 + i * 7 for i in range(max(1, seeds))],
                          "mirror": True, "bootstrap": 200},
             "entries": [],
@@ -1161,13 +1306,17 @@ class RefereeDesk(tk.Tk):
                 return
         self.last_out = out_rel
         self._emit(("line", "评测完成 → %s" % out_rel, "ok"))
-        # 评测用的是临时编排，build 会把 bots/封存记录.json 改成这场评测的名册。
-        # 跑完把正式赛季的封存重建回来，否则赛季页的封存灯会一直红着。
+        # 评测用的是临时编排，build 会顺手给它写一本 bots/封存记录/_desk_*.json。
+        # 跑完把正式赛季那本重建回来，再把临时本删掉——封存目录里只留赛季的账。
         season = self.cfg_path.get()
         if season:
             self._emit(("line", "恢复正式赛季封存：%s" % season, "dim"))
             self._stream(["go", "run", "./cmd/arena", "build",
                           "-config", "tournament/" + season])
+        try:
+            (ENGINE / "bots" / "封存记录" / (Path(cfg_rel).stem + ".json")).unlink()
+        except OSError:
+            pass
         self._emit(("exit", 0, None))
 
     # ---------------- 通用执行 ----------------
@@ -1322,7 +1471,8 @@ class RefereeDesk(tk.Tk):
         # ① 自检
         self.chk_btn.configure(state="disabled" if busy else "normal")
         if chk["ready"]:
-            txt = "包齐备（%d 项）· 交付 %s" % (len(service.KEY_ITEMS), chk["submission"])
+            txt = "包齐备（%d 项）· 交付 %s · 规则 %s" % (
+                len(service.KEY_ITEMS), chk["submission"], self.rules_mode.get())
             if chk["is_template"]:
                 txt += " · 仍是模板"
             self._set_step_label("chk", txt, OK)
@@ -1566,14 +1716,19 @@ def main():
         app.destroy()
         return 0 if ok else 1
     if "--smoke-contest" in argv:
-        # 无头跑一次评测管线：--smoke-contest <工作区目录> [seed 数]
+        # 无头跑一次评测管线：--smoke-contest <工作区目录> [seed 数] [v1.9|v1.4]
         i = argv.index("--smoke-contest")
+        if len(argv) <= i + 1:
+            print("用法：py -3 -X utf8 referee_desk.py --smoke-contest <工作区目录> [seed 数] [v1.9|v1.4]")
+            app.destroy()
+            return 2
         ws = Path(argv[i + 1]).resolve()
         seeds = int(argv[i + 2]) if len(argv) > i + 2 else 1
+        rules_mode = argv[i + 3] if len(argv) > i + 3 else "v1.9"
         app.headless = True
         app._emit = lambda item: print(item[1] if item[0] == "line" else "EXIT=%s" % item[1])
         src, note = detect_source(ws)
-        app._contest_pipeline([(ws, ws.name, src, note)], seeds)
+        app._contest_pipeline([(ws, ws.name, src, note)], seeds, rules_mode)
         app.destroy()
         return
     if "--scan" in argv:

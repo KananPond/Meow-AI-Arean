@@ -1,7 +1,7 @@
 {
-  "name": "Desert Arena · v1.5 实验",
-  "season": "v1.5 实验：遗产物 / 插旗 / 胜利分 / CEP / 等级",
-  "version": "1.5",
+  "name": "Desert Arena · v1.7 实验",
+  "season": "v1.7 实验：遗产上限 / 研究舰 / 遗产科技 / 旗分转移 / 击杀校准 / tie-break",
+  "version": "1.7",
   "engine": {
     "kind": "native",
     "host": "bots/bin/enginehost.exe",

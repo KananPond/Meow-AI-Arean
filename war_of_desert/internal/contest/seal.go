@@ -1,11 +1,16 @@
 // 文件：internal/contest/seal.go
-// 版本：v1.3
-// 功能：封存记录的读取与开赛校验。
+// 版本：v1.4
+// 功能：封存记录的读取、写入与开赛校验。
 //
 // 为什么要有这层：v1.2 的 bots/封存记录.json 是 11-15 生成的，源码在 11-16
 // 的 v1.2 改动里全部重写过，7 个文件哈希一个都对不上——但 arena run 照样
 // 开跑，赛后审计第 1 条（源码哈希与封存记录一致）直接过不去。
 // 现在把校验做成开赛硬门槛：对不上就中止，并指出是哪个文件。
+//
+// v1.4 起封存记录按赛季分册：bots/封存记录/<配置名>.json。老的单本
+// bots/封存记录.json 只够装一个名册，v1.5 实验赛季（Hunter）一 build 就把
+// 正式赛季（Starter）那本盖掉，于是「赛季页封存灯永远是红的」——名册差异
+// 被误报成源码被篡改。一本一赛季，两个赛季并存互不影响。
 package contest
 
 import (
@@ -30,25 +35,60 @@ type SealEntry struct {
 	BinSHA256 string `json:"binSha256,omitempty"`
 }
 
-// Seal 是 bots/封存记录.json 的结构。
+// Seal 是一个赛季的封存记录（bots/封存记录/<赛季>.json）。
 type Seal struct {
+	Season      string            `json:"season,omitempty"`
 	GeneratedAt string            `json:"generatedAt"`
 	Shared      map[string]string `json:"shared"`
 	Entries     []SealEntry       `json:"entries"`
 	Note        string            `json:"note,omitempty"`
 }
 
-// LoadSeal 读封存记录。
-func LoadSeal(root string) (*Seal, error) {
-	raw, err := os.ReadFile(filepath.Join(root, "bots", "封存记录.json"))
+// SealDir 是封存记录的存放目录，文件名 = 赛季标识（配置文件名去掉 .json）。
+const SealDir = "封存记录"
+
+// SealPath 返回某赛季封存记录的路径。
+//
+// season 为空时退回一个显式的 default 本，避免悄悄写进别的赛季。
+func SealPath(root, season string) string {
+	if season == "" {
+		season = "default"
+	}
+	return filepath.Join(root, "bots", SealDir, season+".json")
+}
+
+// LoadSeal 读某赛季封存记录。
+func LoadSeal(root, season string) (*Seal, error) {
+	path := SealPath(root, season)
+	raw, err := os.ReadFile(path)
 	if err != nil {
-		return nil, fmt.Errorf("读不到封存记录（先跑 arena build）: %w", err)
+		return nil, fmt.Errorf("读不到本赛季封存记录 %s（先跑 arena build -config tournament/%s.json）: %w",
+			filepath.ToSlash(filepath.Join("bots", SealDir, season+".json")), season, err)
 	}
 	var s Seal
 	if err := json.Unmarshal(raw, &s); err != nil {
-		return nil, fmt.Errorf("封存记录不是合法 JSON: %w", err)
+		return nil, fmt.Errorf("封存记录 %s 不是合法 JSON: %w", path, err)
 	}
 	return &s, nil
+}
+
+// Save 把封存记录写回本赛季节的那一本。
+//
+// 只覆盖同一个 season 的文件：另一个赛季的封存是它自己那次 build 的证据，
+// 不能被顺手改掉。
+func (s *Seal) Save(root, season string) error {
+	path := SealPath(root, season)
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	if s.Season == "" {
+		s.Season = season
+	}
+	raw, err := json.MarshalIndent(s, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(path, append(raw, '\n'), 0o644)
 }
 
 // Verify 逐文件比对当前工作区的哈希，返回不一致清单。

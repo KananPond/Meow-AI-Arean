@@ -54,17 +54,22 @@ __pycache__/
 /war_of_desert/results/*/回放/
 
 # 每次 build / 初始化都会重写的本地产物，不入库：
-# - bots/封存记录.json 的 binSha256 每次编译都变，源码哈希不变；
-#   赛季实际跑过的那一份归档在 results/<赛季>/封存记录.json，审计口径见
-#   war_of_desert/results/README.md。
+# - bots/封存记录/<赛季>.json 的 binSha256 每次编译都变，源码哈希不变；
+#   一季一本，build 只写自己那本。赛季实际跑过的那一份归档在
+#   results/<赛季>/封存记录.json，审计口径见 war_of_desert/results/README.md。
 # - 算法赛/赛程.json 由裁判台「初始化工作区与赛程」按当前报名者重新生成。
 /war_of_desert/bots/封存记录.json
+/war_of_desert/bots/封存记录/
 /算法赛/赛程.json
 
 # 裁判台工作区评测：暂存副本与评测产物不入库
 /war_of_desert/workspace/_contestants/
 /war_of_desert/results/desk/
 /war_of_desert/tournament/_desk_*.json
+
+# 实验标定临时产物：座位/公平性诊断用的短跑目录，结论已归档到正式实验目录
+/war_of_desert/results/_tmp-*/
+/war_of_desert/tournament/_tmp_*.json
 
 # 裁判台演示工作区（本地测试用）
 /_demo工作区/

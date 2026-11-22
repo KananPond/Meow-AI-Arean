@@ -54,12 +54,12 @@ type UnitType struct {
 
 func baseTypes() map[string]UnitType {
 	return map[string]UnitType{
-		"LAV":        {HP: 90, Speed: 3.2, Range: 3.2, Dmg: 8, Rof: 5, Vision: 9, Arc: "direct", Armor: "light", V0: 265, Elev: [2]int{-10, 28}, Cost: 100, Build: 25, Pop: 2},
-		"AAV":        {HP: 260, Speed: 1.9, Range: 3.0, Dmg: 14, Rof: 6, Vision: 8, Arc: "direct", Armor: "heavy", V0: 256, Elev: [2]int{-10, 28}, Cost: 240, Build: 45, Pop: 3},
-		"RAILGUN":    {HP: 110, Speed: 1.6, Range: 9.5, Dmg: 60, Rof: 20, Vision: 10, Arc: "direct", Armor: "light", V0: 490, Elev: [2]int{-8, 28}, Cost: 320, Build: 60, Pop: 3},
-		"ARTILLERY":  {HP: 400, Speed: 1.4, Range: 14, Dmg: 45, Rof: 30, Vision: 7, Arc: "lob", Armor: "light", V0: 628, Elev: [2]int{-5, 75}, Cost: 950, Build: 90, Pop: 5},
-		"SALVAGER":   {HP: 160, Speed: 2.2, Range: 0, Dmg: 0, Rof: 0, Vision: 7, Arc: "none", Armor: "light", V0: 0, Elev: [2]int{0, 0}, Cost: 100, Build: 20, Pop: 1},
-		"SCOUT":      {HP: 40, Speed: 4.6, Range: 0, Dmg: 0, Rof: 0, Vision: 16, Arc: "none", Armor: "light", V0: 0, Elev: [2]int{0, 0}, Cost: 80, Build: 15, Pop: 1},
+		"LAV":       {HP: 90, Speed: 3.2, Range: 3.2, Dmg: 8, Rof: 5, Vision: 9, Arc: "direct", Armor: "light", V0: 265, Elev: [2]int{-10, 28}, Cost: 100, Build: 25, Pop: 2},
+		"AAV":       {HP: 260, Speed: 1.9, Range: 3.0, Dmg: 14, Rof: 6, Vision: 8, Arc: "direct", Armor: "heavy", V0: 256, Elev: [2]int{-10, 28}, Cost: 240, Build: 45, Pop: 3},
+		"RAILGUN":   {HP: 110, Speed: 1.6, Range: 9.5, Dmg: 60, Rof: 20, Vision: 10, Arc: "direct", Armor: "light", V0: 490, Elev: [2]int{-8, 28}, Cost: 320, Build: 60, Pop: 3},
+		"ARTILLERY": {HP: 400, Speed: 1.4, Range: 14, Dmg: 45, Rof: 30, Vision: 7, Arc: "lob", Armor: "light", V0: 628, Elev: [2]int{-5, 75}, Cost: 950, Build: 90, Pop: 5},
+		"SALVAGER":  {HP: 160, Speed: 2.2, Range: 0, Dmg: 0, Rof: 0, Vision: 7, Arc: "none", Armor: "light", V0: 0, Elev: [2]int{0, 0}, Cost: 100, Build: 20, Pop: 1},
+		"SCOUT":     {HP: 40, Speed: 4.6, Range: 0, Dmg: 0, Rof: 0, Vision: 16, Arc: "none", Armor: "light", V0: 0, Elev: [2]int{0, 0}, Cost: 80, Build: 15, Pop: 1},
 		// v1.4 削弱：HP 3000→1800、Dmg 22→13、Speed 0.55→0.30。
 		// 射程/射速/视野/装甲/弹道/四子系统全部保留——只降低战斗与机动数值，不减功能。
 		"MOTHERSHIP": {HP: 1800, Speed: 0.30, Range: 7, Dmg: 13, Rof: 12, Vision: 14, Arc: "direct", Armor: "heavy", V0: 408, Elev: [2]int{-8, 30}, Cost: 0, Build: 0, Pop: 0},
@@ -103,14 +103,15 @@ var (
 // 单台 railgun 净输出 ~1.2 HP/tick，打穿 3000 HP 需要 2500 拍，而单局只有 1200 拍）。
 // 现在攻坚兵真正承担拆舰角色：LAV/AAV 依旧啃不动母舰，必须换兵种。
 var RPS = map[string]map[string]float64{
-	"LAV":        {"LAV": 1.0, "AAV": 0.6, "RAILGUN": 1.8, "ARTILLERY": 1.6, "SALVAGER": 1.3, "SCOUT": 1.2, "MOTHERSHIP": 0.8, "CARRIER": 1.0},
-	"AAV":        {"LAV": 1.8, "AAV": 1.0, "RAILGUN": 0.7, "ARTILLERY": 0.9, "SALVAGER": 1.6, "SCOUT": 1.4, "MOTHERSHIP": 0.8, "CARRIER": 1.2},
-	"RAILGUN":    {"LAV": 0.6, "AAV": 1.8, "RAILGUN": 1.0, "ARTILLERY": 1.2, "SALVAGER": 0.9, "SCOUT": 0.8, "MOTHERSHIP": 2.5, "CARRIER": 1.3},
-	"ARTILLERY":  {"LAV": 0.8, "AAV": 1.1, "RAILGUN": 1.3, "ARTILLERY": 1.0, "SALVAGER": 1.0, "SCOUT": 1.4, "MOTHERSHIP": 2.0, "CARRIER": 1.1},
-	"SALVAGER":   {"LAV": 0, "AAV": 0, "RAILGUN": 0, "ARTILLERY": 0, "SALVAGER": 0, "SCOUT": 0, "MOTHERSHIP": 0, "CARRIER": 0},
-	"SCOUT":      {"LAV": 0, "AAV": 0, "RAILGUN": 0, "ARTILLERY": 0, "SALVAGER": 0, "SCOUT": 0, "MOTHERSHIP": 0, "CARRIER": 0},
-	"MOTHERSHIP": {"LAV": 1.2, "AAV": 1.0, "RAILGUN": 1.0, "ARTILLERY": 1.0, "SALVAGER": 1.2, "SCOUT": 1.3, "MOTHERSHIP": 1.0, "CARRIER": 1.1},
-	"CARRIER":    {"LAV": 0.8, "AAV": 0.6, "RAILGUN": 0.7, "ARTILLERY": 0.8, "SALVAGER": 1.0, "SCOUT": 1.0, "MOTHERSHIP": 0.7, "CARRIER": 1.0},
+	"LAV":        {"LAV": 1.0, "AAV": 0.6, "RAILGUN": 1.8, "ARTILLERY": 1.6, "SALVAGER": 1.3, "SCOUT": 1.2, "MOTHERSHIP": 0.8, "CARRIER": 1.0, "RESEARCH": 1.0},
+	"AAV":        {"LAV": 1.8, "AAV": 1.0, "RAILGUN": 0.7, "ARTILLERY": 0.9, "SALVAGER": 1.6, "SCOUT": 1.4, "MOTHERSHIP": 0.8, "CARRIER": 1.2, "RESEARCH": 1.0},
+	"RAILGUN":    {"LAV": 0.6, "AAV": 1.8, "RAILGUN": 1.0, "ARTILLERY": 1.2, "SALVAGER": 0.9, "SCOUT": 0.8, "MOTHERSHIP": 2.5, "CARRIER": 1.3, "RESEARCH": 1.0},
+	"ARTILLERY":  {"LAV": 0.8, "AAV": 1.1, "RAILGUN": 1.3, "ARTILLERY": 1.0, "SALVAGER": 1.0, "SCOUT": 1.4, "MOTHERSHIP": 2.0, "CARRIER": 1.1, "RESEARCH": 1.0},
+	"SALVAGER":   {"LAV": 0, "AAV": 0, "RAILGUN": 0, "ARTILLERY": 0, "SALVAGER": 0, "SCOUT": 0, "MOTHERSHIP": 0, "CARRIER": 0, "RESEARCH": 0},
+	"SCOUT":      {"LAV": 0, "AAV": 0, "RAILGUN": 0, "ARTILLERY": 0, "SALVAGER": 0, "SCOUT": 0, "MOTHERSHIP": 0, "CARRIER": 0, "RESEARCH": 0},
+	"MOTHERSHIP": {"LAV": 1.2, "AAV": 1.0, "RAILGUN": 1.0, "ARTILLERY": 1.0, "SALVAGER": 1.2, "SCOUT": 1.3, "MOTHERSHIP": 1.0, "CARRIER": 1.1, "RESEARCH": 1.0},
+	"CARRIER":    {"LAV": 0.8, "AAV": 0.6, "RAILGUN": 0.7, "ARTILLERY": 0.8, "SALVAGER": 1.0, "SCOUT": 1.0, "MOTHERSHIP": 0.7, "CARRIER": 1.0, "RESEARCH": 1.0},
+	"RESEARCH":   {"LAV": 0, "AAV": 0, "RAILGUN": 0, "ARTILLERY": 0, "SALVAGER": 0, "SCOUT": 0, "MOTHERSHIP": 0, "CARRIER": 0, "RESEARCH": 0},
 }
 
 // 行动模式（rules.js:137-144）。
@@ -213,15 +214,18 @@ func startAlloc() Alloc {
 
 // TechDef 科技节点（rules.js:195-223；v1.1 研究耗时 ×≈0.55）。
 type TechDef struct {
-	Tree   string         `json:"tree"`
-	Tier   int            `json:"tier"`
-	Name   string         `json:"name"`
-	Tick   int            `json:"tick"`
-	CU     int            `json:"cu"`
-	Req    []string       `json:"req,omitempty"`
-	ReqAny []string       `json:"reqAny,omitempty"`
-	Excl   []string       `json:"excl,omitempty"`
-	Eff    map[string]any `json:"eff"`
+	Tree   string   `json:"tree"`
+	Tier   int      `json:"tier"`
+	Name   string   `json:"name"`
+	Tick   int      `json:"tick"`
+	CU     int      `json:"cu"`
+	Req    []string `json:"req,omitempty"`
+	ReqAny []string `json:"reqAny,omitempty"`
+	Excl   []string `json:"excl,omitempty"`
+	// ReqStored v1.6：遗产科技节点需要的「同一面旗库存遗产」数量。
+	// 普通科技为 0；遗产科技由研究舰自动推进，不走普通研究队列。
+	ReqStored int            `json:"reqStored,omitempty"`
+	Eff       map[string]any `json:"eff"`
 }
 
 var TechTrees = map[string]struct {
