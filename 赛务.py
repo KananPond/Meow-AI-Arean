@@ -315,13 +315,23 @@ def sync_clock(ws: Path, logical_start: float) -> None:
 
 
 # ---------------------------------------------------------------- 计时
-def elapsed_seconds(ws: Path) -> float:
+def elapsed_seconds(ws: Path, now: float | None = None) -> float:
     rec = load(ws)
     started = rec.get("started_at")
     if not isinstance(started, (int, float)):
         return 0.0
-    end = rec.get("paused_at") if isinstance(rec.get("paused_at"), (int, float)) else time.time()
+    if isinstance(rec.get("paused_at"), (int, float)):
+        end = float(rec["paused_at"])
+    else:
+        end = time.time() if now is None else float(now)
     return max(0.0, end - float(started) - float(rec.get("paused_seconds", 0.0)))
+
+
+def deadline_at(rec: dict) -> float | None:
+    started = rec.get("started_at")
+    if not isinstance(started, (int, float)):
+        return None
+    return float(started) + float(rec.get("paused_seconds", 0.0)) + LIMIT_MINUTES * 60.0
 
 
 def status(ws: Path) -> dict:
@@ -425,21 +435,47 @@ def resume(ws: Path) -> None:
     sync_clock(ws, float(rec["started_at"]) + float(rec["paused_seconds"]))
 
 
-def freeze(ws: Path) -> dict:
-    """冻结 submission/<选手名>_bot.go 到 交卷/，记录哈希与用时。"""
+def freeze(ws: Path, auto: bool = False) -> dict:
+    """冻结 submission/<选手名>_bot.go 到 交卷/，记录哈希与用时。
+
+    归档时刻晚于截止线时（例如裁判台每秒轮询的半秒延迟或关窗重开补封），
+    只要交付文件在截止时刻前就已保存且之后未再改动，仍判为按时交付；
+    截止后再修改过文件的则判为超时（accepted=False）。
+    """
     src = submission_path(ws)
     out = ws / FROZEN_DIR
     out.mkdir(parents=True, exist_ok=True)
-    used = elapsed_seconds(ws) / 60.0
+    rec = load(ws)
+    now = time.time()
+    archived_used = elapsed_seconds(ws, now=now) / 60.0
+    deadline = deadline_at(rec)
+    paused = isinstance(rec.get("paused_at"), (int, float))
+    has_file = src.is_file()
+    submitted_at = src.stat().st_mtime if has_file else None
+
+    if not has_file:
+        on_time = False
+        used = archived_used
+    elif archived_used <= LIMIT_MINUTES or paused or deadline is None:
+        on_time = archived_used <= LIMIT_MINUTES
+        used = archived_used
+    else:
+        on_time = submitted_at is not None and submitted_at <= deadline
+        used = float(LIMIT_MINUTES) if on_time else archived_used
+
     info = {
-        "frozen_at": time.time(),
+        "frozen_at": now,
+        "deadline_at": deadline,
+        "submitted_at": submitted_at,
         "used_minutes": round(used, 1),
+        "archived_minutes": round(archived_used, 1),
         "limit_minutes": LIMIT_MINUTES,
-        "accepted": src.is_file() and used <= LIMIT_MINUTES,
-        "missing_submission": not src.is_file(),
+        "auto_frozen": bool(auto),
+        "accepted": has_file and on_time,
+        "missing_submission": not has_file,
         "is_template": submission_is_template(ws),
     }
-    if src.is_file():
+    if has_file:
         dst = out / src.name
         shutil.copy2(src, dst)
         raw = dst.read_bytes()
@@ -450,7 +486,6 @@ def freeze(ws: Path) -> dict:
         })
     (out / "交卷记录.json").write_text(
         json.dumps(info, ensure_ascii=False, indent=2), encoding="utf-8")
-    rec = load(ws)
     rec["frozen"] = info
     save(ws, rec)
     return info
