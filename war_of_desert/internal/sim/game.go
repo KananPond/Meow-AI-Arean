@@ -55,6 +55,11 @@ type SideState struct {
 	Mods         Mods
 	// VS 胜利分三本账（v1.5）。v1.4 下保持零值，不参与计分。
 	VS VictoryScore
+	// v1.6：唯一送达遗产件数（科技进度/计分卡字段 7）与有旗 VP 持有时长。
+	DeliveredRelics  int
+	FlagControlTicks int
+	// v1.7：本方已生产单位数（出兵角镜像化用）。
+	SpawnSeq int
 }
 
 // Mods 科技加成累计。
@@ -71,6 +76,9 @@ type Mods struct {
 	// v1.5 火控：CEP 减缩（0..1 累加）与炮塔转速加成。
 	CEP      float64 `json:"cep,omitempty"`
 	Traverse float64 `json:"traverse,omitempty"`
+	// v1.6 遗产科技：全局伤害加成与受到伤害减免。
+	Damage float64 `json:"damage,omitempty"`
+	DR     float64 `json:"dr,omitempty"`
 }
 
 // TechJob 正在研究的科技。
@@ -119,15 +127,22 @@ type Unit struct {
 	// LastHit 最近一次被击中的 tick（母舰脱战自愈用）
 	LastHit int
 	// v1.5：射界、等级、遗产运输。
-	Facing     float64 // 车体朝向（度）
-	Turret     float64 // 炮塔朝向（度）
-	Kills      int     // 本单位的击杀数
-	XP         float64 // 只来自击杀的经验
-	Level      int     // 1..5
-	Relic      *int    // 携带的遗产 id
-	RState     string  // toRelic / loading / toDeposit / unloading
-	RelicTimer int
-	FlagTimer  int
+	Facing            float64 // 车体朝向（度）
+	Turret            float64 // 炮塔朝向（度）
+	Kills             int     // 本单位的击杀数
+	XP                float64 // 只来自击杀的经验
+	Level             int     // 1..5
+	Relic             *int    // 携带的遗产 id
+	RState            string  // toRelic / loading / toDeposit / unloading
+	RelicTimer        int
+	RelicBlockedTicks int
+	FlagTimer         int
+	// v1.6：插旗读条的锚点；移动超过 1px 就重置，确保「停留 30 tick」。
+	FlagAX, FlagAY float64
+	// v1.6：连续无法移动的 tick 数；寻路失败时用于兜底。
+	Stuck int
+	// v1.6：研究舰的长期职责；由 relicresearch 动作置位，引擎自动寻路到旗下。
+	RDuty bool
 	// AimTargetID v1.5 炮塔锁定的目标；避免每拍换目标导致炮塔来回摆。
 	AimTargetID int
 	AimLockTick int
@@ -258,6 +273,9 @@ type Result struct {
 	Decide     [2]DecideStat `json:"decide"`
 	// VS v1.5 胜利分三本账；v14 为 nil，不进 JSON。
 	VS *[2]VictoryScore `json:"vs,omitempty"`
+	// v1.6：无进展/卡死局标记，rate 阶段不计入评分。
+	Invalid       bool   `json:"invalid,omitempty"`
+	InvalidReason string `json:"invalidReason,omitempty"`
 }
 
 // ResultTiming / DecideStat 终局统计块。
@@ -393,7 +411,7 @@ func NewGame(seed int, cfg GameCfg) (*Game, error) {
 func (g *Game) Done() bool { return g.ResultData != nil }
 
 func (g *Game) spawn(side int, kind string, x, y float64) *Unit {
-	t := Types[kind]
+	t := g.ut(kind)
 	S := g.Sides[side]
 	maxHP := math.Round(t.HP * (1 + S.Mods.HP))
 	facing := math.Mod(math.Atan2(float64(World)/2-y, float64(World)/2-x)*180/math.Pi+360, 360)
@@ -459,13 +477,13 @@ func distXY(ax, ay, bx, by float64) float64 { return math.Hypot(ax-bx, ay-by) }
 // ---------------- 行为层（obey / neutral / aggressive） ----------------
 
 func (g *Game) canFightKind(kind string) bool {
-	t, ok := Types[kind]
-	return ok && t.Arc != "none" && t.Range > 0 && t.Dmg > 0
+	t := g.ut(kind)
+	return t.Arc != "none" && t.Range > 0 && t.Dmg > 0
 }
 
 func (g *Game) inWeaponRange(u, e *Unit) bool {
-	t, ok := Types[u.Kind]
-	if !ok || t.Arc == "none" || t.Range <= 0 {
+	t := g.ut(u.Kind)
+	if t.Arc == "none" || t.Range <= 0 {
 		return false
 	}
 	return math.Hypot(u.X-e.X, u.Y-e.Y)/Cell <= t.Range*(1+g.Sides[u.Side].Mods.Range)
@@ -511,7 +529,7 @@ func (g *Game) unitIntent(u *Unit) intent {
 		mode = DefaultMode
 	}
 	order := u.Order
-	t := Types[u.Kind]
+	t := g.ut(u.Kind)
 	canFight := g.canFightKind(u.Kind)
 	if !canFight {
 		if order != nil && order.Type == "move" && order.X != nil {
@@ -554,7 +572,14 @@ func (g *Game) unitIntent(u *Unit) intent {
 			return intent{targetID: foe.ID}
 		}
 		it := intent{targetID: foe.ID}
-		if order != nil && order.Type == "move" && order.X != nil && !g.hasHeightAdvantage(u, foe) {
+		// v1.8.3：高差据守只在敌人真正进入射程时生效。
+		// 之前只要「最近敌人比我低 1 级」就原地不动，而最近敌人可能在半张图外，
+		// 导致部队（含攻坚兵）停在半路直到终局。v1.4 保持原语义。
+		hold := g.hasHeightAdvantage(u, foe)
+		if g.v15() {
+			hold = hold && foeD <= t.Range*(1+g.Sides[u.Side].Mods.Range)
+		}
+		if order != nil && order.Type == "move" && order.X != nil && !hold {
 			it.hasMove, it.moveX, it.moveY = true, *order.X, *order.Y
 		}
 		return it
@@ -596,10 +621,7 @@ func (g *Game) hasHeightAdvantage(u, e *Unit) bool {
 // canSee / canSeeUnit：视野判定入口（rules.js canSee 的方法化包装）。
 // terrain.go 的通用 canSee 需要 TYPES 视距，这里按 Game 上下文实现同一语义。
 func (g *Game) visionRangeOf(kind string) int {
-	if r, ok := Types[kind]; ok {
-		return r.Vision
-	}
-	return 0
+	return g.ut(kind).Vision
 }
 
 func (g *Game) canSeeUnit(u *Unit, target *Unit) bool {
@@ -735,6 +757,9 @@ func (g *Game) techAvailable(side int, id string) techCheck {
 	if !ok {
 		return techCheck{false, "unknown tech"}
 	}
+	if def.Tree == "relic" {
+		return techCheck{false, "relic tech requires research ship at a stocked flag"}
+	}
 	S := g.Sides[side]
 	if S.TechDone[id] {
 		return techCheck{false, "already researched"}
@@ -795,7 +820,7 @@ func (g *Game) applyTech(side int, id string) {
 	S := g.Sides[side]
 	eff := g.techTable()[id].Eff
 	// 数值效果进 mods；unlock 是非数值（生效靠 techDone 查询）
-	for _, k := range []string{"muzzle", "hp", "range", "speed", "rof", "income", "produce", "harvest", "cost", "cep", "traverse"} {
+	for _, k := range []string{"muzzle", "hp", "range", "speed", "rof", "income", "produce", "harvest", "cost", "cep", "traverse", "damage", "dr"} {
 		if v, ok := eff[k].(float64); ok {
 			switch k {
 			case "muzzle":
@@ -820,6 +845,10 @@ func (g *Game) applyTech(side int, id string) {
 				S.Mods.CEP += v
 			case "traverse":
 				S.Mods.Traverse += v
+			case "damage":
+				S.Mods.Damage += v
+			case "dr":
+				S.Mods.DR += v
 			}
 		}
 	}
@@ -830,7 +859,7 @@ func (g *Game) applyTech(side int, id string) {
 				continue
 			}
 			ratio := u.HP / u.MaxHP
-			u.MaxHP = math.Round(Types[u.Kind].HP * (1 + S.Mods.HP))
+			u.MaxHP = math.Round(g.ut(u.Kind).HP * (1 + S.Mods.HP))
 			u.HP = u.MaxHP * ratio
 		}
 	}
@@ -979,7 +1008,23 @@ func (g *Game) followPath(u *Unit, tx, ty float64) {
 	if len(path) > 0 {
 		wpX, wpY = path[0].X, path[0].Y
 	}
+	ox, oy := u.X, u.Y
 	g.applyMove(u, wpX, wpY)
+	if math.Hypot(u.X-ox, u.Y-oy) < 0.01 {
+		u.Stuck++
+		if u.Stuck == 120 {
+			g.emit(Event{Type: "stuck", Side: u.Side, ID: u.ID, Kind: u.Kind})
+		}
+		if u.Stuck > 180 {
+			// v1.6：彻底走不通时放下遗产，避免采矿机永远抱着货卡死。
+			if u.Relic != nil {
+				g.dropRelic(u)
+			}
+			u.Stuck = 0
+		}
+	} else {
+		u.Stuck = 0
+	}
 }
 
 func (g *Game) salvagerPath(u *Unit, tx, ty float64) []PathPt {
@@ -1058,7 +1103,7 @@ func (g *Game) stepProduction(side int) {
 		var t UnitType
 		var cost float64
 		for i, k := range S.Queue {
-			t = Types[k]
+			t = g.ut(k)
 			cost = math.Round(float64(t.Cost) * (1 - S.Mods.Cost))
 			if S.CU >= cost && S.RU >= float64(t.RU) {
 				pick = i
@@ -1096,6 +1141,11 @@ func (g *Game) stepProduction(side int) {
 	}
 	for _, f := range finished {
 		a := math.Mod(float64(g.Turn)*1.7+float64(g.NextID)*2.3, math.Pi*2)
+		if g.v15() {
+			// v1.7 公平性：同出兵角镜像化（见 stepCarriers 的同名处理）。
+			a = math.Mod(float64(g.Turn)*1.7+float64(S.SpawnSeq)*2.3+float64(side)*math.Pi, math.Pi*2)
+			S.SpawnSeq++
+		}
 		u := g.spawn(side, f.Kind,
 			cv.X+math.Cos(a)*Cell*2.6*Scale,
 			cv.Y+math.Sin(a)*Cell*2.6*Scale)
@@ -1146,9 +1196,10 @@ func (g *Game) stepCarriers(side int) {
 			continue
 		}
 		job := &c.Queue[0]
-		cost := math.Round(float64(Types[job.Kind].Cost) * (1 - S.Mods.Cost))
-		ruCost := float64(Types[job.Kind].RU)
-		if job.Remain == float64(Types[job.Kind].Build) {
+		jt := g.ut(job.Kind)
+		cost := math.Round(float64(jt.Cost) * (1 - S.Mods.Cost))
+		ruCost := float64(jt.RU)
+		if job.Remain == float64(jt.Build) {
 			if S.CU < cost || S.RU < ruCost {
 				continue
 			}
@@ -1161,6 +1212,13 @@ func (g *Game) stepCarriers(side int) {
 		}
 		c.Queue = c.Queue[1:]
 		a := math.Mod(float64(g.Turn)*2.1+float64(g.NextID)*1.7, math.Pi*2)
+		if g.v15() {
+			// v1.7 公平性：出兵角用「本方第 N 台」而不是全局 NextID，
+			// 再按座位错开 π。两侧同拍同序生产时落点互为镜像，
+			// 否则先生产的一侧始终拿到更靠内的出兵点，经济/遗产会被系统放大。
+			a = math.Mod(float64(g.Turn)*2.1+float64(S.SpawnSeq)*1.7+float64(side)*math.Pi, math.Pi*2)
+			S.SpawnSeq++
+		}
 		// 出兵点必须落在可通行格：v1.2 直接把 c.X+cos(a)*r 当坐标，
 		// 一旦落在基地外的山环里，单位从出生就被困死（流场 Dist=-1，永远走不动）。
 		sx, sy := g.freeSpawnPoint(c.X, c.Y, Cell*2*Scale, a)

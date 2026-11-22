@@ -47,6 +47,10 @@ type Config struct {
 	Entries []schedule.Entry `json:"entries"`
 	Output  string           `json:"output"`
 	Verify  bool             `json:"verify"`
+
+	// Key 是配置文件名（去掉目录与 .json），也是这个赛季封存记录的文件名。
+	// 两个赛季并存靠它区分：bots/封存记录/<Key>.json。
+	Key string `json:"-"`
 }
 
 // Load 读取配置。root 是 war_of_desert 目录（配置文件的上一级）。
@@ -69,6 +73,7 @@ func Load(path string) (*Config, string, error) {
 	if len(c.Entries) < 2 {
 		return nil, "", fmt.Errorf("正式赛至少需要 2 名选手，当前 %d", len(c.Entries))
 	}
+	c.Key = strings.TrimSuffix(filepath.Base(abs), filepath.Ext(abs))
 	root := filepath.Dir(filepath.Dir(abs))
 	return &c, root, nil
 }

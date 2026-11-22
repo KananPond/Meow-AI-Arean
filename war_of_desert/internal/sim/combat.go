@@ -35,7 +35,10 @@ func (g *Game) applyMove(u *Unit, tx, ty float64) {
 		f *= BaseSurface[b]
 	}
 	S := g.Sides[u.Side]
-	speed := Types[u.Kind].Speed * (1 + S.Mods.Speed)
+	speed := g.ut(u.Kind).Speed * (1 + S.Mods.Speed)
+	if g.v15() && u.Relic != nil {
+		speed *= RelicCarrySpeedMul
+	}
 	// DoK：母舰固定慢速；时间基准 = TICK_MS/1000（v0.11 修复，不写死 0.1s）
 	travel := math.Min(speed*Cell*(float64(TickMS)/1000)*f, d)
 	steps := int(math.Max(1, math.Ceil(travel/(Cell*0.5))))
@@ -43,7 +46,25 @@ func (g *Game) applyMove(u *Unit, tx, ty float64) {
 	for s := 0; s < steps; s++ {
 		nx := u.X + (dx/d)*step
 		ny := u.Y + (dy/d)*step
-		if !StepAllowed(g.Map, u.Kind, u.X, u.Y, nx, ny) {
+		allowed := StepAllowed(g.Map, u.Kind, u.X, u.Y, nx, ny)
+		// v1.7：研究舰是悬浮舰，允许跨越水面/崖壁，避免一侧研究舰被地形卡死
+		// 造成遗产科技 tie-break 的系统性座位偏差。
+		if g.v15() && u.Kind == "RESEARCH" {
+			allowed = true
+		}
+		if !allowed {
+			// v1.6：斜向被挡时尝试沿单轴滑动，避免在河岸/崖角永久卡死。
+			// v1.4 保持历史行为，避免改正式赛语义。
+			if g.v15() {
+				if StepAllowed(g.Map, u.Kind, u.X, u.Y, nx, u.Y) {
+					u.X = nx
+					continue
+				}
+				if StepAllowed(g.Map, u.Kind, u.X, u.Y, u.X, ny) {
+					u.Y = ny
+					continue
+				}
+			}
 			break
 		}
 		u.X = nx
@@ -70,7 +91,7 @@ func (g *Game) muzzleH(u *Unit) float64 {
 
 // v0Of 初速：基础初速 × 弹种倍率 × (1 + 发射药科技)。
 func (g *Game) v0Of(u *Unit, shellID string) float64 {
-	t := Types[u.Kind]
+	t := g.ut(u.Kind)
 	S := g.Sides[u.Side]
 	sh, ok := Shells[shellID]
 	if !ok {
@@ -96,7 +117,7 @@ func (g *Game) pickShell(side int, target *Unit) string {
 	best, bestScore := "AP", -1.0
 	for _, id := range g.shellsOf(side) {
 		sh := Shells[id]
-		armor := sh.ArmorOf(Types[target.Kind].Armor)
+		armor := sh.ArmorOf(g.ut(target.Kind).Armor)
 		score := sh.D0*armor + boolF(sh.Splash > 0)*0.12
 		if score > bestScore {
 			bestScore = score
@@ -127,7 +148,7 @@ type shotSolution struct {
 
 // solveShot 解一发：目标在飞，迭代两次用飞行时间估提前量。
 func (g *Game) solveShot(u *Unit, shellID string, ex, ey, evx, evy float64) shotSolution {
-	t := Types[u.Kind]
+	t := g.ut(u.Kind)
 	h0 := g.muzzleH(u)
 	v0 := g.v0Of(u, shellID)
 	// 提前量：先夹速度，再夹偏移量（防瞬移目标飞出包线）
@@ -185,7 +206,7 @@ func (g *Game) weaponCount(u *Unit) int {
 
 // fire 开火：解一次弹道，按炮数生成若干发（多门炮 = 同一解轻微散布）。
 func (g *Game) fire(u, e *Unit) bool {
-	t := Types[u.Kind]
+	t := g.ut(u.Kind)
 	S := g.Sides[u.Side]
 	if g.weaponCount(u) <= 0 {
 		return false
@@ -242,7 +263,7 @@ func (g *Game) fire(u, e *Unit) bool {
 
 // fireAtFlag 对旗开火。旗不是单位，弹道只做直线命中判定。
 func (g *Game) fireAtFlag(u *Unit, f *Flag) bool {
-	t := Types[u.Kind]
+	t := g.ut(u.Kind)
 	S := g.Sides[u.Side]
 	d := math.Hypot(u.X-f.X, u.Y-f.Y) / Cell
 	lim := t.Range * (1 + S.Mods.Range)
@@ -280,13 +301,17 @@ func (g *Game) spawnShot(u *Unit, shellID string, sol shotSolution, spreadDeg fl
 
 // hitUnit 伤害结算：落速 + 弹种 + 装甲 + 兵种克制 + 四子系统。
 func (g *Game) hitUnit(p *Projectile, target *Unit, factor float64) {
-	t := Types[p.SrcKind]
-	dmg := DamageOf(p.Shell, t.Dmg, t.V0, p.VImpact, Types[target.Kind].Armor)
+	t := g.ut(p.SrcKind)
+	dmg := DamageOf(p.Shell, t.Dmg, t.V0, p.VImpact, g.ut(target.Kind).Armor)
 	// 克制倍率：显式 0 必须保持 0（SCOUT/SALVAGER 无武器）
 	if row, ok := RPS[p.SrcKind]; ok {
 		if mul, ok := row[target.Kind]; ok {
 			dmg *= mul
 		}
+	}
+	// v1.8.2：远程攻坚兵对母舰额外 ×1.5，让拆舰路线在一局内可完成。
+	if g.v15() && target.Kind == "MOTHERSHIP" && (p.SrcKind == "RAILGUN" || p.SrcKind == "ARTILLERY") {
+		dmg *= MothershipSiegeMul
 	}
 	dmg *= factor
 	// 四子系统：armour 减伤（目标母舰）、attack 加伤（来源母舰）
@@ -298,6 +323,7 @@ func (g *Game) hitUnit(p *Projectile, target *Unit, factor float64) {
 	}
 	if g.v15() {
 		dmg *= g.vetDmgMul(g.unitByID(p.ByUnitID)) * V15DamageMul
+		dmg *= 1 + g.Sides[p.Side].Mods.Damage + g.overcharge(p.Side)
 	}
 	g.damageUnit(target, dmg, p.Side, p.ByUnitID)
 }
@@ -308,6 +334,7 @@ func (g *Game) damageUnit(e *Unit, dmg float64, bySide, byUnitID int) {
 	}
 	if g.v15() {
 		dmg *= g.vetDR(e)
+		dmg *= 1 - Clamp(g.Sides[e.Side].Mods.DR, 0, 0.5)
 	}
 	e.LastHit = g.Turn
 	e.HP -= dmg
@@ -315,7 +342,10 @@ func (g *Game) damageUnit(e *Unit, dmg float64, bySide, byUnitID int) {
 		return
 	}
 	e.Dead = true
-	def := Types[e.Kind]
+	if g.v15() && e.Kind == "RESEARCH" {
+		g.cancelResearchByShip(e.Side, e.ID)
+	}
+	def := g.ut(e.Kind)
 	if def.Pop > 0 {
 		g.Sides[e.Side].Pop = int(math.Max(0, float64(g.Sides[e.Side].Pop-def.Pop)))
 	}
@@ -374,7 +404,20 @@ func (g *Game) stepShots() {
 	}
 	dt := float64(TickMS) / 1000
 	const SUB = 5
-	for _, p := range g.Projectiles {
+	projs := g.Projectiles
+	if g.v15() {
+		// v1.6：炮弹结算也按交替座位顺序，避免固定 side0 先结算命中。
+		ordered := make([]*Projectile, 0, len(g.Projectiles))
+		for _, s := range g.sideOrder() {
+			for _, p := range g.Projectiles {
+				if p.Side == s {
+					ordered = append(ordered, p)
+				}
+			}
+		}
+		projs = ordered
+	}
+	for _, p := range projs {
 		if p.Dead {
 			continue
 		}
@@ -444,7 +487,7 @@ func (g *Game) stepShots() {
 						hAt := h0 + (p.H-h0)*tt
 						if math.Abs(hAt-(g.groundH(f.X, f.Y)+UnitH)) <= 8 {
 							p.VImpact = ShellSpeed(ShellState{Vx: p.VX, Vh: p.VH})
-							fv := DamageOf(p.Shell, Types[p.SrcKind].Dmg, Types[p.SrcKind].V0, p.VImpact, "heavy")
+							fv := DamageOf(p.Shell, g.ut(p.SrcKind).Dmg, g.ut(p.SrcKind).V0, p.VImpact, "heavy")
 							g.damageFlag(p, f, fv)
 							p.Dead = true
 							break
@@ -738,6 +781,14 @@ func normalizeOrders(orders []Action) []Action {
 }
 
 // Step 推进一回合（orders[i] 可为 nil）。管线顺序逐条对齐 JS。
+// sideOrder v1.6：v15+ 每拍交替阵营结算顺序，消除固定 side0 先手。
+func (g *Game) sideOrder() [2]int {
+	if g.v15() && g.Turn%2 == 1 {
+		return [2]int{1, 0}
+	}
+	return [2]int{0, 1}
+}
+
 func (g *Game) Step(orders [2][]Action) *Frame {
 	if g.Done() {
 		return g.buildFrame()
@@ -749,7 +800,7 @@ func (g *Game) Step(orders [2][]Action) *Frame {
 	g.LastEvents = nil
 
 	// 1. 阵营动作
-	for s := 0; s < 2; s++ {
+	for _, s := range g.sideOrder() {
 		for i := range orders[s] {
 			a := &orders[s][i]
 			switch a.Type {
@@ -770,7 +821,7 @@ func (g *Game) Step(orders [2][]Action) *Frame {
 						g.noteRejected(s, *a.By, "produce: carrier gone")
 						continue
 					}
-					host.Queue = append(host.Queue, ProdJob{Kind: a.Kind, Remain: float64(Types[a.Kind].Build)})
+					host.Queue = append(host.Queue, ProdJob{Kind: a.Kind, Remain: float64(g.ut(a.Kind).Build)})
 				} else {
 					g.Sides[s].Queue = append(g.Sides[s].Queue, a.Kind)
 				}
@@ -819,6 +870,13 @@ func (g *Game) Step(orders [2][]Action) *Frame {
 						}
 					}
 				}
+			case "relicresearch":
+				if !g.v15() || a.ID == nil {
+					continue
+				}
+				if u := g.unitByID(*a.ID); u != nil && !u.Dead && u.Side == s && u.Kind == "RESEARCH" {
+					u.RDuty = true
+				}
 			case "relic":
 				if !g.v15() || a.ID == nil || a.RelicID == nil {
 					continue
@@ -850,7 +908,7 @@ func (g *Game) Step(orders [2][]Action) *Frame {
 	}
 
 	// 2. 分配过渡 → 经济 → 生产 → 运载舰 → 武器 → 研究
-	for s := 0; s < 2; s++ {
+	for _, s := range g.sideOrder() {
 		g.stepAlloc(s)
 		g.stepEconomy(s)
 		g.stepProduction(s)
@@ -860,7 +918,7 @@ func (g *Game) Step(orders [2][]Action) *Frame {
 	}
 
 	// 3. 单位动作绑定 + 行为层意图 + 移动
-	for s := 0; s < 2; s++ {
+	for _, s := range g.sideOrder() {
 		byID := map[int]*Action{}
 		for i := range orders[s] {
 			a := &orders[s][i]
@@ -874,39 +932,45 @@ func (g *Game) Step(orders [2][]Action) *Frame {
 			}
 		}
 	}
-	for _, u := range g.Units {
-		if u.Dead {
-			continue
-		}
-		u.AITargetID = 0
-		if u.Order != nil && u.Order.Type == "harvest" {
-			if u.Order.ResID == nil {
-				u.Harvest = nil
-			} else {
-				res := *u.Order.ResID
-				u.Harvest = &res
+	for _, s := range g.sideOrder() {
+		for _, u := range g.Units {
+			if u.Dead || u.Side != s {
+				continue
 			}
-			if u.Harvest == nil {
-				u.HState = "idle"
-			} else {
-				u.HState = "toResource"
+			u.AITargetID = 0
+			if u.Order != nil && u.Order.Type == "harvest" {
+				if u.Order.ResID == nil {
+					u.Harvest = nil
+				} else {
+					res := *u.Order.ResID
+					u.Harvest = &res
+				}
+				if u.Harvest == nil {
+					u.HState = "idle"
+				} else {
+					u.HState = "toResource"
+				}
 			}
-		}
-		// 引擎托管的采集车/遗产运输车不走 Bot 移动指令
-		if u.Kind == "SALVAGER" && (u.Harvest != nil || u.Relic != nil) {
-			continue
-		}
-		it := g.unitIntent(u)
-		if it.hasMove {
-			g.applyMove(u, it.moveX, it.moveY)
-		}
-		if g.v15() {
-			dx, dy := u.X-u.PX, u.Y-u.PY
-			if dx*dx+dy*dy > 0.01 {
-				u.Facing = math.Mod(math.Atan2(dy, dx)*180/math.Pi+360, 360)
+			// 引擎托管的采集车/遗产运输车不走 Bot 移动指令
+			if u.Kind == "SALVAGER" && (u.Harvest != nil || u.Relic != nil) {
+				continue
 			}
+			if g.v15() && u.Kind == "RESEARCH" && u.RDuty {
+				g.stepResearchShip(u)
+				continue
+			}
+			it := g.unitIntent(u)
+			if it.hasMove {
+				g.applyMove(u, it.moveX, it.moveY)
+			}
+			if g.v15() {
+				dx, dy := u.X-u.PX, u.Y-u.PY
+				if dx*dx+dy*dy > 0.01 {
+					u.Facing = math.Mod(math.Atan2(dy, dx)*180/math.Pi+360, 360)
+				}
+			}
+			u.AITargetID = it.targetID
 		}
-		u.AITargetID = it.targetID
 	}
 	// 3b. 速度估计（弹道提前量）
 	for _, u := range g.Units {
@@ -917,12 +981,20 @@ func (g *Game) Step(orders [2][]Action) *Frame {
 		u.VY = (u.Y - u.PY) / (float64(TickMS) / 1000)
 		u.PX, u.PY = u.X, u.Y
 	}
-	// 4. 开火
-	for _, u := range g.Units {
+	// 4. 开火（v1.6 按座位交替顺序，避免固定 side0 先手）
+	ordered := make([]*Unit, 0, len(g.Units))
+	for _, s := range g.sideOrder() {
+		for _, u := range g.Units {
+			if u.Side == s {
+				ordered = append(ordered, u)
+			}
+		}
+	}
+	for _, u := range ordered {
 		if u.Dead {
 			continue
 		}
-		t := Types[u.Kind]
+		t := g.ut(u.Kind)
 		if t.Arc == "none" || t.Range <= 0 {
 			continue
 		}
@@ -1042,6 +1114,10 @@ func (g *Game) Step(orders [2][]Action) *Frame {
 	if g.v15() {
 		g.stepRelicSpawn()
 		g.stepFlags()
+		g.stepFlagControl()
+		for _, s := range g.sideOrder() {
+			g.stepRelicResearch(s)
+		}
 	}
 	g.updateVP()
 	g.checkEnd()

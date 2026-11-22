@@ -99,14 +99,26 @@ type Relic struct {
 	VP    int     `json:"vp,omitempty"`
 }
 
-// Flag 是 v1.5 的旗。
+// Flag 是 v1.5/v1.6 的旗。
 type Flag struct {
-	ID   int     `json:"id"`
-	VP   int     `json:"vp"`
-	Side int     `json:"side"`
-	X    float64 `json:"x"`
-	Y    float64 `json:"y"`
-	HP   float64 `json:"hp"`
+	ID     int     `json:"id"`
+	VP     int     `json:"vp"`
+	Side   int     `json:"side"`
+	X      float64 `json:"x"`
+	Y      float64 `json:"y"`
+	HP     float64 `json:"hp"`
+	Stored int     `json:"stored,omitempty"`
+}
+
+// Research 是 v1.6 研究舰的当前研究状态。
+type Research struct {
+	Node     string  `json:"node"`
+	VP       int     `json:"vp"`
+	Ship     int     `json:"ship"`
+	Progress float64 `json:"progress"`
+	Total    float64 `json:"total"`
+	Active   bool    `json:"active"`
+	Paused   bool    `json:"paused,omitempty"`
 }
 
 // VP 是胜利点。
@@ -166,6 +178,8 @@ type Me struct {
 		Kind   string `json:"kind"`
 		Remain int    `json:"remain"`
 	} `json:"active"`
+	// v1.6：研究舰当前研究
+	Research *Research `json:"research,omitempty"`
 }
 
 // State 是一行 tick（选手的完整输入）。
@@ -185,10 +199,12 @@ type State struct {
 	Relics []Relic `json:"relics,omitempty"`
 	Flags  []Flag  `json:"flags,omitempty"`
 	VS     []struct {
-		Kills  int `json:"kills"`
-		Relics int `json:"relics"`
-		Flags  int `json:"flags"`
-		Total  int `json:"total"`
+		Kills     int `json:"kills"`
+		Relics    int `json:"relics"`
+		Flags     int `json:"flags"`
+		Total     int `json:"total"`
+		Delivered int `json:"delivered,omitempty"`
+		Stored    int `json:"stored,omitempty"`
 	} `json:"vs,omitempty"`
 }
 
@@ -677,6 +693,10 @@ func (b *Bot) StepAlong(u Unit, f *Field, stride float64) (float64, float64, boo
 		return u.X, u.Y, false
 	}
 	best, bx, by := f.Dist[cur], gx, gy
+	// v1.9：斜穿规则比引擎更严（引擎只看落点是否山格）。当唯一更近的邻居是斜角、
+	// 且被「不许切两个山格」拦下时，会退化成本格中心原地不动。这里单独记一个
+	// 允许斜穿的候选，只在没有任何合规下降邻居时启用，避免死角死锁。
+	diagBest, dbx, dby := f.Dist[cur], gx, gy
 	for _, n := range [8][2]int{{1, 0}, {-1, 0}, {0, 1}, {0, -1}, {1, 1}, {1, -1}, {-1, 1}, {-1, -1}} {
 		nx, ny := gx+n[0], gy+n[1]
 		if nx < 0 || ny < 0 || nx >= f.W || ny >= f.H {
@@ -689,12 +709,18 @@ func (b *Bot) StepAlong(u Unit, f *Field, stride float64) (float64, float64, boo
 		if n[0] != 0 && n[1] != 0 {
 			// 不允许斜穿两个山格
 			if b.Layers.Base[gy*f.W+nx] == 3 || b.Layers.Base[ny*f.W+gx] == 3 {
+				if f.Dist[ni] < diagBest {
+					diagBest, dbx, dby = f.Dist[ni], nx, ny
+				}
 				continue
 			}
 		}
 		if f.Dist[ni] < best {
 			best, bx, by = f.Dist[ni], nx, ny
 		}
+	}
+	if best == f.Dist[cur] && diagBest < best {
+		best, bx, by = diagBest, dbx, dby
 	}
 	tx := (float64(bx) + 0.5) * float64(b.Hello.Cell)
 	ty := (float64(by) + 0.5) * float64(b.Hello.Cell)

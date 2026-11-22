@@ -106,7 +106,7 @@ func cmdSeal(args []string) error {
 	if err != nil {
 		return err
 	}
-	seal, err := contest.LoadSeal(root)
+	seal, err := contest.LoadSeal(root, cfg.Key)
 	if err != nil {
 		return err
 	}
@@ -116,32 +116,17 @@ func cmdSeal(args []string) error {
 	}
 	bad := append(seal.Verify(root), seal.CheckEntryCoverage(names)...)
 	if len(bad) > 0 {
-		return fmt.Errorf("封存校验未通过（先跑 arena build）:\n  %s", strings.Join(bad, "\n  "))
+		return fmt.Errorf("封存校验未通过（先跑 arena build -config tournament/%s.json）:\n  %s",
+			cfg.Key, strings.Join(bad, "\n  "))
 	}
-	fmt.Printf("SEAL_OK  封存于 %s ｜ %d 名选手 ｜ 源码哈希与工作区一致\n", seal.GeneratedAt, len(seal.Entries))
+	fmt.Printf("SEAL_OK  %s 赛季封存于 %s ｜ %d 名选手 ｜ 源码哈希与工作区一致\n",
+		cfg.Key, seal.GeneratedAt, len(seal.Entries))
 	return nil
 }
 
 /* ------------------------------------------------------------------ */
 /* build                                                               */
 /* ------------------------------------------------------------------ */
-
-type sealRecord struct {
-	GeneratedAt string            `json:"generatedAt"`
-	Shared      map[string]string `json:"shared"`
-	Entries     []sealEntry       `json:"entries"`
-	Note        string            `json:"note"`
-}
-
-type sealEntry struct {
-	Name   string            `json:"name"`
-	Source string            `json:"source"`
-	Bin    string            `json:"bin"`
-	Files  map[string]string `json:"files"`
-	// Prebuilt 项没有源码，只封存可执行文件的哈希。
-	Prebuilt  bool   `json:"prebuilt,omitempty"`
-	BinSHA256 string `json:"binSha256,omitempty"`
-}
 
 func cmdBuild(args []string) error {
 	fs := flag.NewFlagSet("build", flag.ExitOnError)
@@ -152,8 +137,12 @@ func cmdBuild(args []string) error {
 	if err != nil {
 		return err
 	}
-	rec := sealRecord{GeneratedAt: time.Now().Format(time.RFC3339), Note: "封存源码哈希；bin 为编译产物，可随时由 source 重建；shared 为参考 Bot 共用的策略库"}
-	rec.Shared = map[string]string{}
+	rec := &contest.Seal{
+		Season:      cfg.Key,
+		GeneratedAt: time.Now().Format(time.RFC3339),
+		Note:        "封存源码哈希；bin 为编译产物，可随时由 source 重建；shared 为参考 Bot 共用的策略库",
+		Shared:      map[string]string{},
+	}
 	for _, shared := range []string{"workspace/botkit", "workspace/refbot"} {
 		files, err := hashTree(filepath.Join(root, filepath.FromSlash(shared)))
 		if err != nil {
@@ -179,7 +168,7 @@ func cmdBuild(args []string) error {
 				return fmt.Errorf("预编译选手 %s 的可执行文件不可用（%s）: %w", e.Name, binRel, err)
 			}
 			fmt.Printf("seal  %-12s 预编译 → %s\n", e.Name, binRel)
-			rec.Entries = append(rec.Entries, sealEntry{
+			rec.Entries = append(rec.Entries, contest.SealEntry{
 				Name: e.Name, Source: e.Source, Bin: binRel,
 				Prebuilt: true, BinSHA256: sum,
 			})
@@ -203,20 +192,26 @@ func cmdBuild(args []string) error {
 		if err != nil {
 			return fmt.Errorf("读取 %s 编译产物失败: %w", e.Name, err)
 		}
-		rec.Entries = append(rec.Entries, sealEntry{
+		rec.Entries = append(rec.Entries, contest.SealEntry{
 			Name: e.Name, Source: e.Source, Bin: binRel, Files: files, BinSHA256: binSum,
 		})
 	}
-	raw, _ := json.MarshalIndent(rec, "", "  ")
-	sealPath := filepath.Join(root, "bots", "封存记录.json")
-	if err := os.MkdirAll(filepath.Dir(sealPath), 0o755); err != nil {
+	if err := rec.Save(root, cfg.Key); err != nil {
 		return err
 	}
-	if err := os.WriteFile(sealPath, append(raw, '\n'), 0o644); err != nil {
-		return err
+	fmt.Printf("封存记录 → bots/%s/%s.json（%d 名选手）\n", contest.SealDir, cfg.Key, len(rec.Entries))
+	// 旧版只有一本 bots/封存记录.json，v1.5 实验赛季一 build 就把正式赛季的名册盖掉。
+	// 现在按赛季分册，旧文件不再被读写，留着只会误导。
+	if legacy := filepath.Join(root, "bots", "封存记录.json"); fileExists(legacy) {
+		fmt.Println("提示：旧版单本封存 bots/封存记录.json 已停用（内容可能属于别的赛季），可删除")
 	}
-	fmt.Println("封存记录 → bots/封存记录.json（" + fmt.Sprint(len(rec.Entries)) + " 名选手）")
 	return nil
+}
+
+// fileExists 只用来判断旧版封存文件还在不在。
+func fileExists(p string) bool {
+	st, err := os.Stat(p)
+	return err == nil && !st.IsDir()
 }
 
 // binPath 把配置里的 bin 解析成绝对路径。
@@ -317,6 +312,7 @@ type gameLine struct {
 	RulesHash  string      `json:"rulesHash"`
 	Faults     []int       `json:"faults"`
 	VerifyOK   *bool       `json:"verifyOk,omitempty"`
+	Invalid    bool        `json:"invalid,omitempty"`
 	DurationMS int64       `json:"durationMs"`
 }
 
@@ -355,7 +351,7 @@ func cmdRun(args []string) error {
 	}
 	// 开赛硬门槛：源码哈希必须与封存记录一致，否则赛后无法自证跑的是收卷那份代码。
 	if !*skipSeal {
-		seal, err := contest.LoadSeal(root)
+		seal, err := contest.LoadSeal(root, cfg.Key)
 		if err != nil {
 			return err
 		}
@@ -365,7 +361,8 @@ func cmdRun(args []string) error {
 		}
 		bad := append(seal.Verify(root), seal.CheckEntryCoverage(names)...)
 		if len(bad) > 0 {
-			return fmt.Errorf("封存校验未通过（先跑 arena build）:\n  %s", strings.Join(bad, "\n  "))
+			return fmt.Errorf("封存校验未通过（先跑 arena build -config tournament/%s.json）:\n  %s",
+				cfg.Key, strings.Join(bad, "\n  "))
 		}
 	}
 	outDir, err := resolveOutDir(root, "", cfg.Output)
@@ -530,7 +527,7 @@ func cmdRun(args []string) error {
 				Winner: protocol.WinnerName(g.Result.Winner, g.Seats), WinnerSeat: g.Result.Winner,
 				Level: g.Result.Level, Reason: g.Result.Reason, Turn: g.Result.Turn,
 				VP: g.Result.VP, RulesHash: rec.RulesHash, Faults: []int{len(g.Faults[0]), len(g.Faults[1])},
-				DurationMS: g.DurationMS,
+				Invalid: g.Result.Invalid, DurationMS: g.DurationMS,
 			}
 			for _, c := range g.Result.Cards {
 				line.Totals = append(line.Totals, round2(c.Total))
@@ -688,7 +685,13 @@ func cmdRate(args []string) error {
 		get(e.Name)
 	}
 	var btGames []rating.Game
+	invalidGames := 0
 	for _, l := range lines {
+		// v1.6：无进展/卡死局不进 BT 与加权总分，避免无效平局污染排名。
+		if l.Invalid {
+			invalidGames++
+			continue
+		}
 		a, b := l.Seats[0], l.Seats[1]
 		score := 0.5
 		if l.WinnerSeat == 0 {
@@ -754,8 +757,8 @@ func cmdRate(args []string) error {
 
 	var b strings.Builder
 	fmt.Fprintf(&b, "# %s · 正式赛成绩\n\n", cfg.Name)
-	fmt.Fprintf(&b, "> 赛季：%s ｜ 规则 %s ｜ 引擎 %s ｜ 规则指纹：%s ｜ 局数：%d ｜ 基准 seed：%v（逐场按序递增）\n",
-		cfg.Season, versionOr(plan.RulesVersion), valueOr(plan.Engine, cfg.Engine.Kind), lines[0].RulesHash, len(lines), cfg.Schedule.Seeds)
+	fmt.Fprintf(&b, "> 赛季：%s ｜ 规则 %s ｜ 引擎 %s ｜ 规则指纹：%s ｜ 局数：%d（无效 %d） ｜ 基准 seed：%v（逐场按序递增）\n",
+		cfg.Season, versionOr(plan.RulesVersion), valueOr(plan.Engine, cfg.Engine.Kind), lines[0].RulesHash, len(lines), invalidGames, cfg.Schedule.Seeds)
 	fmt.Fprintf(&b, "> 评分口径：%s；%s。\n\n", bt.Method, bt.Scale)
 	fmt.Fprintf(&b, "| 名次 | 选手 | 实力值 | 95%% 区间 | 胜/平/负 | 局数 | %s总分 |\n|---:|---|---:|---|---:|---:|---:|\n", domainLabel)
 	for i, r := range rows {
@@ -766,7 +769,7 @@ func cmdRate(args []string) error {
 		fmt.Fprintf(&b, "| %d | %s | %.1f | %s | %d/%d/%d | %d | %.1f |\n",
 			i+1, r.Name, r.R, iv, r.St.Wins, r.St.Draws, r.St.Losses, r.St.Played, r.St.Total)
 	}
-	fmt.Fprintf(&b, "\n基准锚：%s = 0；共 %d 局；bootstrap %d 次。\n", bt.Anchor, bt.Games, bt.Bootstrap)
+	fmt.Fprintf(&b, "\n基准锚：%s = 0；有效 %d 局（排除无效 %d）；bootstrap %d 次。\n", bt.Anchor, bt.Games, invalidGames, bt.Bootstrap)
 	fmt.Fprintf(&b, "\n> 胜负标签与%s加权总分是两条独立信号：本表按胜负拟合实力值，加权总分单列。\n", domainLabel)
 	fmt.Fprintf(&b, "> 区间按对局整块重抽样；全胜/全败时区间会退化，属统计口径而非成绩异常。\n")
 	if err := os.WriteFile(filepath.Join(outDir, "成绩.md"), []byte(b.String()), 0o644); err != nil {
@@ -934,8 +937,14 @@ func cmdLocal(args []string) error {
 	nSeeds := fs.Int("seeds", 2, "跑几个 seed（每个 seed 换边两局）")
 	baseSeed := fs.Int("seed0", 20261109, "起始 seed")
 	outDir := fs.String("out", "matches", "回放与结果目录")
-	limit := fs.Int("limit", 0, "覆盖 tick 上限（0 = 正式规则）")
+	limit := fs.Int("limit", 0, "覆盖 tick 上限（0 = 规则集默认）")
+	rulesetFlag := fs.String("ruleset", sim.RulesetV14, "规则集：v14（正式）/ v15（实验）")
 	_ = fs.Parse(args)
+
+	ruleset := strings.ToLower(strings.TrimSpace(*rulesetFlag))
+	if ruleset != sim.RulesetV14 && ruleset != sim.RulesetV15 {
+		return fmt.Errorf("未知规则集 %q（支持 %s / %s）", *rulesetFlag, sim.RulesetV14, sim.RulesetV15)
+	}
 
 	botAbs, err := filepath.Abs(*botPath)
 	if err != nil {
@@ -956,11 +965,14 @@ func cmdLocal(args []string) error {
 	}
 
 	tickLimit := 1200
+	if ruleset == sim.RulesetV15 {
+		tickLimit = 1500
+	}
 	if *limit > 0 {
 		tickLimit = *limit
 	}
 	vision := sim.NormalizeVision(sim.Vision{})
-	wantHash := sim.RulesHash(tickLimit, vision)
+	wantHash := sim.RulesHashFor(ruleset, tickLimit, vision)
 
 	jcfg := judge.Config{
 		HostScript: host,
@@ -971,6 +983,7 @@ func cmdLocal(args []string) error {
 			DecideMs:  120,
 			InitMs:    2000,
 			Vision:    false,
+			Ruleset:   ruleset,
 		},
 		Mirror:     true,
 		MaxStrikes: 3,
@@ -979,10 +992,16 @@ func cmdLocal(args []string) error {
 	}
 
 	you := "你的 Bot"
+	version := sim.RulesVersion
+	label := "v14 正式"
+	if ruleset == sim.RulesetV15 {
+		version = sim.RulesVersionV15
+		label = "v15 实验"
+	}
 	fmt.Println("Desert Arena 本地对局")
-	fmt.Printf("  规则 %s ｜ 指纹 %s ｜ %d tick ｜ 换边两局 ｜ 确定性复核 开\n",
-		sim.RulesVersion, wantHash, tickLimit)
-	if *limit > 0 && *limit != 1200 {
+	fmt.Printf("  规则 %s（%s）｜ 指纹 %s ｜ %d tick ｜ 换边两局 ｜ 确定性复核 开\n",
+		version, label, wantHash, tickLimit)
+	if *limit > 0 && *limit != 1200 && ruleset == sim.RulesetV14 {
 		fmt.Printf("  ⚠ tick 上限被改成 %d，与正式赛（1200）不同，结果不可与正式成绩比较\n", *limit)
 	}
 	fmt.Printf("  Bot ：%s\n", botAbs)
@@ -1064,8 +1083,8 @@ func cmdLocal(args []string) error {
 					Winner: protocol.WinnerName(g.Result.Winner, g.Seats), WinnerSeat: g.Result.Winner,
 					Level: g.Result.Level, Reason: g.Result.Reason, Turn: g.Result.Turn,
 					VP: g.Result.VP, RulesHash: rec.RulesHash,
-					Faults:     []int{len(g.Faults[0]), len(g.Faults[1])},
-					DurationMS: g.DurationMS,
+					Faults:  []int{len(g.Faults[0]), len(g.Faults[1])},
+					Invalid: g.Result.Invalid, DurationMS: g.DurationMS,
 				}
 				for _, c := range g.Result.Cards {
 					line.Totals = append(line.Totals, round2(c.Total))

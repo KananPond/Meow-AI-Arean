@@ -22,7 +22,7 @@ import (
 func main() {
 	err := refbot.Run(refbot.Strategy{
 		Alloc:      map[string]int{"armour": 30, "repair": 15, "attack": 25, "range": 30},
-		Build:      []string{"SALVAGER", "SALVAGER", "RAILGUN", "RAILGUN", "SCOUT"},
+		Build:      []string{"RESEARCH", "RAILGUN", "RAILGUN", "SCOUT"},
 		Techs:      []string{"I1", "F1", "C1", "I3a", "F2", "C2", "F3", "C3", "I4"},
 		Aggression: 1.2,
 		HoldVP:     true,

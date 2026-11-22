@@ -1,4 +1,4 @@
-// v1.5 实验规则：胜利分账本、遗产物、插旗、CEP/射界、单位等级。
+// v1.6 实验规则：胜利分账本、遗产上限/撤回、研究舰、遗产科技、旗分转移、CEP/射界、单位等级。
 //
 // 设计目标（2026-11-20 讨论稿）：
 //   - 删掉「站在 VP 圈里每 tick 加分」，VP 只作为插旗与遗产入库的据点；
@@ -20,25 +20,43 @@ const (
 	RulesetV14 = "v14"
 	RulesetV15 = "v15"
 
-	RulesVersionV15 = "1.5"
+	RulesVersionV15 = "1.9.1"
+
+	// MothershipSiegeMul v1.8.2：RAILGUN/ARTILLERY 对母舰伤害倍率。
+	// 远程兵每方每局只有 0.4 / 0.08 台，单靠造价调整不足以在 1500 tick 内拆舰。
+	MothershipSiegeMul = 1.5
+
+	// PopMaxV15 v1.8 人口上限：v1.4 的 24 在实测中经常顶满（峰值 23–30），
+	// 双方各堆到 11 台却几乎没有交战。提高到 36 让编成有扩张空间。
+	PopMaxV15 = 36
 
 	// VSWinScore 胜利分即时胜利阈值。时间到仍未达到则比胜利分。
 	VSWinScore = 300
 
-	// RelicValue 一件遗产入库的胜利分。
-	RelicValue = 60
-	// FlagValue 插旗的胜利分；被拔旗时守方扣回，拔旗方得 50%（向下取整）。
-	FlagValue       = 25
-	FlagStolenShare = 0.5
+	// RelicValue 一件遗产入库的胜利分（v1.6：50）。
+	RelicValue = 50
+	// RelicVSCap 每方遗产胜利分上限（v1.6：100，即 2 件）。
+	// 超过上限的遗产仍会入库并推进遗产科技，但不再给胜利分。
+	RelicVSCap = 100
+	// FlagPlaceVP 插旗不再给胜利分。
+	FlagPlaceVP = 0
+	// FlagPenalty 旗被击毁时守方固定扣分；每次失去 VP 都扣。
+	FlagPenalty = 25
+	// FlagBounty 击毁敌方旗时攻方得分；同一 VP 每方只结算一次。
+	FlagBounty = 25
 	// FlagHP 旗的耐久。LAV 单台约 100 tick 拆掉，给守军回防留窗口。
 	FlagHP = 160
+	// KillVPCap v1.6 单次击杀胜利分上限，避免一发 ARTILLERY 击杀直接接近阈值。
+	KillVPCap = 200
 
 	// RelicLoadTicks / RelicDropTicks 采矿机装载/入库的读条。
 	RelicLoadTicks = 30
 	RelicDropTicks = 30
 	// RelicSpawnTicks 遗产补充间隔；RelicMaxGround 场上同时存在的无主遗产上限。
-	RelicSpawnTicks = 100
-	RelicMaxGround  = 2
+	// v1.9.1：100→70 / 2→3。对局缩短到 ~1100 tick 后，遗产科技只在 32% 的对局出现，
+	// 提高补给频率与在场上限，让 R1–R4 在实战中有机会铺开。
+	RelicSpawnTicks = 70
+	RelicMaxGround  = 3
 	// FlagPlaceTicks 采矿机在 VP 圈内静止插旗的读条。
 	FlagPlaceTicks = 30
 
@@ -61,12 +79,21 @@ const (
 	DropoffRadius = 8.0 * Cell * Scale
 )
 
+// WeightsV15 / FieldNamesV15 v1.6 计分卡：字段 1 胜利分、字段 7 遗产吞吐。
+var (
+	WeightsV15    = [7]float64{0.25, 0.25, 0.10, 0.10, 0.05, 0.10, 0.15}
+	FieldNamesV15 = [7]string{"胜利分", "歼敌", "保存兵力", "母舰完整度", "KD 差", "旗控制", "遗产吞吐"}
+)
+
 // VictoryScore 三本账。Total 必须与三项之和保持一致（所有写入走 addVS）。
+// Delivered/Stored 是 v1.6 诊断字段，不参与 Total。
 type VictoryScore struct {
-	Kills  int `json:"kills"`
-	Relics int `json:"relics"`
-	Flags  int `json:"flags"`
-	Total  int `json:"total"`
+	Kills     int `json:"kills"`
+	Relics    int `json:"relics"`
+	Flags     int `json:"flags"`
+	Total     int `json:"total"`
+	Delivered int `json:"delivered,omitempty"`
+	Stored    int `json:"stored,omitempty"`
 }
 
 // Relic 一件遗产物。State: ground（无主）/ carried（在采矿机上）/ stored（已入库）。
@@ -77,6 +104,26 @@ type Relic struct {
 	State     string  `json:"state"`
 	CarrierID int     `json:"carrier,omitempty"`
 	VPID      int     `json:"vp,omitempty"`
+	// v1.6：每方是否已从这件遗产拿到 50 分 / 是否已为每方计入科技进度。
+	AwardedVS   [2]bool `json:"awardedVs,omitempty"`
+	DeliveredTo [2]bool `json:"deliveredTo,omitempty"`
+}
+
+// ResearchRadius 研究舰可研究的范围：旗附近（2.5 个 VP 半径）。
+// 不要求精确站进 4.2 格圈内，避免研究舰在河岸/旗外永久卡死。
+const ResearchRadius = 2.5 * VPRadius
+
+// ResearchState 研究舰正在推进的遗产科技。
+type ResearchState struct {
+	Node     string  `json:"node,omitempty"`
+	VPID     int     `json:"vp,omitempty"`
+	ShipID   int     `json:"ship,omitempty"`
+	Progress float64 `json:"progress"`
+	Total    float64 `json:"total"`
+	Active   bool    `json:"active"`
+	Paused   bool    `json:"paused,omitempty"`
+	// CUPaid 已投入的 CU；拔旗/舰毁时这笔投入损失。
+	CUPaid int `json:"cuPaid,omitempty"`
 }
 
 // Flag 一面旗。挂在某个 VP 上，有独立耐久，可被击毁。
@@ -90,7 +137,7 @@ type Flag struct {
 	MaxHP float64 `json:"maxHp"`
 }
 
-// V15State v1.5 专属状态；v14 为 nil。
+// V15State v1.5/v1.6 专属状态；v14 为 nil。
 type V15State struct {
 	Relics      []*Relic
 	Flags       []*Flag
@@ -99,12 +146,78 @@ type V15State struct {
 	NextSite    int
 	Rng         *RNG
 	Sites       []PathPt
+	// v1.6：每个 VP 对每个攻方只结算一次拔旗赏金。
+	FlagBounty [2]map[int]bool
+	// v1.6：每方当前的研究舰研究状态（同时只研究一个节点）。
+	Research [2]*ResearchState
 }
 
 // FlagType 旗的结构参数（不是可生产单位，不进 Types 表）。
 var FlagType = UnitType{
 	HP: FlagHP, Speed: 0, Range: 0, Dmg: 0, Rof: 0, Vision: 0,
 	Arc: "none", Armor: "heavy", Cost: 0, Build: 0, Pop: 0, Structure: true,
+}
+
+// TypesV15 v1.5/v1.6 单位表：在正式单位表上追加「研究舰」。
+// 保留独立 map，避免把 v1.6 新单位写进 v1.4 的 Types 指纹。
+var TypesV15 = func() map[string]UnitType {
+	m := make(map[string]UnitType, len(Types)+1)
+	for k, v := range Types {
+		m[k] = v
+	}
+	m["RESEARCH"] = UnitType{
+		HP: 80, Speed: 5.0, Range: 0, Dmg: 0, Rof: 0, Vision: 9,
+		Arc: "none", Armor: "light", V0: 0, Elev: [2]int{0, 0},
+		Cost: 100, Build: 25, Pop: 2,
+	}
+	// v1.8.1：远程攻坚兵在 v15 经济里造不出来（实测 ARTILLERY 每方每局 0.04 台），
+	// 单独下调造价/ RU；v1.4 的 Types 保持原价。
+	// v1.9：再补机动性（RAILGUN 1.6→2.0 格/s、ARTILLERY 1.4→1.8），
+	// ARTILLERY 650→550 CU、Build 90→75，让远程路线能在一局内成形。
+	if t, ok := m["RAILGUN"]; ok {
+		t.Cost, t.RU = 240, 40
+		t.Speed = 2.0 * Scale
+		m["RAILGUN"] = t
+	}
+	if t, ok := m["ARTILLERY"]; ok {
+		t.Cost, t.RU = 550, 180
+		t.Speed = 1.8 * Scale
+		t.Build = 75
+		m["ARTILLERY"] = t
+	}
+	return m
+}()
+
+// ProducibleV15 v1.6 生产名单：研究舰只能由 v1.5+ 生产。
+var ProducibleV15 = append(append([]string(nil), Producible...), "RESEARCH")
+
+// typeOrderV15 固定枚举顺序（含研究舰），用于 v1.6 指纹与 RPS。
+func typeOrderV15() []string { return append(typeOrder(), "RESEARCH") }
+
+// ut 返回当前规则集的单位类型；v1.4 不包含研究舰。
+func (g *Game) ut(kind string) UnitType {
+	if g != nil && g.v15() {
+		if t, ok := TypesV15[kind]; ok {
+			return t
+		}
+	}
+	return Types[kind]
+}
+
+// producible 返回当前规则集的可生产单位。
+func (g *Game) producible() []string {
+	if g != nil && g.v15() {
+		return ProducibleV15
+	}
+	return Producible
+}
+
+// typeTable 返回当前规则集的单位表。
+func (g *Game) typeTable() map[string]UnitType {
+	if g != nil && g.v15() {
+		return TypesV15
+	}
+	return Types
 }
 
 // TechTreesV15 在现有四棵树基础上新增「火控」分支。
@@ -129,6 +242,12 @@ var TechTreesV15 = func() map[string]struct {
 		Levels int    `json:"levels"`
 		Desc   string `json:"desc"`
 	}{"火控系统", "linear", 3, "提升炮塔转速、降低射击圆概率误差（CEP）"}
+	m["relic"] = struct {
+		Name   string `json:"name"`
+		Kind   string `json:"kind"`
+		Levels int    `json:"levels"`
+		Desc   string `json:"desc"`
+	}{"遗产科技", "linear", 4, "由研究舰在库存遗产≥2/3/4/5 的旗下逐级研究，提供强力战斗加成"}
 	return m
 }()
 
@@ -145,6 +264,16 @@ var TechsV15 = func() map[string]TechDef {
 		Req: []string{"C1", "F2"}, Eff: map[string]any{"cep": 0.12, "traverse": 0.15}}
 	m["C3"] = TechDef{Tree: "firecontrol", Tier: 3, Name: "火控计算机", Tick: 130, CU: 230,
 		Req: []string{"C2"}, Eff: map[string]any{"cep": 0.15, "traverse": 0.20}}
+	// v1.6 遗产科技：不是普通研究队列，必须由研究舰停在库存遗产足够的旗下推进。
+	// 遗产科技不额外收 CU：库存遗产本身就是投入，代价是研究舰与旗必须被守住。
+	m["R1"] = TechDef{Tree: "relic", Tier: 1, Name: "遗产电池", Tick: 60, CU: 0,
+		ReqStored: 2, Eff: map[string]any{"damage": 0.10}}
+	m["R2"] = TechDef{Tree: "relic", Tier: 2, Name: "磁轨超导", Tick: 85, CU: 0,
+		ReqStored: 3, Req: []string{"R1"}, Eff: map[string]any{"cep": 0.10, "traverse": 0.15}}
+	m["R3"] = TechDef{Tree: "relic", Tier: 3, Name: "复合遗产装甲", Tick: 110, CU: 0,
+		ReqStored: 4, Req: []string{"R2"}, Eff: map[string]any{"hp": 0.10, "dr": 0.10}}
+	m["R4"] = TechDef{Tree: "relic", Tier: 4, Name: "遗产核心", Tick: 135, CU: 0,
+		ReqStored: 5, Req: []string{"R3"}, Eff: map[string]any{"range": 0.15, "damage": 0.15}}
 	return m
 }()
 
@@ -204,16 +333,22 @@ func VetLevel(kind string, xp float64) int {
 	return lv
 }
 
-// KillVP 击杀一个单位的胜利分：造价/4，母舰固定 300。
+// KillVP 击杀一个单位的胜利分（v1.9.1：造价 ×2/3，封顶 KillVPCap=200；母舰固定 300）。
 func KillVP(kind string) int {
 	if kind == "MOTHERSHIP" {
 		return MothershipKillVP
 	}
-	t, ok := Types[kind]
+	t, ok := TypesV15[kind]
+	if !ok {
+		t, ok = Types[kind]
+	}
 	if !ok {
 		return 0
 	}
-	v := t.Cost / 4
+	v := t.Cost * 2 / 3
+	if v > KillVPCap {
+		v = KillVPCap
+	}
 	if v < 1 {
 		v = 1
 	}
@@ -234,6 +369,14 @@ func (s *SideState) addVS(kind string, delta int) {
 }
 
 func (g *Game) v15() bool { return g.Cfg.Ruleset == RulesetV15 }
+
+// popMax 返回当前规则集的人口上限。
+func (g *Game) popMax() int {
+	if g.v15() {
+		return PopMaxV15
+	}
+	return PopMax
+}
 
 // techTable 返回当前规则集的科技表。
 func (g *Game) techTable() map[string]TechDef {
@@ -256,16 +399,22 @@ func RulesHashFor(ruleset string, tickLimit int, vision Vision) string {
 		return RulesHash(tickLimit, vision)
 	}
 	body := "v15|" + RulesVersionV15 + "|base:" + RulesHash(tickLimit, vision) +
+		"|pop:" + itoa(PopMaxV15) +
 		"|vs:" + itoa(VSWinScore) +
-		"|relic:" + itoa(RelicValue) + "," + itoa(RelicSpawnTicks) + "," + itoa(RelicMaxGround) +
+		"|relic:" + itoa(RelicValue) + "," + itoa(RelicVSCap) + "," + itoa(RelicSpawnTicks) + "," + itoa(RelicMaxGround) +
 		"," + itoa(RelicLoadTicks) + "," + itoa(RelicDropTicks) + "," + fnum(RelicRadius) + "," + fnum(RelicCarrySpeedMul) +
-		"|flag:" + itoa(FlagValue) + "," + itoa(FlagHP) + "," + itoa(FlagPlaceTicks) + "," + fnum(FlagStolenShare) +
+		"|flag:" + itoa(FlagPlaceVP) + "," + itoa(FlagPenalty) + "," + itoa(FlagBounty) + "," + itoa(FlagHP) + "," + itoa(FlagPlaceTicks) +
+		"|killcap:" + itoa(KillVPCap) + "|researchR:" + fnum(ResearchRadius) +
+		"|siegeMul:" + fnum(MothershipSiegeMul) +
 		"|mskill:" + itoa(MothershipKillVP) +
 		"|leth:" + fnum(V15DamageMul) + "," + fnum(V15CEPMul) +
 		"|drop:" + fnum(DropoffRadius) +
-		"|cep:" + mapFingerprint(CEPMax) +
-		"|arc:" + mapFingerprint(ArcHalf) +
-		"|traverse:" + mapFingerprint(TraverseRate) +
+		"|weights:" + fmt.Sprint(WeightsV15) + "|fields:" + fmt.Sprint(FieldNamesV15) +
+		"|types:" + fmt.Sprint(TypesV15) + "|producible:" + fmt.Sprint(ProducibleV15) +
+		"|rps:" + rpsV15Fingerprint() +
+		"|cep:" + mapFingerprintV15(CEPMax) +
+		"|arc:" + mapFingerprintV15(ArcHalf) +
+		"|traverse:" + mapFingerprintV15(TraverseRate) +
 		"|vet:" + vetFingerprint() +
 		"|techs:" + techFingerprintOf(TechsV15) +
 		"|killvp:" + killVPFingerprint()
@@ -275,6 +424,28 @@ func RulesHashFor(ruleset string, tickLimit int, vision Vision) string {
 func mapFingerprint(m map[string]float64) string {
 	out := ""
 	for _, k := range typeOrder() {
+		if v, ok := m[k]; ok {
+			out += k + ":" + fnum(v) + ";"
+		}
+	}
+	return out
+}
+
+func rpsV15Fingerprint() string {
+	out := ""
+	for _, src := range typeOrderV15() {
+		row := RPS[src]
+		out += src + ":"
+		for _, tgt := range typeOrderV15() {
+			out += fmt.Sprintf("%v,", row[tgt])
+		}
+	}
+	return out
+}
+
+func mapFingerprintV15(m map[string]float64) string {
+	out := ""
+	for _, k := range typeOrderV15() {
 		if v, ok := m[k]; ok {
 			out += k + ":" + fnum(v) + ";"
 		}
@@ -301,7 +472,7 @@ func vetFingerprint() string {
 
 func killVPFingerprint() string {
 	out := ""
-	for _, k := range typeOrder() {
+	for _, k := range typeOrderV15() {
 		out += k + ":" + itoa(KillVP(k)) + ";"
 	}
 	return out
@@ -309,7 +480,7 @@ func killVPFingerprint() string {
 
 func killVPTable() map[string]int {
 	m := map[string]int{}
-	for _, k := range typeOrder() {
+	for _, k := range typeOrderV15() {
 		m[k] = KillVP(k)
 	}
 	return m
@@ -323,13 +494,13 @@ func techFingerprintOf(table map[string]TechDef) string {
 		if !ok {
 			continue
 		}
-		out += fmt.Sprintf("%s:%s,%s,%d,%d,%d,%v,%v,%v,%v;", id, d.Tree, d.Name, d.Tier, d.Tick, d.CU, d.Req, d.ReqAny, d.Excl, d.Eff)
+		out += fmt.Sprintf("%s:%s,%s,%d,%d,%d,%v,%v,%v,%d,%v;", id, d.Tree, d.Name, d.Tier, d.Tick, d.CU, d.Req, d.ReqAny, d.Excl, d.ReqStored, d.Eff)
 	}
 	return out
 }
 
 func techOrderV15() []string {
-	return append(techOrder(), "C1", "C2", "C3")
+	return append(append(techOrder(), "C1", "C2", "C3"), "R1", "R2", "R3", "R4")
 }
 
 // ---------------- 状态初始化 ----------------
@@ -340,6 +511,8 @@ func (g *Game) initV15() {
 		NextFlagID:  1,
 		Rng:         NewRng(g.Seed ^ 0x5F3759DF),
 	}
+	g.V15.FlagBounty[0] = map[int]bool{}
+	g.V15.FlagBounty[1] = map[int]bool{}
 	g.V15.Sites = g.buildRelicSites()
 	// 开局每方各有一件遗产，保证第一波运输必然发生。
 	g.spawnRelicAt(0)
@@ -354,12 +527,75 @@ func (g *Game) buildRelicSites() []PathPt {
 		{cx - dx, cy - dy}, {cx + dx, cy + dy},
 		{cx - dx, cy + dy}, {cx + dx, cy - dy},
 	}
+	// v1.6：遗迹点必须从双方出生点都能走到。否则会出现双方采矿机
+	// 卡在河/崖前、1500 tick 0 遗产的无效平局（seed 20261121）。
+	reach0 := g.reachFromSpawn(0)
+	reach1 := g.reachFromSpawn(1)
 	out := make([]PathPt, 0, 4)
 	for _, c := range cands {
 		x, y := g.nearestOpenPoint(c[0], c[1], 14*Cell)
+		if !g.pointReachable(reach0, reach1, x, y) {
+			// 这里必须写回外层 x/y：如果写成 `if x, y, ok := ...` 会在 if 作用域里
+			// 重新声明同名变量，修补结果出了 if 就丢，遗迹点仍然不可达。
+			if px, py, ok := g.findReachablePoint(c[0], c[1], 30*Cell, reach0, reach1); ok {
+				x, y = px, py
+			} else {
+				// 最后退到最近的 VP（Connected 已保证 VP 可达）。
+				x, y = g.nearestReachableVP(x, y, reach0, reach1)
+			}
+		}
 		out = append(out, PathPt{X: x, Y: y})
 	}
 	return out
+}
+
+func (g *Game) reachFromSpawn(side int) []uint8 {
+	sp := g.Map.SpawnCells[side]
+	return reachSet(g.Map.Base, g.Map.Elev, Ci(sp[0], sp[1]), UnitSlope)
+}
+
+func (g *Game) pointReachable(reach0, reach1 []uint8, x, y float64) bool {
+	gx, gy := GxOf(x), GyOf(y)
+	if gx < 0 || gy < 0 || gx >= Grid || gy >= Grid {
+		return false
+	}
+	i := Ci(gx, gy)
+	if g.Map.Base[i] == 3 {
+		return false
+	}
+	return reach0[i] != 0 && reach1[i] != 0
+}
+
+func (g *Game) findReachablePoint(x, y, maxR float64, reach0, reach1 []uint8) (float64, float64, bool) {
+	for r := float64(0); r <= maxR; r += Cell {
+		for k := 0; k < 32; k++ {
+			a := float64(k) * math.Pi / 16
+			px, py := x+math.Cos(a)*r, y+math.Sin(a)*r
+			if g.pointReachable(reach0, reach1, px, py) {
+				return px, py, true
+			}
+		}
+	}
+	return 0, 0, false
+}
+
+func (g *Game) nearestReachableVP(x, y float64, reach0, reach1 []uint8) (float64, float64) {
+	var best *VPoint
+	bd := math.Inf(1)
+	for _, vp := range g.Vps {
+		if !g.pointReachable(reach0, reach1, vp.X, vp.Y) {
+			continue
+		}
+		d := math.Hypot(vp.X-x, vp.Y-y)
+		if d < bd {
+			bd = d
+			best = vp
+		}
+	}
+	if best != nil {
+		return best.X, best.Y
+	}
+	return x, y
 }
 
 // nearestOpenPoint 从 (x,y) 向外螺旋找可通行格中心。
@@ -538,19 +774,116 @@ func (g *Game) stepRelics(side int) {
 				u.RelicTimer = 0
 				continue
 			}
+			// v1.6：敌方战斗单位在圈内时，入库读条暂停（不重置）。
+			if g.vpContestedByEnemy(side, vp) {
+				if u.RelicBlockedTicks == 0 {
+					g.emit(Event{Type: "relic-blocked", Side: side, ID: u.ID, Owner: vp.ID})
+				}
+				u.RelicBlockedTicks++
+				continue
+			}
+			u.RelicBlockedTicks = 0
 			u.RelicTimer++
 			if u.RelicTimer >= RelicDropTicks {
 				r.State = "stored"
 				r.VPID = vp.ID
 				r.CarrierID = 0
 				r.X, r.Y = vp.X, vp.Y
-				g.Sides[side].addVS("relics", RelicValue)
+				g.awardRelicVS(side, r)
 				u.Relic, u.RState = nil, ""
 				u.RelicTimer = 0
+				u.RelicBlockedTicks = 0
 				g.emit(Event{Type: "relic-in", Side: side, ID: r.ID, By: u.ID, Owner: vp.ID})
 			}
 		}
 	}
+}
+
+// awardRelicVS v1.6：同一件遗产每方最多发一次 50 分，且每方遗产分不超过 100。
+// 超过上限的遗产仍会入库并计入科技进度，但不再加分。
+func (g *Game) awardRelicVS(side int, r *Relic) {
+	S := g.Sides[side]
+	if !r.DeliveredTo[side] {
+		r.DeliveredTo[side] = true
+		S.DeliveredRelics++
+		S.VS.Delivered = S.DeliveredRelics
+	}
+	if r.AwardedVS[side] {
+		return
+	}
+	if S.VS.Relics+RelicValue <= RelicVSCap {
+		S.addVS("relics", RelicValue)
+		r.AwardedVS[side] = true
+	}
+}
+
+// isCombatKind 会阻止敌方入库的战斗单位；研究舰/采矿机/侦察车不算。
+func isCombatKind(kind string) bool {
+	switch kind {
+	case "LAV", "AAV", "RAILGUN", "ARTILLERY", "CARRIER":
+		return true
+	}
+	return false
+}
+
+// vpContestedByEnemy 返回 VP 圈内是否有敌方战斗单位。
+func (g *Game) vpContestedByEnemy(side int, vp *VPoint) bool {
+	for _, u := range g.Units {
+		if u.Dead || u.Side == side || !isCombatKind(u.Kind) {
+			continue
+		}
+		if distXY(u.X, u.Y, vp.X, vp.Y) <= VPRadius {
+			return true
+		}
+	}
+	return false
+}
+
+// relicsAtVP 统计某 VP 上库存（stored）的遗产件数。
+func (g *Game) relicsAtVP(vpID int) int {
+	n := 0
+	for _, r := range g.V15.Relics {
+		if r.State == "stored" && r.VPID == vpID {
+			n++
+		}
+	}
+	return n
+}
+
+// storedRelics 统计某方所有旗下库存遗产件数。
+func (g *Game) storedRelics(side int) int {
+	n := 0
+	for _, f := range g.V15.Flags {
+		if f.Side == side {
+			n += g.relicsAtVP(f.VPID)
+		}
+	}
+	return n
+}
+
+// overcharge v1.6：某一面己方旗下库存遗产超过 5 件时，每多 1 件给 +2% 伤害，封顶 +20%。
+// 这是过载池，旗毁/遗产掉落后立即失效，不写入永久 Mods。
+func (g *Game) overcharge(side int) float64 {
+	if !g.v15() || g.V15 == nil {
+		return 0
+	}
+	best := 0
+	for _, f := range g.V15.Flags {
+		if f.Side != side {
+			continue
+		}
+		if n := g.relicsAtVP(f.VPID); n > best {
+			best = n
+		}
+	}
+	if best <= 5 {
+		return 0
+	}
+	v := 0.02 * float64(best-5)
+	if v > 0.20 {
+		v = 0.20
+	}
+	return v
 }
 
 // nearestFriendlyFlagVP 找离 (x,y) 最近的、插着本方旗的 VP。
@@ -583,32 +916,43 @@ func (g *Game) dropRelic(u *Unit) {
 	}
 	u.Relic, u.RState = nil, ""
 	u.RelicTimer = 0
+	u.RelicBlockedTicks = 0
 }
 
 // ---------------- 插旗 ----------------
 
 // stepFlags 采矿机在 VP 圈内静止 FlagPlaceTicks 后自动插旗。
 func (g *Game) stepFlags() {
-	for _, u := range g.Units {
-		if u.Dead || u.Kind != "SALVAGER" || u.Harvest != nil {
-			u.FlagTimer = 0
-			continue
-		}
-		var at *VPoint
-		for _, vp := range g.Vps {
-			if math.Hypot(u.X-vp.X, u.Y-vp.Y) <= VPRadius {
-				at = vp
-				break
+	for _, s := range g.sideOrder() {
+		for _, u := range g.Units {
+			if u.Dead || u.Side != s || u.Kind != "SALVAGER" {
+				continue
 			}
-		}
-		if at == nil || g.flagAtVP(at.ID) != nil {
-			u.FlagTimer = 0
-			continue
-		}
-		u.FlagTimer++
-		if u.FlagTimer >= FlagPlaceTicks {
-			g.placeFlag(u.Side, at)
-			u.FlagTimer = 0
+			if u.Harvest != nil {
+				u.FlagTimer = 0
+				continue
+			}
+			var at *VPoint
+			for _, vp := range g.Vps {
+				if math.Hypot(u.X-vp.X, u.Y-vp.Y) <= VPRadius {
+					at = vp
+					break
+				}
+			}
+			if at == nil || g.flagAtVP(at.ID) != nil {
+				u.FlagTimer = 0
+				continue
+			}
+			// v1.6：必须基本静止，移动超过 1px 就重置读条。
+			if u.FlagTimer == 0 || distXY(u.X, u.Y, u.FlagAX, u.FlagAY) > 1 {
+				u.FlagAX, u.FlagAY = u.X, u.Y
+				u.FlagTimer = 0
+			}
+			u.FlagTimer++
+			if u.FlagTimer >= FlagPlaceTicks {
+				g.placeFlag(u.Side, at)
+				u.FlagTimer = 0
+			}
 		}
 	}
 }
@@ -620,7 +964,7 @@ func (g *Game) placeFlag(side int, vp *VPoint) *Flag {
 	}
 	g.V15.NextFlagID++
 	g.V15.Flags = append(g.V15.Flags, f)
-	g.Sides[side].addVS("flags", FlagValue)
+	// v1.6：插旗不再给胜利分；旗只是入库点，也是可被拔的风险资产。
 	g.emit(Event{Type: "flag-up", Side: side, ID: f.ID, Owner: vp.ID})
 	return f
 }
@@ -632,7 +976,7 @@ func (g *Game) damageFlag(p *Projectile, f *Flag, dmg float64) {
 	}
 	if p.ByUnitID != 0 {
 		if u := g.unitByID(p.ByUnitID); u != nil {
-			dmg *= g.vetDmgMul(u)
+			dmg *= g.vetDmgMul(u) * (1 + g.Sides[p.Side].Mods.Damage + g.overcharge(p.Side))
 		}
 	}
 	f.HP -= dmg
@@ -644,20 +988,27 @@ func (g *Game) damageFlag(p *Projectile, f *Flag, dmg float64) {
 
 func (g *Game) destroyFlag(f *Flag, bySide int) {
 	owner := f.Side
-	// 扣回插旗分（允许为负：这笔分已经花掉了也要扣）。
-	g.Sides[owner].addVS("flags", -FlagValue)
-	if bySide >= 0 && bySide != owner {
-		share := int(math.Floor(float64(FlagValue) * FlagStolenShare))
-		g.Sides[bySide].addVS("flags", share)
+	// v1.6：拔旗首先中断该 VP 上的遗产研究（进度与已投入 CU 损失）。
+	g.cancelResearchAt(owner, f.VPID)
+	// 守方每次失去 VP 都扣固定惩罚。
+	g.Sides[owner].addVS("flags", -FlagPenalty)
+	// 攻方同一 VP 只拿一次赏金，防止反复插拔刷分。
+	if bySide >= 0 && bySide != owner && g.V15.FlagBounty[bySide] != nil && !g.V15.FlagBounty[bySide][f.VPID] {
+		g.V15.FlagBounty[bySide][f.VPID] = true
+		g.Sides[bySide].addVS("flags", FlagBounty)
+		g.emit(Event{Type: "flag-bounty", Side: bySide, ID: f.ID, By: bySide, Owner: f.VPID})
 	}
-	// 该点库存遗产全部掉回地面，并从守方账上扣回。
+	// 该点库存遗产全部掉回地面，并逐件撤回已发给守方的遗产分。
 	for _, r := range g.V15.Relics {
 		if r.State == "stored" && r.VPID == f.VPID {
+			if r.AwardedVS[owner] {
+				g.Sides[owner].addVS("relics", -RelicValue)
+				r.AwardedVS[owner] = false
+			}
 			r.State = "ground"
 			r.VPID = 0
 			r.CarrierID = 0
 			r.X, r.Y = f.X, f.Y
-			g.Sides[owner].addVS("relics", -RelicValue)
 		}
 	}
 	for i, x := range g.V15.Flags {
@@ -667,6 +1018,198 @@ func (g *Game) destroyFlag(f *Flag, bySide int) {
 		}
 	}
 	g.emit(Event{Type: "flag-down", Side: owner, ID: f.ID, By: bySide, Owner: f.VPID})
+}
+
+// ---------------- 研究舰 / 遗产科技 ----------------
+
+// cancelResearch 取消某方当前研究；进度与已投入 CU 损失，已完成节点保留。
+func (g *Game) cancelResearch(side int, reason string) {
+	if g.V15 == nil || g.V15.Research[side] == nil {
+		return
+	}
+	rs := g.V15.Research[side]
+	if rs.Active {
+		g.emit(Event{Type: "research-cancel", Side: side, Kind: rs.Node, Owner: rs.VPID, ID: rs.ShipID})
+	}
+	g.V15.Research[side] = nil
+}
+
+// cancelResearchAt 旗被拔时中断该 VP 上的研究。
+func (g *Game) cancelResearchAt(side, vpID int) {
+	if g.V15 == nil || g.V15.Research[side] == nil {
+		return
+	}
+	if g.V15.Research[side].VPID == vpID {
+		g.cancelResearch(side, "flag-down")
+	}
+}
+
+// cancelResearchByShip 研究舰被击毁时中断其研究。
+func (g *Game) cancelResearchByShip(side, shipID int) {
+	if g.V15 == nil || g.V15.Research[side] == nil {
+		return
+	}
+	if g.V15.Research[side].ShipID == shipID {
+		g.cancelResearch(side, "ship-down")
+	}
+}
+
+// nextRelicTech 返回该旗下下一项可研究的遗产科技。
+func (g *Game) nextRelicTech(side, vpID int) (TechDef, string, bool) {
+	stored := g.relicsAtVP(vpID)
+	for _, id := range []string{"R1", "R2", "R3", "R4"} {
+		d := TechsV15[id]
+		if g.Sides[side].TechDone[id] {
+			continue
+		}
+		okReq := true
+		for _, req := range d.Req {
+			if !g.Sides[side].TechDone[req] {
+				okReq = false
+				break
+			}
+		}
+		if !okReq {
+			continue
+		}
+		if stored < d.ReqStored {
+			return TechDef{}, "", false
+		}
+		return d, id, true
+	}
+	return TechDef{}, "", false
+}
+
+// findResearchSpot 找一台停在「己方旗 + 库存遗产最多」VP 圈内的研究舰。
+func (g *Game) findResearchSpot(side int) (*Unit, *VPoint) {
+	bestN, bestShip, bestVP := 0, (*Unit)(nil), (*VPoint)(nil)
+	for _, f := range g.V15.Flags {
+		if f.Side != side {
+			continue
+		}
+		vp := g.vpByID(f.VPID)
+		if vp == nil {
+			continue
+		}
+		n := g.relicsAtVP(f.VPID)
+		if n < 2 {
+			continue
+		}
+		for _, u := range g.Units {
+			if u.Dead || u.Side != side || u.Kind != "RESEARCH" {
+				continue
+			}
+			if distXY(u.X, u.Y, vp.X, vp.Y) > ResearchRadius {
+				continue
+			}
+			if n > bestN || (n == bestN && bestShip != nil && u.ID < bestShip.ID) {
+				bestN, bestShip, bestVP = n, u, vp
+			}
+		}
+	}
+	return bestShip, bestVP
+}
+
+func (g *Game) vpByID(id int) *VPoint {
+	for _, vp := range g.Vps {
+		if vp.ID == id {
+			return vp
+		}
+	}
+	return nil
+}
+
+// stepResearchShip 把被下达 relicresearch 的研究舰送到「己方旗 + 库存最多」的 VP。
+// 引擎托管寻路，Bot 不需要自己算路线。
+func (g *Game) stepResearchShip(u *Unit) {
+	if g.V15 == nil || u == nil || u.Dead {
+		return
+	}
+	var best *VPoint
+	bestN, bestD := 0, math.Inf(1)
+	for _, f := range g.V15.Flags {
+		if f.Side != u.Side {
+			continue
+		}
+		vp := g.vpByID(f.VPID)
+		if vp == nil {
+			continue
+		}
+		n := g.relicsAtVP(f.VPID)
+		if n < 2 {
+			continue
+		}
+		d := distXY(u.X, u.Y, vp.X, vp.Y)
+		if n > bestN || (n == bestN && d < bestD) {
+			bestN, bestD, best = n, d, vp
+		}
+	}
+	if best == nil {
+		return
+	}
+	if bestD <= ResearchRadius {
+		return
+	}
+	g.followPath(u, best.X, best.Y)
+}
+
+// stepRelicResearch 研究舰状态机：同一时间只推进一个节点。
+// 拔旗/舰毁取消；离开 VP 圈暂停；库存遗产低于节点要求取消。
+func (g *Game) stepRelicResearch(side int) {
+	if g.V15 == nil {
+		return
+	}
+	S := g.Sides[side]
+	if rs := g.V15.Research[side]; rs != nil && rs.Active {
+		vp := g.vpByID(rs.VPID)
+		ship := g.unitByID(rs.ShipID)
+		if vp == nil || g.sideFlagAtVP(side, rs.VPID) == nil || ship == nil || ship.Dead {
+			g.cancelResearch(side, "invalid")
+			return
+		}
+		if distXY(ship.X, ship.Y, vp.X, vp.Y) > ResearchRadius {
+			rs.Paused = true
+			return
+		}
+		def := TechsV15[rs.Node]
+		if g.relicsAtVP(rs.VPID) < def.ReqStored {
+			g.cancelResearch(side, "relics-lost")
+			return
+		}
+		rs.Paused = false
+		rs.Progress++
+		if rs.Progress+1e-9 >= rs.Total {
+			g.applyTech(side, rs.Node)
+			S.TechDone[rs.Node] = true
+			g.emit(Event{Type: "research-done", Side: side, Kind: rs.Node, Owner: rs.VPID, ID: rs.ShipID})
+			g.V15.Research[side] = nil
+		}
+		return
+	}
+	// 没有进行中的研究：尝试开新节点。
+	ship, vp := g.findResearchSpot(side)
+	if ship == nil || vp == nil {
+		return
+	}
+	def, id, ok := g.nextRelicTech(side, vp.ID)
+	if !ok || S.CU < float64(def.CU) {
+		return
+	}
+	S.CU -= float64(def.CU)
+	g.V15.Research[side] = &ResearchState{
+		Node: id, VPID: vp.ID, ShipID: ship.ID,
+		Progress: 0, Total: float64(def.Tick), Active: true, CUPaid: def.CU,
+	}
+	g.emit(Event{Type: "research-start", Side: side, Kind: id, Owner: vp.ID, ID: ship.ID})
+}
+
+// stepFlagControl 统计每方有旗 VP 的持有时长（计分卡字段 6）。
+func (g *Game) stepFlagControl() {
+	for _, f := range g.V15.Flags {
+		if f.Side >= 0 && f.Side < 2 {
+			g.Sides[f.Side].FlagControlTicks++
+		}
+	}
 }
 
 // ---------------- 胜利分 / 等级 ----------------
@@ -690,10 +1233,7 @@ func (g *Game) addKillXP(u *Unit, victimKind string) {
 	if u == nil || u.Dead {
 		return
 	}
-	t, ok := Types[victimKind]
-	if !ok {
-		return
-	}
+	t := g.ut(victimKind)
 	u.XP += float64(t.Cost) / 100.0
 	if lv := VetLevel(u.Kind, u.XP); lv > u.Level {
 		u.Level = lv
@@ -870,7 +1410,23 @@ func (g *Game) checkEndV15(c0, c1 *Unit) bool {
 			}
 			return true
 		}
+		// v1.7.2：不再比遗产科技等级与唯一送达件数。
+		// 这两项与「先手取遗产」高度相关，会把经济侧的几拍差放大成 57:43 的决胜偏置；
+		// 在共享遗产供给的结构性问题解决前，只保留 KD → 母舰 HP → 旗控制。
+		flagTol := int(math.Max(15, 0.05*float64(g.Turn)))
+		if d := a.FlagControlTicks - b.FlagControlTicks; d > flagTol || d < -flagTol {
+			if d > 0 {
+				g.endGame(0, 3, "时间到 · 按旗控制时长")
+			} else {
+				g.endGame(1, 3, "时间到 · 按旗控制时长")
+			}
+			return true
+		}
 		g.endGame(-1, 5, "时间到 · 全部相同，平局")
+		if g.ResultData != nil && a.VS.Kills == 0 && b.VS.Kills == 0 && a.VS.Relics == 0 && b.VS.Relics == 0 {
+			g.ResultData.Invalid = true
+			g.ResultData.InvalidReason = "no-progress: 0 kills, 0 relics at tick limit"
+		}
 		return true
 	}
 	return false
@@ -886,12 +1442,13 @@ func (g *Game) computeCardsV15() [2]Card {
 		aliveCost := 0.0
 		for _, u := range g.Units {
 			if u.Side == s && u.Kind != "MOTHERSHIP" {
-				aliveCost += float64(Types[u.Kind].Cost)
+				aliveCost += float64(g.ut(u.Kind).Cost)
 			}
 		}
+		opp := g.Sides[1-s]
 		f := []float64{
-			100 * Clamp(float64(S.VS.Total)/float64(VSWinScore), 0, 1),
-			100 * Clamp(float64(S.KillValue)/math.Max(1, float64(g.Sides[1-s].InitialCost)), 0, 1),
+			Clamp(50+50*float64(S.VS.Total-opp.VS.Total)/float64(VSWinScore), 0, 100),
+			100 * Clamp(float64(S.KillValue)/math.Max(1, float64(opp.ProducedCost)), 0, 1),
 			100 * Clamp(aliveCost/math.Max(1, float64(S.ProducedCost)), 0, 1),
 		}
 		msHP := 0.0
@@ -901,12 +1458,12 @@ func (g *Game) computeCardsV15() [2]Card {
 		f = append(f,
 			100*msHP,
 			Clamp(50+10*float64(S.Kills-S.Losses), 0, 100),
-			100*Clamp(float64(S.ControlTicks)/(denom*float64(len(g.Vps))*1.5), 0, 1),
-			100*Clamp(float64(S.VS.Relics)/float64(RelicValue*8), 0, 1),
+			100*Clamp(float64(S.FlagControlTicks)/(denom*float64(len(g.Vps))), 0, 1),
+			100*Clamp(float64(S.DeliveredRelics)/8.0, 0, 1),
 		)
 		total := 0.0
 		for i := 0; i < 7; i++ {
-			total += f[i] * Weights[i]
+			total += f[i] * WeightsV15[i]
 		}
 		out[s] = Card{Fields: f, Total: total, VPScore: S.VS.Total, Kills: S.Kills, Losses: S.Losses}
 	}

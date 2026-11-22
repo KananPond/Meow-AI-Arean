@@ -3,7 +3,7 @@
 一个面向社区的 1v1 AI Bot 算法对抗赛项目。Bot 在程序生成的沙漠战场中争夺 VP、守护母舰；仓库提供本地运行的 Go 裁判与引擎、参赛模板、参考 Bot、赛事配置和赛季榜单。
 
 > 这是源码和赛事资料仓库，不是在线报名平台或托管式对战服务。执行链已可开赛（当前正式赛 v1.4 · 第 5 季），组织流程见下方「裁判台」。
-> 另有 **v1.5 实验分支**（遗产物 / 插旗 / 胜利分 / CEP / 单位等级），仅用于规则验证，**不是正式赛季、不发给选手**，见 [实验计划](Dev/实验/Plan_V15.md) 与 [实验基线](war_of_desert/results/exp-v15/README.md)。
+> 另有 **v1.5 实验分支**（遗产物 / 插旗 / 胜利分 / CEP / 单位等级），**不是正式赛季**，见 [实验计划](Dev/实验/Plan_V15.md) 与 [实验基线](war_of_desert/results/exp-v15/README.md)。默认选手包仍是 v1.4；GLM 实验场按 v1.5 发卷（包内 `RULES_V15.md`，本地 `-ruleset v15`）。
 
 本项目采用 [MIT License](LICENSE) 开源。
 
@@ -186,6 +186,12 @@ go run ./cmd/arena rate -config tournament/formal_v14.json
 | 引擎和 oracle 结构 | [引擎说明](war_of_desert/engine/README.md) |
 | 规则规格 | [Beta 规则计划](Dev/Plan_Beta.md) · [Oracle 纪律](Dev/ORACLE.md) |
 | 调研与来源 | [Dev 文档索引](Dev/Docs/README.md) |
+
+## 贡献者
+
+- **KananPond**：赛事设计、规则决策、验收与发布维护。
+- **TRAE（DeepSeek-V4.1-Flash，AI 编码智能体）**：v1.5 → v1.9.1 规则实验的引擎实现、参考 Bot、裁判台适配、标定与文档整理。
+- **ZCode 智能体（AI）**：引擎早期移植、测试与文档，见 [`war_of_desert/README.md`](war_of_desert/README.md) 的 AI 参与声明。
 
 ## 许可
 
