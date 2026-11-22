@@ -1,16 +1,16 @@
 # Desert Arena · 正式赛事（Go 执行链 + Go 原生引擎）
 
-> **状态：可开赛**（当前正式赛 = **v1.4 · 第 5 季**：母舰削弱（HP/攻击/移速/坡限）+ 对称经济 + 脱战自愈 + 攻坚对舰倍率 + 进程沙箱；v1.0 第 1 季 / v1.1 第 2 季 / v1.3 第 4 季 / v1.4 第 5 季已完赛，见 [`LEADERBOARD.md`](LEADERBOARD.md)）。
+> **状态：可开赛**（当前正式赛 = **v1.9.1 · 第 6 季**：在 v1.4 基线上叠加胜利分三本账、遗产物与研究舰、CEP／射界／炮塔、火控与五级军衔、人口上限 36，1500 tick；v1.0 第 1 季 / v1.1 第 2 季 / v1.3 第 4 季 / v1.4 第 5 季已完赛，见 [`LEADERBOARD.md`](LEADERBOARD.md)）。
 >
-> **另有 v1.7 实验分支**（非正式赛季）：遗产 +50/上限 100、超上限遗产转遗产科技、研究舰、旗分转移与库存遗产撤回、击杀 `min(造价×2/3,200)`、终局遗产科技/旗控制 tie-break，由 `GameCfg.Ruleset == "v15"`（`sim.RulesetV15`）开关隔离，v1.4 语义与指纹 `553785d4` 不变。规则见 [`workspace/_contestants/GLM-5p3-Flash/workspace/RULES_V15.md`](workspace/_contestants/GLM-5p3-Flash/workspace/RULES_V15.md)，配置 [`tournament/experiment_v17_500.json`](tournament/experiment_v17_500.json)。**参赛仍以 v1.4 为准。**
+> **规则演进**：v1.5 → v1.9.1 仍由 `GameCfg.Ruleset == "v15"`（`sim.RulesetV15`）开关承载，当前规则指纹见 `arena version`；v1.4 语义与指纹 `553785d4` 保持不变，作为历史基线。规则见 [`workspace/RULES_V15.md`](workspace/RULES_V15.md)，配置 [`tournament/formal_v19.json`](tournament/formal_v19.json)，714 局标定见 [`results/exp-v191-700/`](results/exp-v191-700/README.md)。
 >
 > **AI 参与声明**：本仓库的引擎移植、参考 Bot、测试与文档由 AI（ZCode 智能体、TRAE/DeepSeek-V4.1-Flash）在人类指导下参与编写；
 > 规则设计、赛制与验收由人类主导，全部对局结果均经引擎内置的确定性复核门禁（golden trace + orderLog 重放）。
 >
 > **赛事手册**：[`赛事手册.md`](赛事手册.md) ｜ **规则基线（v1.0 历史）**：[`../Dev/Plan_Beta.md`](../Dev/Plan_Beta.md) 快照
 > **引擎双轨**：`engine.kind` 二选一——`oracle`（只读快照 `MVP@288db07f`，`engine/oracle_host.js` 承载，校验 `python -X utf8 scripts/verify_oracle.py`）
-> 或 `native`（**Go 原生引擎**：规则语义在 `internal/sim`，宿主 `cmd/enginehost`，当前赛季配置 [`tournament/formal_v14.json`](tournament/formal_v14.json)）
-> **执行链**：Go 标准库，零第三方依赖。当前正式赛规则 = **v1.4**（四子系统分配 / CU-RU 运输线经济 / 1200 tick / 七领域计分 / 队列跳过 / 母舰 RU 基础收入 / 资源成对同类 / 脱战自愈 / 母舰削弱）
+> 或 `native`（**Go 原生引擎**：规则语义在 `internal/sim`，宿主 `cmd/enginehost`，当前赛季配置 [`tournament/formal_v19.json`](tournament/formal_v19.json)）
+> **执行链**：Go 标准库，零第三方依赖。当前正式赛规则 = **v1.9.1**（ruleset `v15` / 1500 tick / 胜利分三本账 / 遗产与研究舰 / CEP 与射界 / 火控 C1–C3 / 五级军衔 / 七领域计分）
 
 ---
 
@@ -64,18 +64,18 @@ python -X utf8 start.py season   # 整季流水线：build → plan → run → 
 在 **`war_of_desert/`** 执行：
 
 ```bash
-CFG=tournament/formal_v14.json   # 当前赛季（v1.4）
+CFG=tournament/formal_v19.json   # 当前赛季（v1.9.1）
 go run ./cmd/arena selftest -config $CFG   # 验证超时 kill / 崩溃重启 / 非法结构红牌
-go run ./cmd/arena build    -config $CFG   # 编译 6 名选手（5 个参考 Bot + Starter）并封存源码哈希；v1.5 实验的 Hunter 不在此配置内
-go run ./cmd/arena plan     -config $CFG   # 冻结赛程 → results/formal-v14/赛程.json
-go run ./cmd/arena run      -config $CFG   # 跑完 45 场 / 90 局 → 结果.jsonl + 回放（开赛前校验封存）
+go run ./cmd/arena build    -config $CFG   # 编译 7 名参考 Bot（Vanguard / Nomad / Swarm / Sapper / Bulwark / Hunter / Warden）并封存源码哈希
+go run ./cmd/arena plan     -config $CFG   # 冻结赛程 → results/formal-v19/赛程.json
+go run ./cmd/arena run      -config $CFG   # 跑完 357 场 / 714 局 → 结果.jsonl + 回放（开赛前校验封存）
 go run ./cmd/arena rate     -config $CFG   # BT + 加权总分 → 成绩.md / 成绩_加权总分.md / 成绩.json
 ```
 
 单项自检（选手包默认入口）：
 
 ```bash
-go run ./cmd/arena check -config tournament/formal_v14.json -seed 20261109
+go run ./cmd/arena check -config tournament/formal_v19.json -seed 20261109
 ```
 
 观赛：把 `results/*/回放/match-NNN.json` 拖进 [`回放查看器.html`](回放查看器.html)
@@ -135,32 +135,31 @@ go run ./cmd/siegepool -from results/siege/bt_pool.csv -out results/siege/bt_poo
 
 ---
 
-## v1.9 规则实验（非正式赛季）
+## 当前正式赛 · v1.9.1
 
-独立于正式赛的规则验证分支，**不改 v1.4 语义，也不发给选手**。开关是
-`GameCfg.Ruleset == "v15"`（`sim.RulesetV15`），配置 [`tournament/experiment_v19_700.json`](tournament/experiment_v19_700.json)，
-规则实现 `internal/sim/rules15.go`，完整规则见
-[`workspace/_contestants/GLM-5p3-Flash/workspace/RULES_V15.md`](workspace/_contestants/GLM-5p3-Flash/workspace/RULES_V15.md)。
+v1.9.1 是当前正式赛口径，规则由 `GameCfg.Ruleset == "v15"`（`sim.RulesetV15`）承载，
+配置 [`tournament/formal_v19.json`](tournament/formal_v19.json)，规则实现 `internal/sim/rules15.go`，
+完整规则见 [`workspace/RULES_V15.md`](workspace/RULES_V15.md)。v1.4 语义与指纹 `553785d4` 保持不变，作为历史基线。
 
 - 胜利分：第 1/2 件遗产各 +50（上限 100），第 3 件起 0 VS 但推进遗产科技；击杀 `min(造价×2/3,200)`；插旗 0 分；被拔旗 −25，攻方 +25（同 VP 一次）；库存遗产分随旗毁撤回。
 - 新单位 **研究舰（RESEARCH）**：无攻击、80 HP、100 CU / 25 tick；停在己方旗下研究 R1–R4 遗产科技；拔旗/舰毁中断研究。
 - 遗产科技 R1–R4：60 / 85 / 110 / 135 tick，提供伤害/精度/装甲/射程；6 件以上库存给过载伤害。
-- v1.8 系实验增量：人口上限 36（仅 v15）、参考 Bot 全线 Push、RAILGUN 240/40、ARTILLERY 550/180、
+- v1.8 系增量：人口上限 36、参考 Bot 全线 Push、RAILGUN 240/40、ARTILLERY 550/180，
   两者对母舰伤害 ×1.5；时间到判定链只保留 VS → KD → 母舰 HP → 旗控制 → 平。
 - v1.8.3 关键修复：neutral 模式的「高差据守」只在敌人进入自身射程时生效。
 - v1.9：新增第 7 个参考 Bot **Warden**（RAILGUN + ARTILLERY + CARRIER）；遗产补给 70 tick / 场上 3 件。
-- 1500 tick、**7 Bot** × 17 seed × 换边 2 局 = **714 局**；v1.4 指纹仍是 `553785d4`，v15 指纹随版本变化。
+- 1500 tick、**7 Bot** × 17 seed × 换边 2 局 = **714 局**；v1.9.1 指纹 `393ee404`，v1.4 指纹仍是 `553785d4`。
 
 ```bash
-CFG=tournament/experiment_v19_700.json
+CFG=tournament/formal_v19.json
 go run ./cmd/arena build -config $CFG
 go run ./cmd/arena plan  -config $CFG
 go run ./cmd/arena run   -config $CFG
 go run ./cmd/arena rate  -config $CFG
-python -X utf8 scripts/exp_v16_metrics.py results/exp-v191-700
+python -X utf8 scripts/exp_v16_metrics.py results/formal-v19
 ```
 
-产物与标定数据见 [`results/exp-v191-700/README.md`](results/exp-v191-700/README.md)（v1.9.1 定稿）与
+标定数据见 [`results/exp-v191-700/README.md`](results/exp-v191-700/README.md)（v1.9.1 定稿）与
 [`results/exp-v19-700/README.md`](results/exp-v19-700/README.md)（v1.9.0）。
 v1.9.1：714 局、平局 4.2%、决胜座位 49.9:50.1、母舰斩杀 7.1%、平均 1139 tick、
 Warden BT 第 4；同 Bot 双座位 80 局送达差 t=1.11（不显著）。
@@ -183,7 +182,7 @@ Warden BT 第 4；同 Bot 双座位 80 局送达差 t=1.11（不显著）。
 │   │   ├── siegepool/       攻守：循环赛 + 双参数 BT 评分
 │   │   └── faultbot/        自检用故障注入 Bot
 │   ├── internal/
-│   │   ├── sim/             Go 原生规则引擎（rules15.go = v1.5 实验分支；v14 语义不变）
+│   │   ├── sim/             Go 原生规则引擎（rules15.go = v1.9.1 实验通道；v14 语义不变）
 │   │   ├── protocol/        hello / tick / actions / end 的线上契约与地图解码
 │   │   ├── engine/          引擎宿主客户端（行分隔 JSON）
 │   │   ├── judge/           进程隔离、死线、红牌、重启、回放、确定性复核
@@ -197,20 +196,24 @@ Warden BT 第 4；同 Bot 双座位 80 局送达差 t=1.11（不显著）。
 │   ├── tournament/formal_v11.json   第 2 季（v1.1，历史）
 │   ├── tournament/formal_v12.json   第 3 季（v1.2，赛程作废）
 │   ├── tournament/formal_v13.json   第 4 季（v1.3）
-│   ├── tournament/formal_v14.json   第 5 季（v1.4，当前正式赛）
-│   ├── tournament/experiment_v15.json  v1.5 实验（非正式赛季，1500 tick）
+│   ├── tournament/formal_v14.json   第 5 季（v1.4，历史）
+│   ├── tournament/formal_v19.json   第 6 季（v1.9.1，当前正式赛）
+│   ├── tournament/experiment_v15.json  v1.5 实验（历史，1500 tick）
+│   ├── tournament/experiment_v19_700.json  v1.9.1 714 局标定配置
 │   ├── workspace/           引擎侧参考工作区（Starter 选手 + botkit/refbot 共用库）
 │   │   ├── bots/sapper/     攻坚参考 Bot（RAILGUN 拆舰，v1.3 新增）
-│   │   ├── bots/hunter/     遗产／插旗参考 Bot（v1.5 实验新增）
+│   │   ├── bots/hunter/     遗产／插旗参考 Bot（v1.5 新增）
+│   │   ├── bots/warden/     攻城参考 Bot（RAILGUN + ARTILLERY + CARRIER，v1.9 新增）
 │   │   └── siege/           攻守参考 Bot：siegebot 库 + attacker / defender / pool
 │   ├── bots/                封存记录与编译产物（bin 不入库）
 │   ├── results/formal/      第 1 季：赛程、结果、成绩、回放
-│   ├── results/formal-v14/  第 5 季（v1.4，当前）：赛程、结果、成绩
+│   ├── results/formal-v14/  第 5 季（v1.4，历史）：赛程、结果、成绩
 │   ├── results/exp-v15/     v1.5 实验：赛程、结果、回放（本地产物，回放不入库）
+│   ├── results/exp-v191-700/ v1.9.1 标定：714 局赛程、结果、BT 与公平性复验
 │   ├── results/siege/       攻守：HP 扫描、工事预算标定、BT 榜单与结论
 │   ├── replays/             历史赛季归档（预留）
 │   ├── notes/               赛前狠话、赛后复盘（预留）
-│   ├── start.py             组织方菜单（默认走当前赛季 formal_v14.json）
+│   ├── start.py             组织方菜单（默认走当前赛季 formal_v19.json）
 │   ├── 开赛.py               旧版计时脚本，已被根目录 赛务.py 取代（保留备查）
 │   └── workspace/clock.py   选手侧计时展示
 └── Dev/                     开发/历史资料区（见 ../Dev/README.md）
@@ -257,16 +260,16 @@ cmd/arena ──► judge ──► engine(宿主客户端) ──► node engin
 
 ## 产物契约
 
-以当前赛季目录 `results/formal-v14/` 为例（历史赛季目录结构相同，v1.0 为八领域）：
+以当前赛季目录 `results/formal-v19/` 为例（历史赛季目录结构相同，v1.0 为八领域）：
 
 | 文件 | 内容 |
 |---|---|
-| `results/formal-v14/赛程.json` | 冻结的选手、场次、seed、规则与判罚口径 |
-| `results/formal-v14/结果.jsonl` | 每局一行：场次、座位、胜者、层级、VP、七领域总分、故障、确定性、规则指纹 |
-| `results/formal-v14/成绩.md` | BT 实力值、95% 区间、胜平负、总分 |
-| `results/formal-v14/成绩_加权总分.md` | 七领域合计与场均 |
-| `results/formal-v14/成绩.json` | 机器可读的 BT 结果 |
-| `results/formal-v14/回放/match-NNN.json` | 原始 hello + 逐局终局 + 每 5 tick 帧 + 复核结果 |
+| `results/formal-v19/赛程.json` | 冻结的选手、场次、seed、规则与判罚口径 |
+| `results/formal-v19/结果.jsonl` | 每局一行：场次、座位、胜者、层级、VP、七领域总分、故障、确定性、规则指纹 |
+| `results/formal-v19/成绩.md` | BT 实力值、95% 区间、胜平负、总分 |
+| `results/formal-v19/成绩_加权总分.md` | 七领域合计与场均 |
+| `results/formal-v19/成绩.json` | 机器可读的 BT 结果 |
+| `results/formal-v19/回放/match-NNN.json` | 原始 hello + 逐局终局 + 每 5 tick 帧 + 复核结果 |
 | `bots/封存记录/<赛季>.json` | 该赛季选手源码与共用库的 SHA-256、编译产物路径（一季一本） |
 
 ---
@@ -280,8 +283,8 @@ cmd/arena ──► judge ──► engine(宿主客户端) ──► node engin
 5. **回放不入库**。`results/*/回放/` 可由 `arena run` 重建；`bots/bin/` 同理。
 6. **攻守模式仍是实验**。规则、协议、标定都齐了，但缺选手包、许可、回放查看器与沙箱，不能直接当正式赛季。
 7. **攻守的 BT 样本偏少**。每对 16 局时头名区间仍有 ±117 分；出正式榜单建议每对 ≥40 局（4 人池约 480 局）。
-8. **母舰削弱在实战中不可感知**。v1.4 把母舰 HP/攻击/移速/坡限全部下调，但第 5 季 90 局与第 4 季逐局完全相同——参考 Bot 既不把兵送进敌方母舰射程，也不指挥自家母舰移动，这四项在当前打法下是「无人触碰的数值」。削弱本身有门禁保证（`mobility_test.go`：母舰 400 拍内必须能驶出基地 60 px），但要有体感得先修 Bot 的攻坚执行。
-9. **参考 Bot 的攻坚能力仍然很弱**。v1.3 修掉了「出生即被困」（出兵点不校验可通行）与「建造轮转饿死高价兵」（SALVAGER 无限下单、付不起就跳项）两个缺陷，Sapper 也能稳定造出 RAILGUN，但它的推进仍可能被基地周边地形卡住。斩舰要成为赛季常态，还需要选手侧的真实攻坚打法。
+8. **母舰削弱在 v1.4 对局中不可感知**。v1.4 把母舰 HP/攻击/移速/坡限全部下调，但第 5 季 90 局与第 4 季逐局完全相同——参考 Bot 既不把兵送进敌方母舰射程，也不指挥自家母舰移动。v1.9.1 通过远程兵降价与对舰倍率把斩杀率提到 7.1%（714 局中 51 局），削弱本身有门禁保证（`mobility_test.go`：母舰 400 拍内必须能驶出基地 60 px）。
+9. **参考 Bot 的攻坚能力有限但已可斩舰**。v1.3 修掉了「出生即被困」与「建造轮转饿死高价兵」两个缺陷；v1.9.1 的 Warden / Hunter 能稳定完成部分斩舰，但推进仍可能被基地周边地形卡住。斩舰要成为赛季常态，还需要选手侧的真实攻坚打法。
 10. **沙箱只覆盖进程层，且只支持 Windows**。Windows Job Object 挡住子进程派生、内存爆炸与孤儿进程，工作目录是一次性临时目录；**文件读权限与出网没有隔离**，需要独立低权账户或容器。非 Windows 平台没有等价沙箱，裁判会**拒绝开赛并报错**，而不是无沙箱裸跑或伪造平局记录。手册 §3.2 已写明这一点。
 11. **规则指纹=规则身份**。改动任何影响对局语义的代码都必须递增 `sim.RulesVersion`，否则 `rulesHash` 不会变，历史成绩就失去可区分性。指纹本身补齐遗漏常量后，`rulesHash` 也会变化，旧成绩需要用旧版本引擎复核。
 

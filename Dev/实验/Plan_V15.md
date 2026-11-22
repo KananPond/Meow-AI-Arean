@@ -1,9 +1,13 @@
-# Desert Arena v1.5 实验：遗产物 / 插旗 / 胜利分 / CEP / 等级
+# Desert Arena 规则演进：v1.5 → v1.9.1（遗产物 / 插旗 / 胜利分 / CEP / 等级）
 
-> 状态：**实验基线已跑通**（2026-11-20）。规则未进入正式赛季，选手包里的
-> `RULES.md` 仍是 v1.4；本文件记录 v1.5 的设计、参数与标定数据。
-> 事实源：`war_of_desert/internal/sim/rules15.go` + `tournament/experiment_v15.json`。
-> 规则指纹：`24d4935b`（1500 tick / 6 Bot / 3 seed）。
+> 状态：**v1.9.1 已是当前正式赛**（2026-11-22）。本文件保留 v1.5 的设计与标定记录；
+> v1.6–v1.9.1 的增量见 `war_of_desert/workspace/RULES_V15.md` 与
+> `results/exp-v19-700/`、`results/exp-v191-700/`。
+> 事实源：`war_of_desert/internal/sim/rules15.go` + `tournament/formal_v19.json`。
+> 当前规则指纹：`393ee404`（v1.9.1 / 1500 tick / 7 Bot / 17 seed）。
+>
+> 注意：下面第 2 节的数值是 v1.5 初版；v1.7 起击杀改为 `min(造价×2/3,200)`、
+> 遗产第 1/2 件各 +50（上限 100）、插旗 0 分，以 `RULES_V15.md` 为准。
 
 ---
 

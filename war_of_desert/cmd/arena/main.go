@@ -73,10 +73,10 @@ func main() {
 func usage() {
 	fmt.Fprint(os.Stderr, `Desert Arena 正式赛
 
-  arena build  [-config tournament/formal_v14.json]
-  arena plan   [-config tournament/formal_v14.json]
-	arena run    [-config tournament/formal_v14.json] [-resume] [-limit N]
-	arena rate   [-config tournament/formal_v14.json] [-partial]
+  arena build  [-config tournament/formal_v19.json]
+  arena plan   [-config tournament/formal_v19.json]
+	arena run    [-config tournament/formal_v19.json] [-resume] [-limit N]
+	arena rate   [-config tournament/formal_v19.json] [-partial]
   arena check  [-a <bot.exe>] [-b <bot.exe>] [-seed N] [-config ...]
   arena local  [-bot bot.exe] [-vs a.exe,b.exe] [-seeds N] [-out 目录]
                选手本地调试：与基线对打，出逐局 VP + 回放（不校验封存）
@@ -99,7 +99,7 @@ func exeSuffix() string {
 // cmdSeal 只做封存校验，不跑对局。裁判台用它点亮「封存」状态灯。
 func cmdSeal(args []string) error {
 	fs := flag.NewFlagSet("seal", flag.ExitOnError)
-	cfgPath := fs.String("config", "tournament/formal_v14.json", "赛事配置")
+	cfgPath := fs.String("config", "tournament/formal_v19.json", "赛事配置")
 	_ = fs.Parse(args)
 
 	cfg, root, err := contest.Load(*cfgPath)
@@ -130,7 +130,7 @@ func cmdSeal(args []string) error {
 
 func cmdBuild(args []string) error {
 	fs := flag.NewFlagSet("build", flag.ExitOnError)
-	cfgPath := fs.String("config", "tournament/formal_v14.json", "赛事配置")
+	cfgPath := fs.String("config", "tournament/formal_v19.json", "赛事配置")
 	_ = fs.Parse(args)
 
 	cfg, root, err := contest.Load(*cfgPath)
@@ -258,7 +258,7 @@ func hashTree(dir string) (map[string]string, error) {
 
 func cmdPlan(args []string) error {
 	fs := flag.NewFlagSet("plan", flag.ExitOnError)
-	cfgPath := fs.String("config", "tournament/formal_v14.json", "赛事配置")
+	cfgPath := fs.String("config", "tournament/formal_v19.json", "赛事配置")
 	_ = fs.Parse(args)
 
 	cfg, root, err := contest.Load(*cfgPath)
@@ -339,7 +339,7 @@ func resolveOutDir(root, dirFlag, def string) (string, error) {
 
 func cmdRun(args []string) error {
 	fs := flag.NewFlagSet("run", flag.ExitOnError)
-	cfgPath := fs.String("config", "tournament/formal_v14.json", "赛事配置")
+	cfgPath := fs.String("config", "tournament/formal_v19.json", "赛事配置")
 	resume := fs.Bool("resume", false, "跳过 结果.jsonl 中已完成的对阵")
 	limit := fs.Int("limit", 0, "最多再跑 N 场（0 = 不限）")
 	skipSeal := fs.Bool("skip-seal", false, "跳过封存校验（仅限演练，正式赛禁用）")
@@ -614,7 +614,7 @@ type standing struct {
 
 func cmdRate(args []string) error {
 	fs := flag.NewFlagSet("rate", flag.ExitOnError)
-	cfgPath := fs.String("config", "tournament/formal_v14.json", "赛事配置")
+	cfgPath := fs.String("config", "tournament/formal_v19.json", "赛事配置")
 	partial := fs.Bool("partial", false, "允许赛中不完整结果（输出 临时成绩.md，不覆盖正式成绩）")
 	_ = fs.Parse(args)
 
@@ -831,7 +831,7 @@ func loadConfigOrDefault(p string) (*contest.Config, string, error) {
 	if st, err := os.Stat(p); err == nil && !st.IsDir() {
 		return contest.Load(p)
 	}
-	if p == "tournament/formal_v14.json" {
+	if p == "tournament/formal_v19.json" {
 		return contest.Default(), ".", nil
 	}
 	return nil, "", fmt.Errorf("找不到配置 %s", p)
@@ -839,7 +839,7 @@ func loadConfigOrDefault(p string) (*contest.Config, string, error) {
 
 func cmdCheck(args []string) error {
 	fs := flag.NewFlagSet("check", flag.ExitOnError)
-	cfgPath := fs.String("config", "tournament/formal_v14.json", "赛事配置")
+	cfgPath := fs.String("config", "tournament/formal_v19.json", "赛事配置")
 	aPath := fs.String("a", "", "左方程序（默认 workspace/submission 编译产物）")
 	bPath := fs.String("b", "", "右方程序（默认第一个参考 Bot）")
 	seed := fs.Int("seed", 20261109, "seed")
@@ -932,10 +932,16 @@ func cmdCheck(args []string) error {
 // cmdVersion 打印规则身份，供打包脚本与选手核对「裁判/宿主/规则」三者是否配套。
 func cmdVersion(args []string) error {
 	fs := flag.NewFlagSet("version", flag.ExitOnError)
-	tickLimit := fs.Int("ticklimit", 1200, "tick 上限")
+	tickLimit := fs.Int("ticklimit", 1500, "tick 上限")
+	ruleset := fs.String("ruleset", sim.RulesetV15, "规则集：v14（历史基线）/ v15（当前正式）")
 	_ = fs.Parse(args)
-	fmt.Printf("rulesVersion=%s\n", sim.RulesVersion)
-	fmt.Printf("rulesHash=%s\n", sim.RulesHash(*tickLimit, sim.NormalizeVision(sim.Vision{})))
+	rs := strings.ToLower(strings.TrimSpace(*ruleset))
+	version := sim.RulesVersion
+	if rs == sim.RulesetV15 {
+		version = sim.RulesVersionV15
+	}
+	fmt.Printf("rulesVersion=%s\n", version)
+	fmt.Printf("rulesHash=%s\n", sim.RulesHashFor(rs, *tickLimit, sim.NormalizeVision(sim.Vision{})))
 	fmt.Printf("proto=%s.%d\n", protocol.ProtoName, protocol.ProtoVersion)
 	return nil
 }
@@ -957,7 +963,7 @@ func cmdLocal(args []string) error {
 	baseSeed := fs.Int("seed0", 20261109, "起始 seed")
 	outDir := fs.String("out", "matches", "回放与结果目录")
 	limit := fs.Int("limit", 0, "覆盖 tick 上限（0 = 规则集默认）")
-	rulesetFlag := fs.String("ruleset", sim.RulesetV14, "规则集：v14（正式）/ v15（实验）")
+	rulesetFlag := fs.String("ruleset", sim.RulesetV14, "规则集：v14（历史基线）/ v15（当前正式）")
 	_ = fs.Parse(args)
 
 	ruleset := strings.ToLower(strings.TrimSpace(*rulesetFlag))
@@ -1223,7 +1229,7 @@ func localHost() (string, error) {
 
 func cmdSelftest(args []string) error {
 	fs := flag.NewFlagSet("selftest", flag.ExitOnError)
-	cfgPath := fs.String("config", "tournament/formal_v14.json", "赛事配置")
+	cfgPath := fs.String("config", "tournament/formal_v19.json", "赛事配置")
 	_ = fs.Parse(args)
 
 	cfg, root, err := contest.Load(*cfgPath)

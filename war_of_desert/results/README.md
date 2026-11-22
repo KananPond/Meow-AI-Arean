@@ -1,8 +1,10 @@
 # results · 赛事产物
 
 > 按赛季/规则分目录，互不通用：
-> - `formal-v14/`：**当前正式赛季 · v1.4**（对称 VP、七领域计分、BT 双榜），由 `arena` 生成
-> - [`exp-v15/`](exp-v15/)：**v1.5 实验基线（非正式赛季，不跑 `arena rate`、无 BT 榜）**，1500 tick / 6 Bot × 3 seed / 90 局，规则 `24d4935b`；说明见 [`exp-v15/README.md`](exp-v15/README.md)，规则见 [`../../Dev/实验/Plan_V15.md`](../../Dev/实验/Plan_V15.md)
+> - `formal-v19/`：**当前正式赛季 · v1.9.1**（ruleset `v15`、1500 tick、七领域计分、BT 双榜），由 `arena` 生成
+> - [`exp-v191-700/`](exp-v191-700/)：**v1.9.1 714 局标定**（当前正式规则），规则 `393ee404`
+> - `formal-v14/`：历史 · 第 5 季 v1.4（对称 VP、七领域计分、BT 双榜）
+> - [`exp-v15/`](exp-v15/)：历史 · v1.5 实验基线（1500 tick / 6 Bot × 3 seed / 90 局，规则 `24d4935b`）；说明见 [`exp-v15/README.md`](exp-v15/README.md)，规则见 [`../../Dev/实验/Plan_V15.md`](../../Dev/实验/Plan_V15.md)
 > - `formal-v13/`：第 4 季 v1.3 正式赛（母舰削弱前）
 > - `formal-v12/`：第 3 季 v1.2 的冻结赛程（仅 `赛程.json`，未执行；公平性缺陷修复后作废）
 > - [`formal-v11/`](formal-v11/)：历史 · 第 2 季 v1.1（七领域计分）
@@ -30,7 +32,7 @@
 
 ```bash
 cd war_of_desert
-CFG=tournament/formal_v14.json
+CFG=tournament/formal_v19.json
 go run ./cmd/arena plan -config $CFG
 go run ./cmd/arena run  -config $CFG   # 默认覆盖结果；-resume 可续跑
 go run ./cmd/arena rate -config $CFG
@@ -38,7 +40,7 @@ go run ./cmd/arena rate -config $CFG
 
 `回放/` 体积较大且完全可由 `run` 重建，默认不入库；需要归档时整目录打包。
 
-### v1.5 实验批次（非正式赛季）
+### v1.5 实验批次（历史）
 
 `exp-v15/` 用 [`../tournament/experiment_v15.json`](../tournament/experiment_v15.json) 生成，
 只入库 `赛程.json`／`结果.jsonl`／`README.md` 三份；`回放/` 按上面规则不入库。

@@ -1,16 +1,17 @@
-# 选手规则与协议 v1.4（Go 原生引擎）
+# 选手规则与协议 v1.9.1（Go 原生引擎）
 
 > 你写一个独立程序，裁判用 stdin/stdout 和你对话。本文是完整契约；`botkit/` 是可选工具库。
-> 当前规则 = **v1.4**：四子系统分配（armour/repair/attack/range）、CU/RU 双资源运输线经济、
-> 生产线由工业科技驱动、单局 1200 tick、七领域确定性计分（无墙钟「算力表现」域）、
-> 生产队列**跳过式出队**、母舰 **RU 基础收入 0.20/tick**、母舰**脱战后才自愈**。
+> 当前比赛规则 = **v1.9.1**（ruleset `v15`）：在 v1.4 基线（四子系统分配、CU/RU 运输线经济、
+> 生产线由工业科技驱动、七领域确定性计分、跳过式出队、脱战自愈）之上叠加
+> [`RULES_V15.md`](RULES_V15.md) 的增量——单局 **1500 tick**、胜利分三本账（击杀/遗产/插旗）、
+> 遗产物与研究舰、CEP/射界/炮塔、火控 C1–C3、五级军衔、人口上限 36。
 > 本赛季 `vision=false`：**双方全图可见，无战争迷雾**。
 
 ---
 
 ## 1. 你要交什么
 
-`submission/decide.go`，`package main`，编译成单个可执行文件。官方编译命令：
+`submission/<选手名>_bot.go`，`package main`，编译成单个可执行文件。官方编译命令：
 
 ```bash
 go build -o bots/bin/submission.exe ./workspace/submission
@@ -18,7 +19,7 @@ go build -o bots/bin/submission.exe ./workspace/submission
 
 正式赛收卷时只冻结这个文件；编译由主办方统一执行。
 
-依赖只允许 **Go 标准库 + 选手包自带的 `botkit`**（可选）。**不要 import 你自己新增的包或任何第三方库**——收卷只冻结 `decide.go` 单文件，其他源码不会随卷带走，会导致收卷后编译失败。
+依赖只允许 **Go 标准库 + 选手包自带的 `botkit`**（可选）。**不要 import 你自己新增的包或任何第三方库**——收卷只冻结 `<选手名>_bot.go` 单文件，其他源码不会随卷带走，会导致收卷后编译失败。
 
 ---
 
@@ -82,7 +83,7 @@ go build -o bots/bin/submission.exe ./workspace/submission
 
 | 字段 | 含义 |
 |---|---|
-| `turn` / `tickLimit` | 当前 tick 与总 tick（1200） |
+| `turn` / `tickLimit` | 当前 tick 与总 tick（1500） |
 | `side` | 你是 0（红）还是 1（蓝） |
 | `timing` | `tickMs=50`、`decideMs=120`、`applyAt`、`orderLatency=1` |
 | `units` | 你方全部单位 + 你视野内的敌方单位（**本赛季视野关闭 = 全图可见**）。敌方单位不带 `mode`；己方采集车带 `harvest`/`hstate`/`carry` |
@@ -185,16 +186,16 @@ go build -o bots/bin/submission.exe ./workspace/submission
 ```bash
 cd war_of_desert
 go build -o bots/bin/submission.exe ./workspace/submission
-go run ./cmd/arena check -config tournament/formal_v14.json -seed 20261109
+go run ./cmd/arena check -config tournament/formal_v19.json -seed 20261109
 ```
 
-期望：两局跑满 1200 tick、`故障=0/0`、`确定性复核：true`。`formal_v14.json` 的
-`engine.kind` 是 `native`——规则引擎是 Go 原生 `cmd/enginehost`，不再依赖 Node 快照。
+期望：两局跑满 1500 tick、`故障=0/0`、`确定性复核：true`。`formal_v19.json` 的
+`engine.kind` 是 `native`——规则引擎是 Go 原生 `cmd/enginehost`，不再依赖 Node 快照，`rules.ruleset` 为 `v15`。
 
 想换对手：
 
 ```bash
-go run ./cmd/arena check -config tournament/formal_v14.json -a bots/bin/submission.exe -b bots/bin/nomad.exe -seed 20261110
+go run ./cmd/arena check -config tournament/formal_v19.json -a bots/bin/submission.exe -b bots/bin/nomad.exe -seed 20261110
 ```
 
 ---
@@ -208,7 +209,7 @@ go run ./cmd/arena check -config tournament/formal_v14.json -a bots/bin/submissi
   生产/研究**不由分配驱动**：
   生产线 = 1 + 工业科技（I1→2 条、I3a/I3b→3 条，封顶 3），研究槽固定 2，炮位固定 5。
 - 高阶单位兼耗 **RU**（AAV 30 / RAILGUN 60 / ARTILLERY 250 / CARRIER 100），
-  RU 来自 `kind:"ru"` 的资源点 + 母舰基础收入（0.20/tick，1200 tick 约 240 RU）；
+  RU 来自 `kind:"ru"` 的资源点 + 母舰基础收入（0.20/tick，1500 tick 约 300 RU）；
   资源点按镜像成对生成，同对同类，所以你两侧各有同样多的 RU 节点；
   没有 RU 就只能造 LAV/SALVAGER/SCOUT。
 - **生产队列是跳过式出队（v1.2）**：每拍从队首找第一个 CU/RU 都付得起的单位出队生产，
@@ -217,8 +218,8 @@ go run ./cmd/arena check -config tournament/formal_v14.json -a bots/bin/submissi
   下单前自查 `me.cu`/`me.ru`；`me.queue`/`me.active` 可看自己队列，回放里的 `queueBlocked` 标记表示整队等待。
 - `harvest` 只发一次：每拍重发会把采集车状态机打回 `toResource`，一局都装不满一车。
   第一台采集车先派去 `cu` 节点（基础收入为 0，CU 全靠采集），第二台派 `ru` 解锁高阶单位。
-- 母舰是**慢速**移动基地（v1.4 移速 0.30，比 v1.3 慢 45%），四子系统只影响 减伤/自愈/增伤/增程。
-- 母舰 v1.4 数值：HP 1800、攻击 13、射程 7 格、射速 12、视野 14、重甲；坡限 4 个高程单位
+- 母舰是**慢速**移动基地（v1.9.1 沿用 v1.4 移速 0.30，比 v1.3 慢 45%），四子系统只影响 减伤/自愈/增伤/增程。
+- 母舰 v1.9.1 数值（沿用 v1.4）：HP 1800、攻击 13、射程 7 格、射速 12、视野 14、重甲；坡限 4 个高程单位
   （陡坎会挡住它，不再是全地形通行）。射程/射速/视野/装甲/弹道/四子系统保持不变。
 - 母舰持续挨打时**不会自愈**（脱战 60 拍后才恢复回血）——集火是有效的。
 - 攻坚：只有 RAILGUN（38 格）和 ARTILLERY（56 格）射程压过母舰（28 格），

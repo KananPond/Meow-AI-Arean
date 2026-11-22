@@ -29,7 +29,7 @@ echo.
 echo [3/3] Your bot vs baseline@1 / baseline@2 (2 seeds, side swap)
 echo.
 pushd arena
-go run ./cmd/arena local -bot ..\bot.exe -vs ..\bots\baseline@1.exe,..\bots\baseline@2.exe -seeds 2 -out ..\matches\local
+go run ./cmd/arena local -bot ..\bot.exe -vs ..\bots\baseline@1.exe,..\bots\baseline@2.exe -ruleset v15 -seeds 2 -out ..\matches\local
 set RC=%errorlevel%
 popd
 

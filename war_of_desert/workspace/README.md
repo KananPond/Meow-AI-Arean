@@ -1,5 +1,8 @@
 # 选手工作区
 
+> 当前比赛规则：**v1.9.1**（ruleset `v15`，1500 tick）。`RULES.md` 是协议与经济基线，
+> `RULES_V15.md` 是 v1.9.1 增量，冲突时以 `RULES_V15.md` 为准。
+
 > 这是**引擎侧**的参考工作区：正式赛的 Starter 选手，加上 `botkit/`、`refbot/` 共用库。
 > 发给选手的完整包在 [`../../算法赛/RTS算法赛@Model_name/workspace/`](../../算法赛/RTS算法赛@Model_name/workspace/)，
 > 里面带 `arena/`（引擎与裁判源码）、骨架 + 两个预编译基线、`本地对局.bat`。
@@ -11,19 +14,21 @@
 ```text
 workspace/
 ├── RULES.md               完整规则与行协议（先读）
+├── RULES_V15.md           v1.9.1 增量规则（当前比赛）
 ├── prompt.md              发给模型的原始任务书
 ├── README.md              本文件
 ├── clock.py               编码期计时器（只读）
 ├── submission/decide.go   你的提交物
 ├── botkit/                可选工具库：协议、地图解码、一步寻路
 ├── refbot/                参考 Bot 共用策略库（只读）
-└── bots/                  六个参考 Bot
+└── bots/                  七个参考 Bot
     ├── vanguard/          正面推进
     ├── bulwark/           经济防守
     ├── swarm/             数量压制
     ├── nomad/             机动抢点
     ├── sapper/            攻坚拆舰（v1.3 新增）
-    └── hunter/            遗产／插旗优先（v1.5 实验专用，不进正式赛配置）
+    ├── hunter/            遗产／插旗优先（v1.5 新增）
+    └── warden/            攻城压制（RAILGUN + ARTILLERY + CARRIER，v1.9 新增）
                           （正式赛第 6 名选手 Starter 就是 submission/decide.go）
 ```
 

@@ -1,6 +1,6 @@
 {
-  "name": "Desert Arena · v1.9.1 实验（7 人 · 遗产提速与攻城并行）",
-  "season": "v1.9.1 实验：遗产补给 70 tick / 场上 3 件 + 遗产科技加速 + 远程兵机动 + 新增 Warden",
+  "name": "Desert Arena · v1.9.1 714 局标定（7 人 · 遗产提速与攻城并行）",
+  "season": "v1.9.1 标定：遗产补给 70 tick / 场上 3 件 + 遗产科技加速 + 远程兵机动 + Warden",
   "version": "1.9.1",
   "engine": {
     "kind": "native",
@@ -80,7 +80,7 @@
     },
     {
       "name": "Warden",
-      "author": "v1.9 实验 Bot · 攻城压制",
+      "author": "v1.9 规则 · 攻城压制",
       "source": "workspace/bots/warden",
       "bin": "bots/bin/warden.exe"
     }
