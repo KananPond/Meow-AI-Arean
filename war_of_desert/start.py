@@ -15,8 +15,8 @@ ROOT = Path(__file__).resolve().parent
 ARENA = ["go", "run", "./cmd/arena"]
 # 只有这一处指定赛季。输出目录从配置的 output 字段读，不在这里另写一份，
 # 否则换了赛季配置还得记得同步改第二处（v1.2 时代就是这样漂掉的）。
-CONFIG = "tournament/formal_v14.json"
-DEFAULT_OUT = "results/formal-v14"
+CONFIG = "tournament/formal_v19.json"
+DEFAULT_OUT = "results/formal-v19"
 
 
 def out_dir() -> str:

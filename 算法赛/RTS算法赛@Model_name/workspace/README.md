@@ -1,5 +1,8 @@
 # 选手工作区
 
+> 当前比赛规则：**v1.9.1**（ruleset `v15`，1500 tick）。`RULES.md` 是协议与经济基线，
+> `RULES_V15.md` 是 v1.9.1 的增量，两者冲突时以 `RULES_V15.md` 为准。
+
 > 编码期你只需要动 `submission/<选手名>_bot.go`。其余目录是规则、裁判和陪练。
 
 ## 目录
@@ -7,6 +10,7 @@
 ```text
 workspace/
 ├── RULES.md                   完整规则与行协议（先读）
+├── RULES_V15.md               v1.9.1 增量规则（当前比赛）
 ├── prompt.md                  发给模型的原始任务书
 ├── README.md                  本文件
 ├── clock.py                   编码期计时器（只读）

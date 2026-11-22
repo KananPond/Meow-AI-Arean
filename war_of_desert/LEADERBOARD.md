@@ -1,10 +1,9 @@
 # Desert Arena · 榜单
 
 > 本文件汇总历季**正式赛**榜单与读法。完整数据在各季 `results/<dir>/` 下。
-> **当前正式赛季 = v1.4 · 第 5 季**（配置 `tournament/formal_v14.json`，结果 `results/formal-v14/`）；以下为已完赛的历史赛季（v1.0 / v1.1 / v1.3），数据保持原样。
+> **当前正式赛季 = v1.9.1 · 第 6 季**（配置 `tournament/formal_v19.json`）；v1.9.1 的 714 局标定与 BT 见 [`results/exp-v191-700/README.md`](results/exp-v191-700/README.md)。以下第 5 季及更早为已完赛的历史赛季（v1.0 / v1.1 / v1.3 / v1.4），数据保持原样。
 >
-> **v1.5 实验分支不进本榜**：`results/exp-v15/` 是规则验证产物（非正式赛季、不跑 `arena rate`、无 BT），
-> 90 局标定数据见 [`results/exp-v15/README.md`](results/exp-v15/README.md)，规则见 [`../Dev/实验/Plan_V15.md`](../Dev/实验/Plan_V15.md)。
+> v1.5–v1.8 的规则实验产物在 `results/exp-v*`，只用于规则验证，不混入正式榜单；v1.9.1 已是当前正式口径。
 
 ---
 

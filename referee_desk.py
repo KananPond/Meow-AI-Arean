@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """Desert Arena · 裁判台（GUI）。
 
-版本：v1.9
+版本：v1.9.1
 功能：三个页签，同一个窗口——
 
   ① 工作区（默认页签）：一个选手、一条流水线——
@@ -846,7 +846,7 @@ class RefereeDesk(tk.Tk):
             want = self._sim_rule_version(ENGINE / "internal" / "sim", mode)
             have = self._sim_rule_version(
                 ws / "workspace" / "arena" / "internal" / "sim", mode)
-            head = "v1.9 实验" if mode.startswith("v1.9") else "v1.4 正式"
+            head = "v1.9.1 当前" if mode.startswith("v1.9") else "v1.4 历史"
             if want and have == want:
                 lines.append(("规则：%s · 引擎与 arena 副本都是 %s" % (head, want), "dim"))
             elif want and have:
@@ -1093,7 +1093,7 @@ class RefereeDesk(tk.Tk):
 
     RULE_SUMMARIES = {
         "v1.9": (
-            "v1.9 实验（1500 tick · ruleset v15，引擎 1.9.1）：遗产第 1/2 件各 +50、每方上限 100；"
+            "v1.9.1 当前正式（1500 tick · ruleset v15，引擎 1.9.1）：遗产第 1/2 件各 +50、每方上限 100；"
             "第 3 件起 0 VS 但推进 R1–R4 遗产科技（60/85/110/135 tick）；"
             "研究舰 100 CU / 25 tick / 速度 5.0，拔旗/舰毁中断研究；"
             "遗产补给 70 tick、场上最多 3 件无主；插旗 0 分；被拔旗守方 −25、攻方 +25（同一 VP 一次）；"
@@ -1103,7 +1103,7 @@ class RefereeDesk(tk.Tk):
             "旗控制（领先 >5%） → 平。"
         ),
         "v1.4": (
-            "v1.4 正式（1200 tick · ruleset v14）：VP 累计分、七领域计分、"
+            "v1.4 历史基线（1200 tick · ruleset v14）：VP 累计分、七领域计分、"
             "母舰削弱、对称经济；不使用遗产/研究舰/旗分转移。"
         ),
     }
@@ -1144,9 +1144,9 @@ class RefereeDesk(tk.Tk):
         rules_mode = self.rules_mode.get()
         is_exp = str(rules_mode).startswith("v1.9")
         if is_exp:
-            rule_line = "规则 v1.9 实验（1500 tick · ruleset v15，引擎 1.9.1）"
+            rule_line = "规则 v1.9.1 当前正式（1500 tick · ruleset v15，引擎 1.9.1）"
         else:
-            rule_line = "规则 v1.4 正式（1200 tick）"
+            rule_line = "规则 v1.4 历史基线（1200 tick）"
         # default=CANCEL：Enter / 空格默认落在「取消」上，双击列表后弹出
         # 立刻回车也不会开跑。
         if not messagebox.askokcancel(
@@ -1182,7 +1182,7 @@ class RefereeDesk(tk.Tk):
             version = "1.9.1"
         else:
             version = "1.4"
-        mode_label = "v%s 实验" % version if is_exp else "v1.4 正式"
+        mode_label = "v%s 当前" % version if is_exp else "v1.4 历史"
         stamp = time.strftime("%m%d-%H%M%S")
         self._emit(("line", "规则 %s ｜ %d tick ｜ ruleset %s"
                     % (mode_label, 1500 if is_exp else 1200,
