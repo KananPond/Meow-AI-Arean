@@ -2,7 +2,7 @@
 
 > 状态：**v1.9.1 已是当前正式赛**（2026-11-22）。本文件保留 v1.5 的设计与标定记录；
 > v1.6–v1.9.1 的增量见 `war_of_desert/workspace/RULES_V15.md` 与
-> `results/exp-v19-700/`、`results/exp-v191-700/`。
+> `实验记录/规则实验/exp-v19-700/`、`实验记录/规则实验/exp-v191-700/`。
 > 事实源：`war_of_desert/internal/sim/rules15.go` + `tournament/formal_v19.json`。
 > 当前规则指纹：`393ee404`（v1.9.1 / 1500 tick / 7 Bot / 17 seed）。
 >
@@ -13,7 +13,7 @@
 
 ## 1. 为什么改
 
-2026-11-20 的 50 局 v1.4 全流程记录（`测试存档/2026-11-20_Seed-2p1-Pro_全流程/`）：
+2026-11-20 的 50 局 v1.4 全流程记录（`算法赛/测试/历史全流程/2026-11-20_Seed-2p1-Pro_全流程/`）：
 
 | 指标 | v1.4 实测 |
 |---|---|
@@ -138,7 +138,7 @@ cd war_of_desert
 go run ./cmd/arena build -config tournament/experiment_v15.json
 go run ./cmd/arena plan  -config tournament/experiment_v15.json
 go run ./cmd/arena run   -config tournament/experiment_v15.json
-py -3 -X utf8 scripts/exp_metrics.py results/exp-v15
+py -3 -X utf8 scripts/exp_metrics.py 实验记录/规则实验/exp-v15
 ```
 
 v1.4 的语义、指纹与回放不受影响：所有 v1.5 逻辑由 `GameCfg.Ruleset == "v15"` 开关，

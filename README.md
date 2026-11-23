@@ -3,7 +3,7 @@
 一个面向社区的 1v1 AI Bot 算法对抗赛项目。Bot 在程序生成的沙漠战场中争夺 VP、守护母舰；仓库提供本地运行的 Go 裁判与引擎、参赛模板、参考 Bot、赛事配置和赛季榜单。
 
 > 这是源码和赛事资料仓库，不是在线报名平台或托管式对战服务。执行链已可开赛（当前正式赛 **v1.9.1 · 第 6 季**，ruleset `v15`，1500 tick），组织流程见下方「裁判台」。
-> v1.9.1 在 v1.4 基线上叠加遗产／插旗／胜利分、研究舰与遗产科技、CEP／射界／炮塔、火控与五级军衔；规则见 [RULES_V15.md](war_of_desert/workspace/RULES_V15.md)，714 局标定数据见 [exp-v191-700](war_of_desert/results/exp-v191-700/README.md)。默认选手包已按 v1.9.1 发卷。
+> v1.9.1 在 v1.4 基线上叠加遗产／插旗／胜利分、研究舰与遗产科技、CEP／射界／炮塔、火控与五级军衔；规则见 [RULES_V15.md](war_of_desert/workspace/RULES_V15.md)，714 局标定数据见 [exp-v191-700](war_of_desert/实验记录/规则实验/exp-v191-700/README.md)。默认选手包已按 v1.9.1 发卷。
 
 本项目采用 [MIT License](LICENSE) 开源。
 
@@ -12,8 +12,8 @@
 - 正式赛执行链支持编译 Bot、封存源码哈希、冻结赛程、运行对局和生成评分。
 - 仓库包含 Go 原生规则引擎及历史 JavaScript oracle；当前赛季（第 6 季 v1.9.1）配置使用 Go 原生引擎。
 - 当前正式赛规则版本为 **v1.9.1**（ruleset `v15`，1500 tick）：在 v1.4 基线（跳过式生产队列、母舰 RU 基础收入、四子系统分配、CU/RU 双资源运输线、资源成对同类、脱战自愈、母舰削弱）之上叠加胜利分三本账（击杀／遗产／插旗）、遗产物运输入库、研究舰与 R1–R4 遗产科技、CEP 与射界／炮塔、火控 C1–C3、5 级单位等级、人口上限 36。
-- v1.4 保留为历史基线（`tournament/formal_v14.json`、`results/formal-v14/`）；v1.5–v1.8 为规则实验阶段，产物见 `war_of_desert/results/exp-v*`。
-- 第 4、5 季基准赛均为 6 名选手、45 场对阵、90 局，零故障、90/90 局通过确定性复核，见[赛季榜单](war_of_desert/LEADERBOARD.md)；v1.9.1 以 7 Bot × 17 seed × 换边 2 局 = 714 局完成标定（平局 4.2%、决胜座位 49.9:50.1、母舰斩杀 7.1%），见 [exp-v191-700](war_of_desert/results/exp-v191-700/README.md)。
+- v1.4 保留为历史基线（`tournament/formal_v14.json`、`算法赛/测试/历史赛季/formal-v14/`）；v1.5–v1.8 为规则实验阶段，产物见 `war_of_desert/实验记录/规则实验/exp-v*`。
+- 第 4、5 季基准赛均为 6 名选手、45 场对阵、90 局，零故障、90/90 局通过确定性复核，见[赛季榜单](war_of_desert/LEADERBOARD.md)；v1.9.1 以 7 Bot × 17 seed × 换边 2 局 = 714 局完成标定（平局 4.2%、决胜座位 49.9:50.1、母舰斩杀 7.1%），见 [exp-v191-700](war_of_desert/实验记录/规则实验/exp-v191-700/README.md)。
 - 正式赛逐局 JSON、赛程和回放属于本地生成的赛事产物，并未全部包含在当前 Git 推送内容中。
 - `Dev/` 当前推送的是规则规格、计划、实验、调研与归档文档；可运行的正式赛代码位于 `war_of_desert/`。
 
@@ -35,7 +35,8 @@
 ├── 算法赛/               ← 比赛工作区，每个子目录是一名选手
 │   ├── baseline@1.exe    基线一（预编译，Vanguard）
 │   ├── baseline@2.exe    基线二（预编译，Nomad）
-│   ├── 赛程.json          冻结的对阵表（初始化时生成，不入库）
+│   ├── 比赛记录/          裁判台「比赛」页签的成绩归档（本地生成，不入库）
+│   ├── 测试/             历史比赛记录与「测试」页签的测试成绩（本地生成）
 │   └── RTS算法赛@<模型名>/
 │       └── workspace/
 │           ├── arena/     正式赛引擎+裁判+比赛程序（源码，发给选手的那份）
@@ -44,6 +45,8 @@
 │           ├── tournament/local.json
 │           └── 本地对局.bat / 本地赛季.bat
 ├── war_of_desert/        引擎与执行链（Go 模块）
+│   ├── 实验记录/          v1.5 → v1.9.1 规则实验归档（实验日志见其 README）
+│   └── results/          当前与今后的正式赛事产物
 └── Dev/                  规则规格、计划、调研与实验（[Dev 索引](Dev/README.md)）
     └── 实验/             [Plan_V15.md](Dev/实验/Plan_V15.md)：v1.5 → v1.9.1 规则演进与标定
 ```
@@ -51,15 +54,17 @@
 ## 比赛怎么初始化
 
 ```bash
-py -3 -X utf8 referee_desk.py --init "算法赛" 1     # 也可以在裁判台点「初始化工作区与赛程」
+py -3 -X utf8 referee_desk.py --init "算法赛" 1
 ```
+
+也可以打开裁判台，在「编码」页签逐个工作区点「发卷」。
 
 做两件事：
 
 1. **初始化工作区**：以 `算法赛/RTS算法赛@Model_name/workspace/` 为**模板**，
    复制到每个选手目录（`RULES.md`、`prompt.md`、`arena/`、`bots/`、
-   `tournament/`、`clock.py`、`本地对局.bat`），**不开始计时**——计时由
-   「发卷并开赛」逐个开。
+   `tournament/`、`clock.py`、`本地对局.bat`），**不开始计时**——计时由裁判台
+   「编码」页签的「开始编码」逐个开。
 
    选手包里的参考 Bot 只有三个：`bots/skeleton/`（骨架，只演示 stdin/stdout 协议，不含任何策略）、
    `bots/baseline@1.exe`、`bots/baseline@2.exe`（两个预编译基线）。
@@ -88,37 +93,38 @@ py -3 -X utf8 referee_desk.py --init "算法赛" 1     # 也可以在裁判台�
 
 ## 裁判台
 
-双击 `裁判台.bat`。三个页签，默认停在「工作区」。
+双击 `裁判台.bat`。上方三个页签：**编码 / 比赛 / 测试**，默认停在「编码」。
 
-### 工作区：给参赛 AI 开一段写代码的时间窗
+### 编码：给参赛 AI 开一段写代码的时间窗
 
-这一段只管「铺好包 + 计时 + 到点封存」，**全程不跑对局**。发卷是把选手包铺进
-`<工作区>/workspace/` 让 AI 有东西可写；启动是开始计时，不是开打。
+这一段只管「铺包 + 计时 + 到点收卷」，**全程不跑对局**。
 
 1. **选工作区**：指定比赛根目录（默认 `算法赛/`），在左边列表里选中一个
-   `RTS算法赛@<模型名>` 目录。
-2. **① 工作区自检**：目录是空的就先发卷，铺进 RULES.md、RULES_V15.md、prompt.md、arena 引擎源码、
-   模板 `<选手名>_bot.go`、clock.py；然后检查包是否齐备、`go build ./submission` 与
-   `arena` 副本能否编译。**自检不通过，「启动」是灰的。**
-3. **② 提示词**：点「复制」把 `prompt.md` 放进剪贴板（或「查看」只读预览），
+   `RTS算法赛@<模型名>` 目录；规则版本可选 v1.9 / v1.4。
+2. **自检**：查包是否齐备、`go build ./submission` 与 `arena` 副本能否编译；
+   缺件会顺手补发。**自检不通过，「开始编码」是灰的。**
+3. **发卷**：把模板选手包铺进 `<工作区>/workspace/`，只补缺件、不覆盖已有文件。
+4. **提示词**：点「复制」把 `prompt.md` 放进剪贴板（或「查看」只读预览），
    自己去智能体那边粘贴发送——**裁判台不代发**。
-4. **③ 启动比赛**：只开始计时（90 分钟目标 / 120 分钟强制收卷），不跑对局。
-5. **④ 计时**：随时「暂停 / 恢复」。
-6. **⑤ 封存**：到 120 分钟自动把 `workspace/submission/<选手名>_bot.go` 冻结到 `交卷/`，
-   记 SHA-256、用时与是否超时；也可以「立即封存」。裁判台关着时错过的，下次打开会按
-   `.赛务.json` 里的开始时间补封。交付物和模板逐字节相同（AI 没写出东西）时会单独告警。
+5. **开始编码**：只开始计时（90 分钟目标 / 120 分钟强制收卷），不跑对局；
+   随时「暂停 / 继续」。
+6. **收卷封存**：到 120 分钟自动把 `workspace/submission/<选手名>_bot.go`
+   冻结到 `交卷/`，记 SHA-256、用时与是否超时；也可以「立即收卷」。裁判台关着时
+   错过的，下次打开会按 `.赛务.json` 里的开始时间补封。交付物和模板逐字节相同
+   （AI 没写出东西）时会单独告警。
 
-### 赛季
+### 比赛：正式对局
 
-选 `war_of_desert/tournament/*.json`，按 自检 → 编译封存 → 冻结赛程 → 开赛 → 评分 走完；
-右上角封存灯实时反映 `arena seal` 的结果。
+选择参赛工作区的 Bot、比赛规则版本，点「开始对战」。裁判台调用
+`war_of_desert` 的官方 arena（`build → plan → run → rate`），对手为
+`算法赛/baseline@1.exe`、`baseline@2.exe`；选中的选手之间也会互相对局。
+有收卷副本时以收卷副本为准。成绩写入 `算法赛/比赛记录/<时间戳>/`
+（`成绩.md`、`成绩_加权总分.md`、`成绩.json`、`结果.jsonl`、`回放/`）。
 
-### 对战
+### 测试：编码 + 比赛
 
-与上面的计时/封存完全隔离，必须在这里手动触发。勾选任意几个工作区（不必全选）
-编排一场评测——选中的选手互相对局，并与基线对局，跑完出 BT 榜。有收卷副本时以收卷
-副本为准。工作区会先复制到 `war_of_desert/workspace/_contestants/<名字>/` 再编译，
-评测目录留 `工作区清单.json` 记录来源与源码 SHA-256。这里也有「初始化全部工作区与赛程」。
+「测试」页签包含上面两段的全部功能，但成绩只写入
+`算法赛/测试/测试成绩/<时间戳>/`，不会混进正式比赛记录。
 
 需要带 tkinter 的 Python。若 `python` 是精简发行版，用 `py -3 referee_desk.py` 或直接双击 bat。
 
@@ -183,7 +189,7 @@ go run ./cmd/arena rate -config tournament/formal_v19.json
 | 赛季配置 | [v1.9.1 正式配置（当前）](war_of_desert/tournament/formal_v19.json) · [v1.9.1 标定配置](war_of_desert/tournament/experiment_v19_700.json) · [v1.4 配置（历史）](war_of_desert/tournament/formal_v14.json) · [v1.3 配置（历史）](war_of_desert/tournament/formal_v13.json) · [v1.2 配置（历史）](war_of_desert/tournament/formal_v12.json) · [v1.1 配置（历史）](war_of_desert/tournament/formal_v11.json) · [v1.0 配置（历史）](war_of_desert/tournament/formal.json) |
 | 历季成绩摘要 | [赛季榜单](war_of_desert/LEADERBOARD.md) |
 | 赛事产物格式与复核 | [结果目录说明](war_of_desert/results/README.md) |
-| v1.9.1 规则与 714 局标定 | [Plan_V15.md](Dev/实验/Plan_V15.md) · [exp-v191-700](war_of_desert/results/exp-v191-700/README.md) |
+| v1.9.1 规则与 714 局标定 | [Plan_V15.md](Dev/实验/Plan_V15.md) · [exp-v191-700](war_of_desert/实验记录/规则实验/exp-v191-700/README.md) |
 | 引擎和 oracle 结构 | [引擎说明](war_of_desert/engine/README.md) |
 | 规则规格 | [Beta 规则计划](Dev/Plan_Beta.md) · [Oracle 纪律](Dev/ORACLE.md) |
 | 调研与来源 | [Dev 文档索引](Dev/Docs/README.md) |

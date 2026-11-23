@@ -1,6 +1,6 @@
 # /// script
 # 统计 v1.4 / v1.5 实验对局的关键指标。
-# 用法：py -3 -X utf8 scripts/exp_metrics.py results/exp-v15
+# 用法：py -3 -X utf8 scripts/exp_metrics.py 实验记录/规则实验/exp-v15
 # 读取 结果.jsonl + 回放/*.json；回放缺帧时自动跳过对应指标。
 # ///
 
@@ -22,7 +22,7 @@ def load_games(root):
 
 
 def main():
-    root = sys.argv[1] if len(sys.argv) > 1 else "results/exp-v15"
+    root = sys.argv[1] if len(sys.argv) > 1 else "实验记录/规则实验/exp-v15"
     games = load_games(root)
     if not games:
         print("没有回放：", root)

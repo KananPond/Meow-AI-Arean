@@ -3,7 +3,7 @@
 用法：
 
   cd war_of_desert
-  py -3 -X utf8 scripts/verify_seal.py results/formal-v14/封存记录.json
+  py -3 -X utf8 scripts/verify_seal.py "../算法赛/测试/历史赛季/formal-v14/封存记录.json"
 
 为什么需要单独一份：`bots/封存记录/<赛季>.json` 每次 `arena build` 都会被重写
 （源码哈希稳定，`binSha256` 随编译环境变），所以它不入库。赛季目录里的

@@ -2,19 +2,18 @@
 # -*- coding: utf-8 -*-
 """Desert Arena · 裁判台（GUI）。
 
-版本：v1.9.1
+版本：v1.10
 功能：三个页签，同一个窗口——
 
-  ① 工作区（默认页签）：一个选手、一条流水线——
-       选工作区 → ① 自检发卷 → ② 复制提示词 → ③ 启动计时 → ④ 计时 → ⑤ 到点自动封存。
+  ① 编码（默认页签）：一个选手、一条流水线——
+       选工作区 → 自检 → 发卷 → 复制/查看提示词 → 开始编码（可暂停/继续）
+       → 手动收卷封存（到 120 分钟自动收卷）。
      **这一段只管给参赛 AI 开一段写代码的时间窗，不跑任何对局。**
-     「发卷」是把选手包铺进 workspace，让 AI 有东西可写；「启动」是开始计时，
-     不是开打。提示词由人手动粘贴发送，裁判台不代发。
-     顶栏可选规则版本（v1.9 / v1.4）：自检按这个口径比对引擎与工作区 arena 副本，
-     且与「对战」页签共用同一个选择。
-  ② 赛季：对 war_of_desert/ 里冻结好的正式赛季跑 自检/编译/冻结/开赛/评分。
-  ③ 对战：把若干工作区临时编排成一场评测跑完出成绩。与计时流程完全隔离，
-     必须在这里手动触发，并且要二次确认。编排时可选规则版本（v1.4 / v1.9）。
+     提示词由人手动粘贴发送，裁判台不代发。
+  ② 比赛：选择参赛工作区的 Bot、比赛规则版本，调用 war_of_desert 的官方
+     arena（build/plan/run/rate）与 baseline@1/2 对局，成绩写入
+     `算法赛/比赛记录/<时间戳>/`。
+  ③ 测试：编码 + 比赛的全部功能，成绩只写入 `算法赛/测试/测试成绩/<时间戳>/`。
 
     python -X utf8 referee_desk.py        # 或双击 裁判台.bat
 
@@ -73,7 +72,12 @@ OK = "#5cb85c"
 BAD = "#e05252"
 
 # 版本号写进窗口标题：改完代码没重启，一眼就能看出来跑的是旧的。
-DESK_VERSION = "1.9"
+DESK_VERSION = "1.10"
+# 成绩归档：正式比赛与测试分开，互不覆盖。
+MATCH_RECORD_DIR = "比赛记录"
+TEST_RECORD_DIR = Path("测试") / "测试成绩"
+# 比赛根目录下这些子目录是归档区，不是参赛工作区。
+NON_CONTESTANT_DIRS = {"比赛记录", "测试"}
 
 
 class _StopCheck(Exception):
@@ -198,7 +202,7 @@ def discover_players(root: Path) -> list:
     for exe in sorted(root.glob("baseline@*.exe")):
         players.append({"name": exe.stem, "kind": "baseline", "path": exe.name})
     for d in sorted(root.iterdir()):
-        if d.is_dir() and not d.name.startswith("_"):
+        if d.is_dir() and not d.name.startswith("_") and d.name not in NON_CONTESTANT_DIRS:
             players.append({"name": d.name, "kind": "contestant", "path": d.name})
     return players
 
@@ -233,41 +237,39 @@ class RefereeDesk(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("Desert Arena · 裁判台 v%s" % DESK_VERSION)
-        self.geometry("1060x780")
-        self.minsize(940, 680)
+        self.geometry("1120x820")
+        self.minsize(980, 720)
         self.configure(bg=BG)
 
         self.status = tk.StringVar(value="就绪")
-        self.cfg_path = tk.StringVar()
         self.contest_root = tk.StringVar(value=str(DEFAULT_CONTEST_ROOT))
-        self.seed_count = tk.StringVar(value="1")
-        self.rules_mode = tk.StringVar(value="v1.9")
-        self.rules_summary = tk.StringVar()
 
-        self.info = {}
         self.proc = None
         self.log_q = queue.Queue()
         self.running = False
-        self.total_matches = 0
         self.workspaces = []  # [(path, label, src, note)]
         self.last_out = None
         # 每个工作区本次会话是否自检通过：str(路径) -> bool。
-        # 只用来在「启动比赛」时提醒一句，不作为硬门槛——硬门槛是选手包真的齐备。
+        # 只用来在「开始编码」时提醒一句，不作为硬门槛——硬门槛是选手包真的齐备。
         self.checked = {}
         self._auto_frozen = set()  # 已自动封存过的路径，避免重复写盘
         self._emit = self.log_q.put
+        # 页签各自一套控件与规则选择：编码 / 比赛 / 测试互不干扰。
+        self.code_uis = {}    # scope -> 编码流水线控件
+        self.battle_uis = {}  # scope -> 比赛控件
+        self.rules_vars = {}  # scope -> 规则版本 StringVar
+        self.last_record = {}  # scope -> 最近一次成绩目录
         # 一开始就把 go 定下来：双击 bat 启动的进程 PATH 常常和终端不一样，
         # 等真去编译时才发现就没法解释「为什么终端能过、界面不能过」。
         self.go_exe, self.go_from = find_go()
         # 无头模式（--scan / --init / --selfcheck / --smoke-contest）不往 Tk 里投回调。
         # 这些模式没有 mainloop，任何 self.after() 都会报 "main thread is not in
-        # main loop"，所以必须在建界面前就认出来，让 check_seal 之类直接跳过。
+        # main loop"，所以必须在建界面前就认出来。
         self.headless = any(a in sys.argv for a in
                             ("--smoke-contest", "--scan", "--init", "--selfcheck"))
 
         self._build_styles()
         self._build_ui()
-        self.reload_configs()
         self.scan_workspaces()
         if not self.headless:
             # 开局就把版本和 go 的位置写进日志：以后看到「编译失败但没这行」，
@@ -301,15 +303,17 @@ class RefereeDesk(tk.Tk):
         nb = ttk.Notebook(self)
         nb.pack(fill="x", padx=14, pady=(12, 4))
         self.nb = nb
-        # 工作区排第一：日常开赛走的就是这条五步流水线，打开即见。
-        nb.add(self._build_contest_tab(nb), text="  工作区  ")
-        nb.add(self._build_season_tab(nb), text="  赛季  ")
-        nb.add(self._build_battle_tab(nb), text="  对战  ")
+        # 三个页签：编码（只开时间窗）/ 比赛（正式对局）/ 测试（两者都有，成绩单独归档）。
+        nb.add(self._build_code_tab(nb), text="  编码  ")
+        nb.add(self._build_match_tab(nb), text="  比赛  ")
+        nb.add(self._build_test_tab(nb), text="  测试  ")
 
         prog = tk.Frame(self, bg=BG)
         prog.pack(fill="x", padx=14, pady=(8, 0))
         self.pbar = ttk.Progressbar(prog, mode="determinate", maximum=100)
         self.pbar.pack(side="left", fill="x", expand=True)
+        self.stop_btn = ttk.Button(prog, text="中止", command=self.stop, state="disabled")
+        self.stop_btn.pack(side="right", padx=(8, 0))
         tk.Label(prog, textvariable=self.status, bg=BG, fg=MUTED, width=30,
                  anchor="e").pack(side="right")
 
@@ -323,120 +327,91 @@ class RefereeDesk(tk.Tk):
         self.log.tag_config("dim", foreground=MUTED)
         self.log.configure(state="disabled")
 
-    def _build_season_tab(self, parent):
+    def _build_code_tab(self, parent):
         tab = tk.Frame(parent, bg=BG)
-        head = tk.Frame(tab, bg=BG)
-        head.pack(fill="x", padx=12, pady=(10, 6))
-        tk.Label(head, text="赛季配置", bg=BG, fg=MUTED).pack(side="left")
-        self.cmb = ttk.Combobox(head, textvariable=self.cfg_path, width=32, state="readonly")
-        self.cmb.pack(side="left", padx=8)
-        self.cmb.bind("<<ComboboxSelected>>", lambda _e: self.on_config_change())
-        ttk.Button(head, text="刷新", command=self.reload_configs).pack(side="left")
-        self.seal_lbl = tk.Label(head, text="封存 —", bg=BG, fg=MUTED)
-        self.seal_lbl.pack(side="right")
-
-        info = tk.Frame(tab, bg=PANEL)
-        info.pack(fill="x", padx=12, pady=(0, 8))
-        self.info_labels = {}
-        for col, key in enumerate(("赛季", "规则", "引擎", "选手", "场次")):
-            tk.Label(info, text=key, bg=PANEL, fg=MUTED, font=(None, 9)).grid(
-                row=0, column=col * 2, sticky="w", padx=(12, 4), pady=(8, 0))
-            v = tk.Label(info, text="—", bg=PANEL, fg=FG, font=(None, 10, "bold"))
-            v.grid(row=1, column=col * 2, sticky="w", padx=(12, 4), pady=(0, 8))
-            self.info_labels[key] = v
-            info.grid_columnconfigure(col * 2, weight=1)
-
-        bar = tk.Frame(tab, bg=BG)
-        bar.pack(fill="x", padx=12, pady=(0, 10))
-        self.season_btns = {}
-        for text, sub, style in (("环境自检", "selftest", "TButton"),
-                                 ("编译封存", "build", "TButton"),
-                                 ("冻结赛程", "plan", "TButton"),
-                                 ("开赛", "run", "Go.TButton"),
-                                 ("评分", "rate", "TButton")):
-            b = ttk.Button(bar, text=text, command=lambda s=sub: self.run_season(s), style=style)
-            b.pack(side="left", padx=(0, 8))
-            self.season_btns[text] = b
-        self.stop_btn = ttk.Button(bar, text="中止", command=self.stop, state="disabled")
-        self.stop_btn.pack(side="left", padx=(16, 0))
-        r = tk.Frame(bar, bg=BG)
-        r.pack(side="right")
-        ttk.Button(r, text="成绩目录", command=self.open_results).pack(side="right")
-        ttk.Button(r, text="回放查看器", command=self.open_viewer).pack(side="right", padx=(0, 8))
+        self._build_code_section(tab, "code")
         return tab
 
-    def _build_contest_tab(self, parent):
-        """一个选手、一条流水线。左边选目录，右边五步，按钮按状态开合。
-
-        这里的五个步骤和页面上的一二三五是同一套编号：选工作区、自检、提示词、
-        启动计时、封存。中间不允许夹带任何对局——对战在「对战」页签，独立触发。
-        """
+    def _build_match_tab(self, parent):
         tab = tk.Frame(parent, bg=BG)
+        self._build_battle_section(tab, "official")
+        return tab
 
-        row = tk.Frame(tab, bg=BG)
+    def _build_test_tab(self, parent):
+        """测试 = 编码 + 比赛。两段共用同一批工作区，成绩只写测试目录。"""
+        tab = tk.Frame(parent, bg=BG)
+        nb = ttk.Notebook(tab)
+        nb.pack(fill="both", expand=True, padx=2, pady=2)
+        code = tk.Frame(nb, bg=BG)
+        battle = tk.Frame(nb, bg=BG)
+        nb.add(code, text="  测试 · 编码  ")
+        nb.add(battle, text="  测试 · 比赛  ")
+        self._build_code_section(code, "test")
+        self._build_battle_section(battle, "test")
+        return tab
+
+    def _build_code_section(self, parent, scope):
+        """选工作区 → 自检 / 发卷 / 提示词 / 开始编码 / 收卷封存。"""
+        ui = {"scope": scope, "steps": {}, "btns": {},
+              "summary_var": tk.StringVar()}
+        self.code_uis[scope] = ui
+        self.rules_vars[scope] = tk.StringVar(value="v1.9")
+
+        row = tk.Frame(parent, bg=BG)
         row.pack(fill="x", padx=12, pady=(10, 4))
         tk.Label(row, text="比赛根目录", bg=BG, fg=MUTED).pack(side="left")
         tk.Entry(row, textvariable=self.contest_root, bg=PANEL, fg=FG,
                  insertbackground=FG, relief="flat", width=40).pack(side="left", padx=8, ipady=3)
         ttk.Button(row, text="浏览", command=self.browse_root).pack(side="left")
         ttk.Button(row, text="扫描", command=self.scan_workspaces).pack(side="left", padx=8)
-        # 规则版本：发卷/自检按这个口径检查工作区，切到「对战」页签时也沿用同一个选择。
-        tk.Label(row, text="规则", bg=BG, fg=MUTED).pack(side="left", padx=(8, 4))
-        ws_rules_cb = ttk.Combobox(row, textvariable=self.rules_mode,
-                                   values=("v1.9", "v1.4"), width=6, state="readonly")
-        ws_rules_cb.pack(side="left")
-        ws_rules_cb.bind("<<ComboboxSelected>>", lambda _e: self._on_rules_change())
+        tk.Label(row, text="比赛规则版本", bg=BG, fg=MUTED).pack(side="left", padx=(8, 4))
+        rules_cb = ttk.Combobox(row, textvariable=self.rules_vars[scope],
+                                values=("v1.9", "v1.4"), width=6, state="readonly")
+        rules_cb.pack(side="left")
+        rules_cb.bind("<<ComboboxSelected>>", lambda _e, s=scope: self._on_rules_change(s))
 
-        rules_bar = tk.Frame(tab, bg=BG)
+        rules_bar = tk.Frame(parent, bg=BG)
         rules_bar.pack(fill="x", padx=12, pady=(0, 4))
         tk.Label(rules_bar, text="当前规则：", bg=BG, fg=MUTED).pack(side="left", anchor="n")
-        tk.Label(rules_bar, textvariable=self.rules_summary, bg=BG, fg=FG,
-                 font=(None, 9), justify="left", wraplength=860).pack(
+        tk.Label(rules_bar, textvariable=ui["summary_var"], bg=BG, fg=FG,
+                 font=(None, 9), justify="left", wraplength=760).pack(
             side="left", anchor="w")
 
-        body = tk.Frame(tab, bg=BG)
+        body = tk.Frame(parent, bg=BG)
         body.pack(fill="both", expand=True, padx=12, pady=(4, 10))
         body.grid_rowconfigure(0, weight=1)
         body.grid_columnconfigure(0, weight=1)
+        # 右列固定最小宽度：状态行初始只有「—」，按自然宽度会让按钮挤到窗口外。
+        body.grid_columnconfigure(1, weight=0, minsize=370)
 
-        # 左：工作区列表（单选）
         left = tk.Frame(body, bg=BG)
         left.grid(row=0, column=0, sticky="nsew", padx=(0, 12))
         tk.Label(left, text="选择工作区（目录名形如 RTS算法赛@<模型名>）",
                  bg=BG, fg=MUTED, font=(None, 9)).pack(anchor="w")
         wrap = tk.Frame(left, bg=BG)
         wrap.pack(fill="both", expand=True, pady=(4, 0))
-        self.lst = tk.Listbox(wrap, selectmode="browse", height=6, bg=PANEL, fg=FG,
-                              selectbackground="#3a5f8a", relief="flat",
-                              font=("Consolas", 10), activestyle="none",
-                              exportselection=False)
-        self.lst.pack(side="left", fill="both", expand=True)
-        sb = tk.Scrollbar(wrap, command=self.lst.yview, bg=PANEL)
+        lst = tk.Listbox(wrap, selectmode="browse", height=6, bg=PANEL, fg=FG,
+                         selectbackground="#3a5f8a", relief="flat",
+                         font=("Consolas", 10), activestyle="none",
+                         exportselection=False)
+        lst.pack(side="left", fill="both", expand=True)
+        sb = tk.Scrollbar(wrap, command=lst.yview, bg=PANEL)
         sb.pack(side="left", fill="y")
-        self.lst.configure(yscrollcommand=sb.set)
-        self.lst.bind("<<ListboxSelect>>", self._on_select)
-        # 单击只负责选中。这里绑过双击开跑，代价太大：双击是浏览器式肌肉记忆，
-        # 手快点两下就会把一场对局真跑起来，还会改写封存记录。
+        lst.configure(yscrollcommand=sb.set)
+        lst.bind("<<ListboxSelect>>", lambda _e, s=scope: self._on_code_select(s))
+        ui["lst"] = lst
 
-        # 右：五步。宽度由内容自然撑开，不硬设——子控件是 pack 管理的，
-        # 对 grid 调 propagate(False) 管不到它们，反而会让说明文字按更宽的字宽
-        # 排版、在窄面板里被横向截掉。
         right = tk.Frame(body, bg=BG)
         right.grid(row=0, column=1, sticky="nsew")
-        self._build_steps(right)
+        self._build_code_steps(right, ui)
 
-        tk.Label(tab, text="这一段只负责「给参赛 AI 开一段写代码的时间窗」：发卷是把包铺好，"
-                           "启动是开始计时，都不跑对局。提示词要你自己复制、自己发送。"
-                           "规则版本与「对战」页签共用：v1.4 以 RULES.md 为准，v1.9 另看 RULES_V15.md。",
+        tk.Label(parent, text="这一段只负责「给参赛 AI 开一段写代码的时间窗」：发卷把包铺好，"
+                              "开始编码只是计时，都不跑对局。提示词要你自己复制、自己发送。",
                  bg=BG, fg=MUTED, font=(None, 9)).pack(anchor="w", padx=12, pady=(0, 8))
-        return tab
+        self._on_rules_change(scope)
 
-    def _step_block(self, parent, key, title):
-        """一步 = 标题与按钮同排 + 一行状态。状态行由 _refresh_steps 统一刷新。
-
-        标题独占一行的话，五步就要吃掉 400 多像素，把下面的日志挤没了，
-        所以按钮贴右边、说明压到下面一行。
-        """
+    def _step_block(self, parent, ui, key, title):
+        """一步 = 标题与按钮同排 + 一行状态。状态行由 _refresh_code_ui 统一刷新。"""
         box = tk.Frame(parent, bg=PANEL)
         box.pack(fill="x", pady=(0, 4))
         head = tk.Frame(box, bg=PANEL)
@@ -448,173 +423,108 @@ class RefereeDesk(tk.Tk):
         lbl = tk.Label(box, text="—", bg=PANEL, fg=MUTED, font=(None, 8),
                        anchor="w", justify="left", wraplength=330)
         lbl.pack(fill="x", padx=9, pady=(0, 6))
-        self.steps[key] = {"btns": btns, "lbl": lbl}
+        ui["steps"][key] = {"btns": btns, "lbl": lbl}
         return btns
 
-    def _build_steps(self, parent):
-        self.steps = {}
+    def _build_code_steps(self, parent, ui):
+        scope = ui["scope"]
+        b = self._step_block(parent, ui, "chk", "① 工作区自检")
+        ui["btns"]["chk"] = ttk.Button(b, text="自检", width=8,
+                                       command=lambda: self.selfcheck(scope))
+        ui["btns"]["chk"].pack(side="left")
 
-        # 同一组里的按钮给同样的 width：ttk 默认按文字宽度自适应，
-        # 「复制/查看」会一宽一窄，「暂停/恢复」也一样，看着像没对齐。
-        b = self._step_block(parent, "chk", "① 工作区自检")
-        self.chk_btn = ttk.Button(b, text="自检并准备选手包", width=16,
-                                  command=self.selfcheck)
-        self.chk_btn.pack(side="left")
+        b = self._step_block(parent, ui, "issue", "② 发卷")
+        ui["btns"]["issue"] = ttk.Button(b, text="发卷", width=8,
+                                         command=lambda: self.issue_package(scope))
+        ui["btns"]["issue"].pack(side="left")
 
-        b = self._step_block(parent, "prompt", "② 提示词")
-        self.copy_btn = ttk.Button(b, text="复制", width=5, command=self.copy_prompt)
-        self.copy_btn.pack(side="left")
-        self.view_btn = ttk.Button(b, text="查看", width=5, command=self.view_prompt)
-        self.view_btn.pack(side="left", padx=(4, 0))
+        b = self._step_block(parent, ui, "prompt", "③ 提示词")
+        ui["btns"]["copy"] = ttk.Button(b, text="复制", width=5,
+                                        command=lambda: self.copy_prompt(scope))
+        ui["btns"]["copy"].pack(side="left")
+        ui["btns"]["view"] = ttk.Button(b, text="查看", width=5,
+                                        command=lambda: self.view_prompt(scope))
+        ui["btns"]["view"].pack(side="left", padx=(4, 0))
 
-        b = self._step_block(parent, "start", "③ 启动比赛")
-        self.start_btn = ttk.Button(b, text="启动", width=7, style="Go.TButton",
-                                    command=self.start_contest_clock)
-        self.start_btn.pack(side="left")
+        b = self._step_block(parent, ui, "start", "④ 开始编码")
+        ui["btns"]["start"] = ttk.Button(b, text="开始编码", width=9, style="Go.TButton",
+                                         command=lambda: self.start_contest_clock(scope))
+        ui["btns"]["start"].pack(side="left")
+        ui["btns"]["pause"] = ttk.Button(b, text="暂停", width=5,
+                                         command=lambda: self.pause_timer(scope))
+        ui["btns"]["pause"].pack(side="left", padx=(4, 0))
+        ui["btns"]["resume"] = ttk.Button(b, text="继续", width=5,
+                                          command=lambda: self.resume_timer(scope))
+        ui["btns"]["resume"].pack(side="left", padx=(4, 0))
 
-        b = self._step_block(parent, "clock", "④ 计时")
-        self.pause_btn = ttk.Button(b, text="暂停", width=5, command=self.pause_timer)
-        self.pause_btn.pack(side="left")
-        self.resume_btn = ttk.Button(b, text="恢复", width=5, command=self.resume_timer)
-        self.resume_btn.pack(side="left", padx=(4, 0))
+        b = self._step_block(parent, ui, "freeze", "⑤ 收卷封存")
+        ui["btns"]["freeze"] = ttk.Button(b, text="立即收卷", width=9,
+                                          command=lambda: self.freeze_timer(scope))
+        ui["btns"]["freeze"].pack(side="left")
 
-        b = self._step_block(parent, "freeze", "⑤ 封存")
-        self.freeze_btn = ttk.Button(b, text="立即封存", width=8, command=self.freeze_timer)
-        self.freeze_btn.pack(side="left")
+    def _build_battle_section(self, parent, scope):
+        """选择参赛 Bot、规则版本，调用官方 arena 对局并归档成绩。"""
+        ui = {"scope": scope, "summary_var": tk.StringVar(),
+              "seed_var": tk.StringVar(value="1")}
+        self.battle_uis[scope] = ui
+        if scope not in self.rules_vars:
+            self.rules_vars[scope] = tk.StringVar(value="v1.9")
 
-    def _build_battle_tab(self, parent):
-        """对战：和 ①②③④⑤ 的计时流程完全隔离，必须在这里手动点、二次确认。"""
-        tab = tk.Frame(parent, bg=BG)
+        dest = "算法赛/比赛记录" if scope == "official" else "算法赛/测试/测试成绩"
+        row = tk.Frame(parent, bg=BG)
+        row.pack(fill="x", padx=12, pady=(10, 0))
+        tk.Label(row, text="比赛根目录", bg=BG, fg=MUTED).pack(side="left")
+        tk.Entry(row, textvariable=self.contest_root, bg=PANEL, fg=FG,
+                 insertbackground=FG, relief="flat", width=40).pack(side="left", padx=8, ipady=3)
+        ttk.Button(row, text="浏览", command=self.browse_root).pack(side="left")
+        ttk.Button(row, text="扫描", command=self.scan_workspaces).pack(side="left", padx=8)
 
-        tk.Label(tab, text="把工作区临时编排成一场评测：跟基线对打、出 BT 榜。"
-                           "与「工作区」页签的计时/封存互不相干，不会自动开始。",
+        tk.Label(parent, text="选择参赛工作区的 Bot：与 baseline@1 / baseline@2 对局，"
+                              "按 seed 换边，跑完出 BT 成绩。成绩写入 %s/。" % dest,
                  bg=BG, fg=MUTED, font=(None, 9), justify="left").pack(
             anchor="w", padx=12, pady=(12, 6))
 
-        wrap = tk.Frame(tab, bg=BG)
+        wrap = tk.Frame(parent, bg=BG)
         wrap.pack(fill="both", expand=True, padx=12)
-        self.battle_lst = tk.Listbox(wrap, selectmode="extended", height=8, bg=PANEL, fg=FG,
-                                     selectbackground="#3a5f8a", relief="flat",
-                                     font=("Consolas", 10), activestyle="none",
-                                     exportselection=False)
-        self.battle_lst.pack(side="left", fill="both", expand=True)
-        sb = tk.Scrollbar(wrap, command=self.battle_lst.yview, bg=PANEL)
+        lst = tk.Listbox(wrap, selectmode="extended", height=8, bg=PANEL, fg=FG,
+                         selectbackground="#3a5f8a", relief="flat",
+                         font=("Consolas", 10), activestyle="none",
+                         exportselection=False)
+        lst.pack(side="left", fill="both", expand=True)
+        sb = tk.Scrollbar(wrap, command=lst.yview, bg=PANEL)
         sb.pack(side="left", fill="y")
-        self.battle_lst.configure(yscrollcommand=sb.set)
-        self.battle_lst.bind("<<ListboxSelect>>", self._on_battle_select)
-        self.battle_lst.bind("<Double-Button-1>", lambda _e: "break")
+        lst.configure(yscrollcommand=sb.set)
+        lst.bind("<<ListboxSelect>>", lambda _e, s=scope: self._on_battle_select(s))
+        lst.bind("<Double-Button-1>", lambda _e: "break")
+        ui["lst"] = lst
 
-        bar = tk.Frame(tab, bg=BG)
+        bar = tk.Frame(parent, bg=BG)
         bar.pack(fill="x", padx=12, pady=(8, 10))
-        ttk.Button(bar, text="全选", command=self.select_all).pack(side="left")
-        ttk.Button(bar, text="清空", command=self.select_none).pack(side="left", padx=6)
+        ttk.Button(bar, text="全选", command=lambda: self.select_all(scope)).pack(side="left")
+        ttk.Button(bar, text="清空", command=lambda: self.select_none(scope)).pack(
+            side="left", padx=6)
         tk.Label(bar, text="seed 数", bg=BG, fg=MUTED).pack(side="left", padx=(16, 4))
-        ttk.Combobox(bar, textvariable=self.seed_count, values=("1", "2", "3"),
+        ttk.Combobox(bar, textvariable=ui["seed_var"], values=("1", "2", "3"),
                      width=4, state="readonly").pack(side="left")
-        tk.Label(bar, text="规则", bg=BG, fg=MUTED).pack(side="left", padx=(16, 4))
-        rules_cb = ttk.Combobox(bar, textvariable=self.rules_mode,
-                                values=("v1.9", "v1.4"),
-                                width=6, state="readonly")
+        tk.Label(bar, text="比赛规则版本", bg=BG, fg=MUTED).pack(side="left", padx=(16, 4))
+        rules_cb = ttk.Combobox(bar, textvariable=self.rules_vars[scope],
+                                values=("v1.9", "v1.4"), width=6, state="readonly")
         rules_cb.pack(side="left")
-        rules_cb.bind("<<ComboboxSelected>>", lambda _e: self._on_rules_change())
-        self.eval_btn = ttk.Button(bar, text="评测选中（0）", style="Go.TButton",
-                                   command=self.run_contest)
-        self.eval_btn.pack(side="left", padx=(16, 0))
-        ttk.Button(bar, text="打开评测结果", command=self.open_contest_results).pack(
-            side="left", padx=8)
+        rules_cb.bind("<<ComboboxSelected>>", lambda _e, s=scope: self._on_rules_change(s))
+        ui["run_btn"] = ttk.Button(bar, text="开始对战（0）", style="Go.TButton",
+                                   command=lambda: self.run_contest(scope))
+        ui["run_btn"].pack(side="left", padx=(16, 0))
+        ui["view_btn"] = ttk.Button(bar, text="查看成绩",
+                                    command=lambda: self.open_contest_results(scope))
+        ui["view_btn"].pack(side="left", padx=8)
 
-        rules_bar = tk.Frame(tab, bg=BG)
+        rules_bar = tk.Frame(parent, bg=BG)
         rules_bar.pack(fill="x", padx=12, pady=(0, 6))
         tk.Label(rules_bar, text="当前规则：", bg=BG, fg=MUTED).pack(side="left", anchor="n")
-        tk.Label(rules_bar, textvariable=self.rules_summary, bg=BG, fg=FG,
+        tk.Label(rules_bar, textvariable=ui["summary_var"], bg=BG, fg=FG,
                  font=(None, 9), justify="left", wraplength=980).pack(
             side="left", anchor="w")
-        self._on_rules_change()
-
-        bar2 = tk.Frame(tab, bg=BG)
-        bar2.pack(fill="x", padx=12, pady=(0, 10))
-        tk.Label(bar2, text="赛前准备", bg=BG, fg=MUTED).pack(side="left")
-        ttk.Button(bar2, text="初始化全部工作区与赛程", command=self.init_contest).pack(
-            side="left", padx=8)
-        tk.Label(bar2, text="（给还没发卷的目录铺包，并按当前报名者冻结 算法赛/赛程.json）",
-                 bg=BG, fg=MUTED, font=(None, 9)).pack(side="left")
-        return tab
-
-
-    # ---------------- 赛季 ----------------
-    def reload_configs(self):
-        items = []
-        tdir = ENGINE / "tournament"
-        if tdir.is_dir():
-            items = sorted(f.name for f in tdir.glob("*.json") if not f.name.startswith("_"))
-        self.cmb["values"] = items
-        if items:
-            cur = self.cfg_path.get()
-            self.cfg_path.set(cur if cur in items else items[-1])
-            self.on_config_change()
-
-    def on_config_change(self):
-        path = ENGINE / "tournament" / self.cfg_path.get()
-        try:
-            cfg = json.loads(path.read_text(encoding="utf-8"))
-        except Exception as e:  # noqa: BLE001
-            self._log("读配置失败：%s\n" % e, "err")
-            return
-        self.info["cfg"] = cfg
-        self.info_labels["赛季"].config(text=cfg.get("season", "—"))
-        self.info_labels["规则"].config(text=cfg.get("version", "—"))
-        self.info_labels["引擎"].config(text=cfg.get("engine", {}).get("kind", "—"))
-        self.info_labels["选手"].config(text=str(len(cfg.get("entries", []))))
-        out = ENGINE / cfg.get("output", "").replace("/", os.sep)
-        self.total_matches = 0
-        plan = out / "赛程.json"
-        if plan.is_file():
-            try:
-                self.total_matches = len(json.loads(plan.read_text(encoding="utf-8")).get("matches", []))
-            except Exception:  # noqa: BLE001
-                pass
-        self.info_labels["场次"].config(text=str(self.total_matches) if self.total_matches else "未冻结")
-        self.pbar["value"] = 0
-        self.check_seal()
-
-    def check_seal(self):
-        if getattr(self, "headless", False):
-            return
-        self.seal_lbl.config(text="封存 检查中…", fg=MUTED)
-        cfg = self.cfg_path.get()
-        if not cfg:
-            return
-
-        def work():
-            code, out = self._exec(["go", "run", "./cmd/arena", "seal",
-                                    "-config", "tournament/" + cfg])
-
-            def apply():
-                if code == 0:
-                    self.seal_lbl.config(text="封存 ✓", fg=OK)
-                else:
-                    self.seal_lbl.config(text="封存 ✗", fg=BAD)
-                    self._log(out.strip() + "\n", "err")
-
-            self.after(0, apply)
-
-        threading.Thread(target=work, daemon=True).start()
-
-    def run_season(self, sub):
-        if self.running:
-            return
-        cfg = self.cfg_path.get()
-        if not cfg:
-            messagebox.showwarning("裁判台", "先选一个赛季配置")
-            return
-        if sub == "run":
-            if self.total_matches == 0:
-                if messagebox.askokcancel("未冻结赛程", "还没有 赛程.json。\n先跑「冻结赛程」？"):
-                    self.run_season("plan")
-                return
-            if not messagebox.askokcancel("开赛", "按冻结赛程跑完所有对局，确认开赛？"):
-                return
-        self._start([["go", "run", "./cmd/arena", sub, "-config", "tournament/" + cfg]])
+        self._on_rules_change(scope)
 
     # ---------------- 工作区 ----------------
     def browse_root(self):
@@ -642,18 +552,24 @@ class RefereeDesk(tk.Tk):
             d.name, note, srv, len(go_files(d))), True
 
     def scan_workspaces(self, keep=None):
-        """扫描比赛根目录，同时刷新工作区列表和对战列表。
+        """扫描比赛根目录，刷新所有页签的工作区列表。
 
-        keep 指定要重新选中的目录名；不传就沿用当前选中项。这样自动封存
+        keep 可以是目录名（所有页签沿用）或 {scope: 目录名}。这样自动封存
         触发的刷新不会把用户正在看的那一行弄丢。
         """
         if keep is None:
-            cur = self.selected_one()
-            keep = cur[1] if cur else None
+            keep = {}
+            for scope in self.code_uis:
+                cur = self.selected_one(scope)
+                if cur:
+                    keep[scope] = cur[1]
+        elif isinstance(keep, str):
+            keep = {scope: keep for scope in self.code_uis}
         root = Path(self.contest_root.get().strip() or DEFAULT_CONTEST_ROOT)
-        self.lst.delete(0, "end")
-        if hasattr(self, "battle_lst"):
-            self.battle_lst.delete(0, "end")
+        for ui in self.code_uis.values():
+            ui["lst"].delete(0, "end")
+        for ui in self.battle_uis.values():
+            ui["lst"].delete(0, "end")
         self.workspaces = []
         if not root.is_dir():
             self._log("比赛根目录不存在：%s\n" % root, "err")
@@ -661,96 +577,78 @@ class RefereeDesk(tk.Tk):
             return
         self.root = root
         dirs = [root] if detect_source(root)[0] else [
-            d for d in sorted(root.iterdir()) if d.is_dir() and not d.name.startswith("_")]
+            d for d in sorted(root.iterdir())
+            if d.is_dir() and not d.name.startswith("_")
+            and d.name not in NON_CONTESTANT_DIRS]
         for d in dirs:
             text, ok = self._row_text(d)
-            self.lst.insert("end", text)
-            if hasattr(self, "battle_lst"):
-                self.battle_lst.insert("end", text)
-            if not ok:
-                self.lst.itemconfig("end", foreground="#8a8f98")
-                if hasattr(self, "battle_lst"):
-                    self.battle_lst.itemconfig("end", foreground="#8a8f98")
+            for ui in self.code_uis.values():
+                ui["lst"].insert("end", text)
+                if not ok:
+                    ui["lst"].itemconfig("end", foreground="#8a8f98")
+            for ui in self.battle_uis.values():
+                ui["lst"].insert("end", text)
+                if not ok:
+                    ui["lst"].itemconfig("end", foreground="#8a8f98")
             src, note = detect_source(d)
             self.workspaces.append((d, d.name, src, note))
         ok_n = sum(1 for w in self.workspaces if w[2])
         self.status.set("扫描到 %d 个，可用 %d 个" % (len(self.workspaces), ok_n))
 
-        if keep:
-            for i, w in enumerate(self.workspaces):
-                if w[1] == keep:
-                    self.lst.selection_set(i)
-                    self.lst.see(i)
-                    break
-        self._on_select()
-        self._on_battle_select()
+        for scope, ui in self.code_uis.items():
+            name = keep.get(scope)
+            if name:
+                for i, w in enumerate(self.workspaces):
+                    if w[1] == name:
+                        ui["lst"].selection_set(i)
+                        ui["lst"].see(i)
+                        break
+            self._refresh_code_ui(scope)
+        for scope in self.battle_uis:
+            self._on_battle_select(scope)
 
-    def _on_select(self, _evt=None):
-        """工作区页签是单选：选谁就对着谁走 ①~⑤。"""
-        if hasattr(self, "steps"):
-            self._refresh_steps()
+    def _on_code_select(self, scope, _evt=None):
+        """工作区列表是单选：选谁就对着谁走 ①~⑤。"""
+        self._refresh_code_ui(scope)
 
-    def _on_battle_select(self, _evt=None):
-        n = len(self.picked())
-        if hasattr(self, "eval_btn"):
-            self.eval_btn.configure(text="评测选中（%d）" % n)
+    def _on_battle_select(self, scope, _evt=None):
+        n = len(self.picked(scope))
+        ui = self.battle_uis.get(scope)
+        if ui and ui.get("run_btn"):
+            ui["run_btn"].configure(text="开始对战（%d）" % n)
 
-    def select_all(self):
+    def select_all(self, scope):
+        ui = self.battle_uis.get(scope)
+        if not ui:
+            return
         for i, w in enumerate(self.workspaces):
             if w[2]:
-                self.battle_lst.selection_set(i)
+                ui["lst"].selection_set(i)
 
-    def select_none(self):
-        self.battle_lst.selection_clear(0, "end")
-        self._on_battle_select()
+    def select_none(self, scope):
+        ui = self.battle_uis.get(scope)
+        if not ui:
+            return
+        ui["lst"].selection_clear(0, "end")
+        self._on_battle_select(scope)
 
-    def selected_one(self):
-        """当前选中的单个工作区（允许还是空的——发卷就是给空目录用的）。"""
-        idx = self.lst.curselection()
+    def selected_one(self, scope):
+        """该页签当前选中的单个工作区（允许还是空的——发卷就是给空目录用的）。"""
+        ui = self.code_uis.get(scope)
+        if not ui:
+            return None
+        idx = ui["lst"].curselection()
         if len(idx) != 1:
             return None
         i = idx[0]
         return self.workspaces[i] if i < len(self.workspaces) else None
 
-    def _need_one(self, action: str):
-        w = self.selected_one()
+    def _need_one(self, scope, action: str):
+        w = self.selected_one(scope)
         if w is None:
             messagebox.showwarning("裁判台", "%s：先在左边列表里选中一个工作区" % action)
             return None
         return w
-
-    def init_contest(self):
-        """初始化工作区（发卷，不开表）+ 冻结赛程。"""
-        if self.running:
-            return
-        root = Path(self.contest_root.get().strip() or DEFAULT_CONTEST_ROOT)
-        if not root.is_dir():
-            messagebox.showwarning("裁判台", "比赛根目录不存在：%s" % root)
-            return
-        seeds = int(self.seed_count.get() or "1")
-        if not messagebox.askokcancel(
-                "初始化", "对 %s 执行：\n"
-                "  · 给还没有选手包的工作区发卷（不开表）\n"
-                "  · 冻结赛程（%d 个 seed）\n确认？" % (root, seeds)):
-            return
-        done = []
-        for d in sorted(root.iterdir()):
-            if not d.is_dir() or d.name.startswith("_"):
-                continue
-            if (d / "workspace" / "clock.py").is_file():
-                continue
-            try:
-                service.issue(d)
-                done.append(d.name)
-            except Exception as e:  # noqa: BLE001
-                self._log("发卷失败 %s：%s\n" % (d.name, e), "err")
-        plan = build_schedule(root, seeds)
-        (root / "赛程.json").write_text(
-            json.dumps(plan, ensure_ascii=False, indent=2), encoding="utf-8")
-        self._log("发卷：%s\n" % ("、".join(done) if done else "全部已有选手包"), "dim")
-        self._log("赛程已冻结：%d 名报名者，%d 场对阵 → %s\n"
-                  % (len(plan["players"]), len(plan["matches"]), root / "赛程.json"), "ok")
-        self.scan_workspaces()
 
     # ---------------- ① 工作区自检 ----------------
     def _dump_diag(self, ws: Path, shots: list) -> Path:
@@ -792,7 +690,7 @@ class RefereeDesk(tk.Tk):
             return APP_DIR
         return p
 
-    def _check_workspace(self, ws: Path):
+    def _check_workspace(self, ws: Path, mode: str = "v1.9"):
         """自检的实际动作：发卷 + 查结构 + 验 go + 两处编译。
 
         抽成独立方法，是因为 GUI 和 `--selfcheck` 命令行要跑同一套判定。
@@ -842,7 +740,6 @@ class RefereeDesk(tk.Tk):
 
             # 规则版本：以引擎源码为准，再比对工作区 arena 副本。
             # 副本是刚发卷刷新过的，若仍不一致，说明本地调试环境和评测不是同一套规则。
-            mode = str(self.rules_mode.get())
             want = self._sim_rule_version(ENGINE / "internal" / "sim", mode)
             have = self._sim_rule_version(
                 ws / "workspace" / "arena" / "internal" / "sim", mode)
@@ -901,25 +798,26 @@ class RefereeDesk(tk.Tk):
             lines.append(("诊断：完整证据已写入 %s" % p, "dim"))
         return lines, ok
 
-    def selfcheck(self):
+    def selfcheck(self, scope):
         """发卷 + 查结构 + 编译。
 
-        这是「启动计时」之前唯一的硬门槛。选手包缺件的话，AI 那边一上来就是断的：
+        这是「开始编码」之前唯一的硬门槛。选手包缺件的话，AI 那边一上来就是断的：
         没 prompt.md 不知道要干什么，没 arena/ 本地跑不起来，没 submission/ 无处可写。
         只做检查，不跑任何对局。
         """
         if self.running:
             return
-        w = self._need_one("工作区自检")
+        w = self._need_one(scope, "工作区自检")
         if not w:
             return
         ws, label = w[0], w[1]
+        mode = self.rules_vars[scope].get()
         self._set_running(True)
         self.status.set("自检中…")
-        self._log("— 工作区自检：%s —\n" % label, "dim")
+        self._log("— 工作区自检：%s（规则 %s）—\n" % (label, mode), "dim")
 
         def work():
-            lines, ok = self._check_workspace(ws)
+            lines, ok = self._check_workspace(ws, mode)
 
             def apply():
                 for text, tag in lines:
@@ -935,7 +833,28 @@ class RefereeDesk(tk.Tk):
 
         threading.Thread(target=work, daemon=True).start()
 
-    # ---------------- ② 提示词（人手动发，裁判台不代发） ----------------
+    # ---------------- ② 发卷 ----------------
+    def issue_package(self, scope):
+        """只发卷：把模板工作区铺进选手目录，不检查、不计时、不跑对局。"""
+        if self.running:
+            return
+        w = self._need_one(scope, "发卷")
+        if not w:
+            return
+        ws, label = w[0], w[1]
+        self.status.set("发卷中…")
+        try:
+            got = [x for x in service.issue(ws) if not x.startswith("arena/")]
+        except Exception as e:  # noqa: BLE001
+            messagebox.showerror("裁判台", "发卷失败：%s" % e)
+            return
+        self._log("发卷 %s：%s（引擎副本已刷新）\n"
+                  % (label, "、".join(got) if got else "已齐备，不覆盖已有文件"),
+                  "ok" if got else "dim")
+        self.status.set("发卷完成")
+        self.scan_workspaces(keep=label)
+
+    # ---------------- ③ 提示词（人手动发，裁判台不代发） ----------------
     def _prompt_text(self, ws: Path):
         p = service.prompt_path(ws)
         if not p.is_file():
@@ -947,8 +866,8 @@ class RefereeDesk(tk.Tk):
             messagebox.showerror("裁判台", "读 prompt.md 失败：%s" % e)
             return None
 
-    def copy_prompt(self):
-        w = self._need_one("复制提示词")
+    def copy_prompt(self, scope):
+        w = self._need_one(scope, "复制提示词")
         if not w:
             return
         text = self._prompt_text(w[0])
@@ -960,8 +879,8 @@ class RefereeDesk(tk.Tk):
         self._log("提示词已复制（%d 字）：去智能体那边粘贴发送，裁判台不代发\n"
                   % len(text), "ok")
 
-    def view_prompt(self):
-        w = self._need_one("查看提示词")
+    def view_prompt(self, scope):
+        w = self._need_one(scope, "查看提示词")
         if not w:
             return
         text = self._prompt_text(w[0])
@@ -988,12 +907,12 @@ class RefereeDesk(tk.Tk):
 
         ttk.Button(bar, text="复制", command=do_copy).pack(side="right")
 
-    # ---------------- ③ 启动比赛 = 开始计时 ----------------
-    def start_contest_clock(self):
-        """开始计时。**不跑对局**——对局在「对战」页签，必须另外手动触发。"""
+    # ---------------- ④ 开始编码 / 暂停 / 继续 ----------------
+    def start_contest_clock(self, scope):
+        """开始编码计时。**不跑对局**——对局在「比赛」页签，必须另外手动触发。"""
         if self.running:
             return
-        w = self._need_one("启动比赛")
+        w = self._need_one(scope, "开始编码")
         if not w:
             return
         ws, label = w[0], w[1]
@@ -1005,9 +924,9 @@ class RefereeDesk(tk.Tk):
                 % (label, "、".join(chk["missing"]) or "没有交付文件"))
             return
         st = service.status(ws)
-        lines = ["为 %s 开始计时。" % label, "",
+        lines = ["为 %s 开始编码计时。" % label, "",
                  "  · 只开始计时，不会跑任何对局",
-                 "  · 90 分钟目标，120 分钟到点自动封存",
+                 "  · 90 分钟目标，120 分钟到点自动收卷",
                  "  · 提示词要你自己复制、自己发送"]
         if st["state"] != "未开赛":
             lines.insert(1, "它已经在计时（%s），这次会把起点重置为现在。"
@@ -1015,7 +934,7 @@ class RefereeDesk(tk.Tk):
             lines.insert(2, "")
         if not self.checked.get(str(ws)):
             lines += ["", "这次会话还没做过 ① 工作区自检。仍然开始？"]
-        if not messagebox.askokcancel("启动比赛（开始计时）", "\n".join(lines),
+        if not messagebox.askokcancel("开始编码（开始计时）", "\n".join(lines),
                                       default=messagebox.CANCEL):
             self._log("已取消：没有开始计时\n", "dim")
             return
@@ -1025,13 +944,13 @@ class RefereeDesk(tk.Tk):
             messagebox.showerror("裁判台", "启动失败：%s" % e)
             return
         self._auto_frozen.discard(str(ws))
-        self._log("启动 %s：已开始计时（90 目标 / 120 强制封存），本次不跑对局\n"
+        self._log("开始编码 %s：已开始计时（90 目标 / 120 强制收卷），本次不跑对局\n"
                   % label, "ok")
         self.scan_workspaces(keep=label)
 
-    # ---------------- ④ 计时 ----------------
-    def pause_timer(self):
-        w = self._need_one("暂停")
+    # ---------------- ④ 暂停 / 继续 ----------------
+    def pause_timer(self, scope):
+        w = self._need_one(scope, "暂停")
         if not w:
             return
         service.pause(w[0], "裁判台手动暂停")
@@ -1039,16 +958,16 @@ class RefereeDesk(tk.Tk):
                   % (w[1], service.elapsed_seconds(w[0]) / 60), "dim")
         self.scan_workspaces(keep=w[1])
 
-    def resume_timer(self):
-        w = self._need_one("恢复")
+    def resume_timer(self, scope):
+        w = self._need_one(scope, "继续")
         if not w:
             return
         service.resume(w[0])
-        self._log("恢复 %s：已用 %.1f 分钟\n"
+        self._log("继续 %s：已用 %.1f 分钟\n"
                   % (w[1], service.elapsed_seconds(w[0]) / 60), "dim")
         self.scan_workspaces(keep=w[1])
 
-    # ---------------- ⑤ 封存 ----------------
+    # ---------------- ⑤ 收卷封存 ----------------
     def _seal_one(self, ws: Path, label: str, auto: bool = False):
         """冻结交付文件到 交卷/。返回 info 或 None。"""
         try:
@@ -1068,8 +987,8 @@ class RefereeDesk(tk.Tk):
                           "err")
         return info
 
-    def freeze_timer(self):
-        w = self._need_one("立即封存")
+    def freeze_timer(self, scope):
+        w = self._need_one(scope, "立即收卷")
         if not w:
             return
         ws, label = w[0], w[1]
@@ -1078,17 +997,20 @@ class RefereeDesk(tk.Tk):
             messagebox.showinfo("裁判台", "%s 已经封存过了。" % label)
             return
         if not st["has_submission"]:
-            if not messagebox.askokcancel("封存", "%s 没有交付文件，会记为未提交。继续？" % label):
+            if not messagebox.askokcancel("收卷", "%s 没有交付文件，会记为未提交。继续？" % label):
                 return
         elif not messagebox.askokcancel(
-                "封存", "%s 已用 %.1f 分钟。\n封存后 submission 里的改动不再进入成绩，确认？"
+                "收卷", "%s 已用 %.1f 分钟。\n封存后 submission 里的改动不再进入成绩，确认？"
                         % (label, st["used_min"]), default=messagebox.CANCEL):
             return
         self._seal_one(ws, label)
         self.scan_workspaces(keep=label)
 
-    def picked(self):
-        return [self.workspaces[i] for i in self.battle_lst.curselection()
+    def picked(self, scope):
+        ui = self.battle_uis.get(scope)
+        if not ui:
+            return []
+        return [self.workspaces[i] for i in ui["lst"].curselection()
                 if i < len(self.workspaces) and self.workspaces[i][2]]
 
     RULE_SUMMARIES = {
@@ -1108,12 +1030,20 @@ class RefereeDesk(tk.Tk):
         ),
     }
 
-    def _on_rules_change(self):
-        mode = str(self.rules_mode.get())
-        self.rules_summary.set(self.RULE_SUMMARIES.get(mode, self.RULE_SUMMARIES["v1.4"]))
-        # 工作区页签的 ① 步骤标签也带规则口径，切换后要立刻刷新。
-        if getattr(self, "steps", None):
-            self._refresh_steps()
+    def _on_rules_change(self, scope=None):
+        scopes = [scope] if scope else list(self.rules_vars)
+        for s in scopes:
+            if s not in self.rules_vars:
+                continue
+            mode = str(self.rules_vars[s].get())
+            text = self.RULE_SUMMARIES.get(mode, self.RULE_SUMMARIES["v1.4"])
+            ui = self.code_uis.get(s)
+            if ui:
+                ui["summary_var"].set(text)
+            bu = self.battle_uis.get(s)
+            if bu:
+                bu["summary_var"].set(text)
+            self._refresh_code_ui(s)
 
     @staticmethod
     def _sim_rule_version(sim_dir: Path, mode: str) -> str:
@@ -1131,51 +1061,63 @@ class RefereeDesk(tk.Tk):
         m = re.search(r"%s\s*=\s*\"([^\"]+)\"" % key, text)
         return m.group(1) if m else ""
 
-    def run_contest(self):
+    def run_contest(self, scope):
         if self.running:
             return
-        picked = self.picked()
+        picked = self.picked(scope)
         if not picked:
             messagebox.showwarning("裁判台", "先勾选至少一个可编译的工作区")
             return
-        who = "只跑这一个" if len(picked) == 1 else "评测 %d 个选手" % len(picked)
-        k = len(picked) + len(REF_BOTS)
+        who = "只跑这一个" if len(picked) == 1 else "比赛 %d 个选手" % len(picked)
+        root = Path(self.contest_root.get().strip() or DEFAULT_CONTEST_ROOT)
+        baselines = sorted(root.glob("baseline@*.exe"))
+        n_opp = len(baselines) or len(REF_BOTS)
+        k = len(picked) + n_opp
         matches = k * (k - 1) // 2
-        rules_mode = self.rules_mode.get()
+        rules_mode = self.rules_vars[scope].get()
         is_exp = str(rules_mode).startswith("v1.9")
         if is_exp:
             rule_line = "规则 v1.9.1 当前正式（1500 tick · ruleset v15，引擎 1.9.1）"
         else:
             rule_line = "规则 v1.4 历史基线（1200 tick）"
+        record_dir = self._record_dir(scope)
         # default=CANCEL：Enter / 空格默认落在「取消」上，双击列表后弹出
         # 立刻回车也不会开跑。
         if not messagebox.askokcancel(
                 "真的要开跑？",
                 "%s\n%s\n%s\n\n对手：%s%s\n\n"
                 "将进行 %d 场对阵、%d 局真实对局（每场换边打 2 局）。\n"
-                "对局期间会另写一本评测封存（bots/封存记录/_desk_*.json），"
-                "跑完删掉并恢复当前赛季封存。"
+                "成绩写入：%s\n"
+                "对局期间会另写一本评测封存（bots/封存记录/_desk_*.json），跑完删掉。"
                 % (who, "\n".join("  · " + w[1] for w in picked), rule_line,
-                   "、".join(REF_BOTS),
-                   "" if len(picked) == 1 else " + 彼此", matches, matches * 2),
+                   "、".join(e.stem for e in baselines) if baselines
+                   else "、".join(REF_BOTS),
+                   "" if len(picked) == 1 else " + 彼此", matches, matches * 2,
+                   record_dir),
                 default=messagebox.CANCEL):
             self._log("已取消：没有发起对局\n", "dim")
             return
-        seeds = int(self.seed_count.get() or "1")
+        seeds = int(self.battle_uis[scope]["seed_var"].get() or "1")
 
         def work():
             try:
-                self._contest_pipeline(picked, seeds, rules_mode)
+                self._contest_pipeline(picked, seeds, rules_mode, scope, record_dir)
             except Exception as e:  # noqa: BLE001
                 self.log_q.put(("line", "编排失败：%s" % e))
                 self.log_q.put(("exit", 1, None))
 
         self._set_running(True)
         self.pbar["value"] = 0
-        self.status.set("评测准备中…")
+        self.status.set("比赛准备中…")
         threading.Thread(target=work, daemon=True).start()
 
-    def _contest_pipeline(self, picked, seeds, rules_mode="v1.9"):
+    def _record_dir(self, scope) -> Path:
+        """正式成绩与测试成绩分开归档，互不覆盖。"""
+        root = Path(self.contest_root.get().strip() or DEFAULT_CONTEST_ROOT)
+        return root / (MATCH_RECORD_DIR if scope == "official" else TEST_RECORD_DIR)
+
+    def _contest_pipeline(self, picked, seeds, rules_mode="v1.9", scope="official",
+                          record_base=None):
         mode = str(rules_mode)
         is_exp = mode.startswith("v1.9")
         if is_exp:
@@ -1248,8 +1190,8 @@ class RefereeDesk(tk.Tk):
                 "tieBreak": ["flagControl"],
             })
         cfg = {
-            "name": "Desert Arena · 工作区评测",
-            "season": "工作区评测 %s（%s）" % (stamp, mode_label),
+            "name": "Desert Arena · 裁判台比赛",
+            "season": "裁判台比赛 %s（%s）" % (stamp, mode_label),
             "version": version,
             "engine": {"kind": "native", "host": "bots/bin/enginehost.exe",
                        "snapshot": "engine/golden"},
@@ -1305,34 +1247,29 @@ class RefereeDesk(tk.Tk):
             if not self._stream(argv):
                 return
         self.last_out = out_rel
-        self._emit(("line", "评测完成 → %s" % out_rel, "ok"))
-        # 评测用的是临时编排，build 会顺手给它写一本 bots/封存记录/_desk_*.json。
-        # 跑完把正式赛季那本重建回来，再把临时本删掉——封存目录里只留赛季的账。
-        season = self.cfg_path.get()
-        if season:
-            self._emit(("line", "恢复正式赛季封存：%s" % season, "dim"))
-            self._stream(["go", "run", "./cmd/arena", "build",
-                          "-config", "tournament/" + season])
-        try:
-            (ENGINE / "bots" / "封存记录" / (Path(cfg_rel).stem + ".json")).unlink()
-        except OSError:
-            pass
+        self._emit(("line", "对局完成，整理成绩…", "ok"))
+        dest = out_abs
+        if record_base is not None:
+            # 引擎只允许把结果写在 war_of_desert 内，所以先落到 results/desk/<stamp>，
+            # 跑完再整体搬到 算法赛/比赛记录 或 算法赛/测试/测试成绩。
+            dest = Path(record_base) / stamp
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            if dest.exists():
+                shutil.rmtree(dest, ignore_errors=True)
+            shutil.move(str(out_abs), str(dest))
+            self.last_record[scope] = dest
+            self.last_out = str(dest)
+        self._emit(("line", "成绩 → %s" % dest, "ok"))
+        # 临时编排的封存与配置：跑完就删，封存目录里只留赛季的账。
+        for p in (ENGINE / "bots" / "封存记录" / (Path(cfg_rel).stem + ".json"),
+                  ENGINE / cfg_rel):
+            try:
+                p.unlink()
+            except OSError:
+                pass
         self._emit(("exit", 0, None))
 
     # ---------------- 通用执行 ----------------
-    def _start(self, steps):
-        self._set_running(True)
-        self.pbar["value"] = 0
-        self.status.set("执行中…")
-
-        def work():
-            for argv in steps:
-                if not self._stream(argv):
-                    return
-            self.log_q.put(("exit", 0, None))
-
-        threading.Thread(target=work, daemon=True).start()
-
     def _go_argv(self, argv) -> list:
         """把 argv 里的 "go" 换成开机时解析出来的绝对路径。
 
@@ -1430,9 +1367,10 @@ class RefereeDesk(tk.Tk):
             self._log("\n— 已中止（已完成的对局保留在 结果.jsonl）—\n", "err")
 
     # ---------------- 流水线状态 ----------------
-    def _set_step_label(self, key, text, color):
+    @staticmethod
+    def _set_step_label(ui, key, text, color):
         """只在文字/颜色真的变了才写，避免每秒刷新把控件抖一遍。"""
-        lbl = self.steps.get(key, {}).get("lbl")
+        lbl = ui["steps"].get(key, {}).get("lbl")
         if lbl is None:
             return
         if lbl.cget("text") != text:
@@ -1440,109 +1378,111 @@ class RefereeDesk(tk.Tk):
         if lbl.cget("fg") != color:
             lbl.config(fg=color)
 
-    def _refresh_steps(self):
-        """按磁盘上的真实状态开合 ①~⑤。
+    def _refresh_code_ui(self, scope):
+        """按磁盘上的真实状态开合该页签的 ①~⑤。
 
-        不记「上次点了什么」，只看事实：包齐不齐、计时到哪、封没封。
+        不记「上次点了什么」，只看事实：包齐不齐、上次发卷没有、计时到哪、封没封。
         所以关掉裁判台再打开，界面和 .赛务.json 仍然对得上。
         """
-        if not getattr(self, "steps", None):
+        ui = self.code_uis.get(scope)
+        if not ui:
             return
-        w = self.selected_one()
+        btns = ui["btns"]
+        w = self.selected_one(scope)
         if w is None:
-            self._set_step_label("chk", "先在左边选一个工作区", MUTED)
-            for key in ("prompt", "start", "clock", "freeze"):
-                self._set_step_label(key, "", MUTED)
-            for btn in (self.chk_btn, self.copy_btn, self.view_btn, self.start_btn,
-                        self.pause_btn, self.resume_btn, self.freeze_btn):
-                btn.configure(state="disabled")
+            self._set_step_label(ui, "chk", "先在左边选一个工作区", MUTED)
+            for key in ("issue", "prompt", "start", "freeze"):
+                self._set_step_label(ui, key, "", MUTED)
+            for b in btns.values():
+                b.configure(state="disabled")
             return
 
-        ws, _label = w[0], w[1]
+        ws = w[0]
         busy = self.running
+        mode = self.rules_vars[scope].get()
         try:
             chk = service.check_package(ws)
             st = service.status(ws)
         except Exception as e:  # noqa: BLE001
-            self._set_step_label("chk", "读状态失败：%s" % e, BAD)
+            self._set_step_label(ui, "chk", "读状态失败：%s" % e, BAD)
             return
         state = st["state"]
 
         # ① 自检
-        self.chk_btn.configure(state="disabled" if busy else "normal")
+        btns["chk"].configure(state="disabled" if busy else "normal")
         if chk["ready"]:
             txt = "包齐备（%d 项）· 交付 %s · 规则 %s" % (
-                len(service.KEY_ITEMS), chk["submission"], self.rules_mode.get())
+                len(service.KEY_ITEMS), chk["submission"], mode)
             if chk["is_template"]:
                 txt += " · 仍是模板"
-            self._set_step_label("chk", txt, OK)
+            self._set_step_label(ui, "chk", txt, OK)
         else:
             miss = chk["missing"]
             shown = "、".join(miss[:3]) + ("等 %d 项" % len(miss) if len(miss) > 3 else "")
-            self._set_step_label("chk", "缺：%s%s" % (shown or "交付文件", "（点自检补全）"), BAD)
+            self._set_step_label(ui, "chk", "缺：%s%s" % (shown or "交付文件", "（点自检补全）"), BAD)
 
-        # ② 提示词
+        # ② 发卷
+        btns["issue"].configure(state="disabled" if busy else "normal")
+        if chk["issued"]:
+            self._set_step_label(ui, "issue", "已发卷 · 再发只补缺件，不覆盖已有文件", MUTED)
+        else:
+            self._set_step_label(ui, "issue", "未发卷 · 点发卷把选手包铺进 workspace", BAD)
+
+        # ③ 提示词
         p = service.prompt_path(ws)
         has_p = p.is_file()
-        self.copy_btn.configure(state="normal" if (has_p and not busy) else "disabled")
-        self.view_btn.configure(state="normal" if (has_p and not busy) else "disabled")
+        btns["copy"].configure(state="normal" if (has_p and not busy) else "disabled")
+        btns["view"].configure(state="normal" if (has_p and not busy) else "disabled")
         if has_p:
-            self._set_step_label("prompt", "prompt.md · %d 字节 · 复制后自己去粘"
+            self._set_step_label(ui, "prompt", "prompt.md · %d 字节 · 复制后自己去粘"
                                  % p.stat().st_size, MUTED)
         else:
-            self._set_step_label("prompt", "还没有 prompt.md（先做 ①）", BAD)
+            self._set_step_label(ui, "prompt", "还没有 prompt.md（先自检或发卷）", BAD)
 
-        # ③ 启动比赛
+        # ④ 开始编码 + 暂停/继续
         can_start = chk["ready"] and not busy and state != "已收卷"
-        self.start_btn.configure(state="normal" if can_start else "disabled")
+        btns["start"].configure(state="normal" if can_start else "disabled")
+        btns["pause"].configure(state="normal" if (state == "进行中" and not busy) else "disabled")
+        btns["resume"].configure(state="normal" if (state == "已暂停" and not busy) else "disabled")
         if not chk["ready"]:
-            self._set_step_label("start", "选手包不完整，先做 ①", BAD)
+            self._set_step_label(ui, "start", "选手包不完整，先自检/发卷", BAD)
         elif state == "已收卷":
-            self._set_step_label("start", "已封存，不能再启动", MUTED)
+            self._set_step_label(ui, "start", "已收卷，不能再开始编码", MUTED)
         elif state == "未开赛":
-            self._set_step_label("start", "未开赛 · 只开始计时，不跑对局 · 90 目标 / 120 强制", MUTED)
-        else:
-            self._set_step_label("start", "正在计时（%s）· 再点会重置起点" % state,
-                                 OK if state == "进行中" else BAD)
-
-        # ④ 计时
-        self.pause_btn.configure(state="normal" if (state == "进行中" and not busy) else "disabled")
-        self.resume_btn.configure(state="normal" if (state == "已暂停" and not busy) else "disabled")
-        if state == "未开赛":
-            self._set_step_label("clock", "还没开始计时", MUTED)
+            self._set_step_label(ui, "start", "未开赛 · 只开始计时，不跑对局 · 90 目标 / 120 强制",
+                                 MUTED)
         elif st["frozen"]:
             f = st["frozen"]
             self._set_step_label(
-                "clock",
-                "已封存 · 用时 %.1f 分钟%s" % (f.get("used_minutes", 0),
+                ui, "start",
+                "已收卷 · 用时 %.1f 分钟%s" % (f.get("used_minutes", 0),
                                               "" if f.get("accepted") else "（超时，不计成绩）"),
                 MUTED)
         else:
             self._set_step_label(
-                "clock",
-                "已用 %.1f 分钟 · 距 120 分钟还有 %.1f 分钟（90 分钟是目标）"
-                % (st["used_min"], st["left_min"]),
+                ui, "start",
+                "正在编码（%s）· 已用 %.1f 分钟 · 距 120 分钟还有 %.1f 分钟"
+                % (state, st["used_min"], st["left_min"]),
                 OK if st["used_min"] < 90 else BAD)
 
-        # ⑤ 封存
+        # ⑤ 收卷封存
         can_seal = state in ("进行中", "已暂停") and not busy
-        self.freeze_btn.configure(state="normal" if can_seal else "disabled")
+        btns["freeze"].configure(state="normal" if can_seal else "disabled")
         if state == "已收卷":
-            self._set_step_label("freeze", "已封存，交卷/ 里有副本", MUTED)
+            self._set_step_label(ui, "freeze", "已收卷，交卷/ 里有副本", MUTED)
         elif state == "未开赛":
-            self._set_step_label("freeze", "开始计时后才能封存", MUTED)
+            self._set_step_label(ui, "freeze", "开始编码后才能收卷", MUTED)
         elif state.startswith("已超时"):
-            self._set_step_label("freeze", "已到点，正在自动封存…", BAD)
+            self._set_step_label(ui, "freeze", "已到点，正在自动收卷…", BAD)
         else:
-            self._set_step_label("freeze", "到 120 分钟自动封存，也可以现在手动封", MUTED)
+            self._set_step_label(ui, "freeze", "到 120 分钟自动收卷，也可以现在手动收", MUTED)
 
     def _auto_freeze(self):
-        """120 分钟到点自动封存。
+        """120 分钟到点自动收卷。
 
         判据是 .赛务.json 里的开始时间，不是内存里的状态：裁判台关着时错过的，
         下次打开第一秒就补上，算出来的用时也是真实用时。
         """
-        keep = (self.selected_one() or (None, None, None, None))[1]
         fired = False
         for path, label, _src, _note in list(self.workspaces):
             key = str(path)
@@ -1555,15 +1495,16 @@ class RefereeDesk(tk.Tk):
             if st["state"] != "已超时（待收卷）":
                 continue
             self._auto_frozen.add(key)
-            self._log("⏰ %s 已到 120 分钟，自动封存\n" % label, "dim")
+            self._log("⏰ %s 已到 120 分钟，自动收卷\n" % label, "dim")
             self._seal_one(path, label, auto=True)
             fired = True
         if fired:
-            self.scan_workspaces(keep=keep)
+            self.scan_workspaces()
 
     def _tick(self):
         self._auto_freeze()
-        self._refresh_steps()
+        for scope in list(self.code_uis):
+            self._refresh_code_ui(scope)
         self.after(1000, self._tick)
 
     def _drain_log(self):
@@ -1606,10 +1547,13 @@ class RefereeDesk(tk.Tk):
     def _set_running(self, running):
         self.running = running
         state = "disabled" if running else "normal"
-        for b in self.season_btns.values():
-            b.configure(state=state)
+        for ui in self.battle_uis.values():
+            for key in ("run_btn", "view_btn"):
+                if ui.get(key):
+                    ui[key].configure(state=state)
         self.stop_btn.configure(state="normal" if running else "disabled")
-        self._refresh_steps()
+        for scope in self.code_uis:
+            self._refresh_code_ui(scope)
 
     def _log(self, text, tag=""):
         self.log.configure(state="normal")
@@ -1618,24 +1562,14 @@ class RefereeDesk(tk.Tk):
         self.log.see("end")
 
     # ---------------- 快捷入口 ----------------
-    def open_results(self):
-        cfg = self.info.get("cfg") or {}
-        self._open_dir(ENGINE / cfg.get("output", "results").replace("/", os.sep))
-
-    def open_contest_results(self):
-        if self.last_out:
-            self._open_dir(ENGINE / self.last_out)
+    def open_contest_results(self, scope):
+        p = self.last_record.get(scope)
+        if p and Path(p).is_dir():
+            self._open_dir(Path(p))
             return
-        base = ENGINE / "results" / "desk"
+        base = self._record_dir(scope)
         dirs = sorted([d for d in base.iterdir() if d.is_dir()]) if base.is_dir() else []
         self._open_dir(dirs[-1] if dirs else base)
-
-    def open_viewer(self):
-        p = ENGINE / "回放查看器.html"
-        if not p.exists():
-            messagebox.showinfo("裁判台", "找不到 回放查看器.html")
-            return
-        os.startfile(str(p)) if sys.platform == "win32" else subprocess.Popen(["open", str(p)])
 
     def _open_dir(self, p: Path):
         if not p.is_dir():
@@ -1654,22 +1588,9 @@ def main():
         print("GUI_OK")
         return
     if "--smoke" in argv:
-        state = {"text": None}
-
-        def poll():
-            t = app.seal_lbl.cget("text")
-            if "检查中" in t:
-                app.after(100, poll)
-                return
-            state["text"] = t
-            app.quit()
-
-        app.after(100, poll)
-        app.after(30000, app.quit)
-        app.mainloop()
-        text = state["text"] or app.seal_lbl.cget("text")
-        print("SEAL_LABEL=%s" % text)
-        print("SMOKE_OK" if ("✓" in text or "✗" in text) else "SMOKE_FAIL")
+        tabs = len(app.nb.tabs())
+        print("TABS=%d" % tabs)
+        print("SMOKE_OK" if tabs == 3 else "SMOKE_FAIL")
         app.destroy()
         return
     if "--init" in argv:
@@ -1680,12 +1601,14 @@ def main():
         app.headless = True
         app.contest_root.set(str(root))
         for d in sorted(root.iterdir()):
-            if d.is_dir() and not d.name.startswith("_"):
-                if (d / "workspace" / "clock.py").is_file():
-                    print("已发卷  %s" % d.name)
-                    continue
-                got = service.issue(d)
-                print("发卷    %s  ← %s" % (d.name, "、".join(got)))
+            if (not d.is_dir() or d.name.startswith("_")
+                    or d.name in NON_CONTESTANT_DIRS):
+                continue
+            if (d / "workspace" / "clock.py").is_file():
+                print("已发卷  %s" % d.name)
+                continue
+            got = service.issue(d)
+            print("发卷    %s  ← %s" % (d.name, "、".join(got)))
         plan = build_schedule(root, seeds)
         (root / "赛程.json").write_text(
             json.dumps(plan, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -1697,17 +1620,18 @@ def main():
         app.destroy()
         return
     if "--selfcheck" in argv:
-        # 命令行自检：--selfcheck <工作区目录>
+        # 命令行自检：--selfcheck <工作区目录> [v1.9|v1.4]
         # 和界面上的 ① 完全同一套判定，但在 cmd 里跑，能看到子进程的原始输出。
         i = argv.index("--selfcheck")
         if len(argv) <= i + 1:
-            print("用法：py -3 -X utf8 referee_desk.py --selfcheck <工作区目录>")
+            print("用法：py -3 -X utf8 referee_desk.py --selfcheck <工作区目录> [v1.9|v1.4]")
             app.destroy()
             return 2
         ws = Path(argv[i + 1]).resolve()
+        mode = argv[i + 2] if len(argv) > i + 2 else "v1.9"
         app.headless = True
-        print("工作区自检：%s\n" % ws)
-        lines, ok = app._check_workspace(ws)
+        print("工作区自检：%s（规则 %s）\n" % (ws, mode))
+        lines, ok = app._check_workspace(ws, mode)
         for text, tag in lines:
             mark = {"err": "  × ", "ok": "  ✓ "}.get(tag, "  · ")
             for j, ln in enumerate(text.splitlines()):
@@ -1716,19 +1640,22 @@ def main():
         app.destroy()
         return 0 if ok else 1
     if "--smoke-contest" in argv:
-        # 无头跑一次评测管线：--smoke-contest <工作区目录> [seed 数] [v1.9|v1.4]
+        # 无头跑一次对局管线：--smoke-contest <工作区目录> [seed 数] [v1.9|v1.4] [test|official]
         i = argv.index("--smoke-contest")
         if len(argv) <= i + 1:
-            print("用法：py -3 -X utf8 referee_desk.py --smoke-contest <工作区目录> [seed 数] [v1.9|v1.4]")
+            print("用法：py -3 -X utf8 referee_desk.py --smoke-contest "
+                  "<工作区目录> [seed 数] [v1.9|v1.4] [test|official]")
             app.destroy()
             return 2
         ws = Path(argv[i + 1]).resolve()
         seeds = int(argv[i + 2]) if len(argv) > i + 2 else 1
         rules_mode = argv[i + 3] if len(argv) > i + 3 else "v1.9"
+        scope = argv[i + 4] if len(argv) > i + 4 else "test"
         app.headless = True
         app._emit = lambda item: print(item[1] if item[0] == "line" else "EXIT=%s" % item[1])
         src, note = detect_source(ws)
-        app._contest_pipeline([(ws, ws.name, src, note)], seeds, rules_mode)
+        app._contest_pipeline([(ws, ws.name, src, note)], seeds, rules_mode,
+                              scope, app._record_dir(scope))
         app.destroy()
         return
     if "--scan" in argv:

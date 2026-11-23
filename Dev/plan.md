@@ -56,7 +56,7 @@
 ### 0.3 三条不可违反的约束
 
 1. **快照纪律**：`Dev/MVP` 是源码事实源；`war_of_desert/engine/oracle/` 是只读快照。任何规则改动都必须同时升 `rulesHash` 与协议版本，不允许「只改 MVP 就宣称正式赛变了」。
-2. **不改历史数据**：`Dev/MVP/正式比赛测试/归档/`、`war_of_desert/results/formal/` 下的既有结果是历史证据，只读。新规则的新结果写到新目录。
+2. **不改历史数据**：`Dev/MVP/正式比赛测试/归档/`、`算法赛/测试/历史赛季/formal/` 下的既有结果是历史证据，只读。新规则的新结果写到新目录。
 3. **先证伪再调参**：任何「数值不合理」的判断，必须先有探针（probe bot / 脚本）证明「在当前数值下不可行」，再改数值。反例：RAILGUN 320 CU 看似贵，但 1200 tick 的总收入约 2300～6000 CU，真正原因是参考 Bot 不造它——这种情况改 Bot，不改数值。
 
 ---
@@ -808,7 +808,7 @@ const gates = [
 ### B3 · 数据迁移与版本标记
 
 - `result` 里新增 `scoreVersion: 2`、`rulesHash`、`proto: 6`。
-- 旧结果目录标注：`Dev/MVP/正式比赛测试/归档/` 与 `war_of_desert/results/formal/` 首行加「scoreVersion:1，不可与 v2 比较」。
+- 旧结果目录标注：`Dev/MVP/正式比赛测试/归档/` 与 `算法赛/测试/历史赛季/formal/` 首行加「scoreVersion:1，不可与 v2 比较」。
 - `results/README.md` 说明「跨版本只比胜负，不比分数」。
 
 **验收**：随机抽 3 个旧结果文件，`scoreVersion` 为 1；新跑的为 2。
@@ -1489,7 +1489,7 @@ v1.0                      阶段 6 + 12 条 DoD
 | 数据 | 兼容策略 |
 |---|---|
 | v0.11 旧回放 | 只读；播放器提示 `proto 5 不兼容`；不参与新排名 |
-| 旧 `results/formal/` | 标注 `scoreVersion 1`；跨版本只比胜负 |
+| 旧 `算法赛/测试/历史赛季/formal/` | 标注 `scoreVersion 1`；跨版本只比胜负 |
 | Go `war_of_desert` | 标注「v1.0 历史快照，不追 v2」；不参与新赛季 |
 | `botkit` | 同时支持 RLE（旧）与 deflate（新），按 `encoding` 分流 |
 

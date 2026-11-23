@@ -1,6 +1,6 @@
 # /// script
 # v1.6 实验统计：结果.jsonl + 可选回放。
-# 用法：py -3 -X utf8 scripts/exp_v16_metrics.py results/exp-v16-500 [--replay-sample 5]
+# 用法：py -3 -X utf8 scripts/exp_v16_metrics.py 实验记录/规则实验/exp-v16-500 [--replay-sample 5]
 # ///
 import json
 import sys
@@ -11,7 +11,7 @@ import statistics
 
 
 def main():
-    root = sys.argv[1] if len(sys.argv) > 1 else "results/exp-v16-500"
+    root = sys.argv[1] if len(sys.argv) > 1 else "实验记录/规则实验/exp-v16-500"
     sample = 1
     if "--replay-sample" in sys.argv:
         sample = max(1, int(sys.argv[sys.argv.index("--replay-sample") + 1]))

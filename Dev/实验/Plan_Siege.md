@@ -142,7 +142,7 @@
    - 攻方：生产 LAV/AAV → 沿地图推进 → 优先打挡路工事 → 集火守方母舰；分 1 台 SALVAGER 占矿。
    - 守方：布置阶段放 6 墙 + 2 炮（或 9 墙 + 1 炮）→ 生产 LAV → 守在本方母舰与矿场之间 → `neutral` 模式自动开火。
    - 修复旧的射程/步长口径：射程判断用 `t.Range * Cell`，步长用 `t.Speed * Cell * 0.1`（引擎当前移动积分）。
-3. `cmd/siege`：并行跑 HP × seed，输出 `results/siege/sweep.csv`、`sweep.md`，含 Wilson CI 与推荐 HP。
+3. `cmd/siege`：并行跑 HP × seed，输出 `实验记录/攻守实验/siege/sweep.csv`、`sweep.md`，含 Wilson CI 与推荐 HP。
 
 ### 3.4 实验流程
 
@@ -150,7 +150,7 @@
 2. pilot：4 个 HP × 8 seed，检查曲线与 0%/100% 平台。
 3. 调整攻方起始 CU / 工事预算（只调一次，记录原因），使 3000 时 <45%、300 时 >20%。
 4. 正式 sweep：11 HP × 40 seed × 8 并发；输出 CSV/Markdown。
-5. 拟合/查表，给出推荐 HP 与区间；把结果写入 `results/siege/结论.md`。
+5. 拟合/查表，给出推荐 HP 与区间；把结果写入 `实验记录/攻守实验/siege/结论.md`。
 
 ### 3.5 验收标准
 
@@ -182,7 +182,7 @@
 - `war_of_desert/internal/engine/host.go`、`internal/judge/judge.go`、`internal/protocol/protocol.go` 的兼容字段
 - `war_of_desert/workspace/siege/attacker/`、`defender/`、`siegebot/`
 - `war_of_desert/cmd/siege/main.go`
-- `war_of_desert/results/siege/sweep.csv`、`sweep.md`、`结论.md`
+- `war_of_desert/实验记录/攻守实验/siege/sweep.csv`、`sweep.md`、`结论.md`
 - `war_of_desert/赛事手册_攻守.md`（规则说明）
 
 ---
@@ -230,7 +230,7 @@
 - `war_of_desert/engine/oracle/rules_siege.js` + `MANIFEST_siege.json`
 - `war_of_desert/workspace/siege/{siegebot,attacker,defender}`
 - `war_of_desert/cmd/siege/main.go`
-- `war_of_desert/results/siege/{hp*_clean.csv,summary.csv,结论.md}`
+- `war_of_desert/实验记录/攻守实验/siege/{hp*_clean.csv,summary.csv,结论.md}`
 - `war_of_desert/赛事手册_攻守.md`
 
 ---

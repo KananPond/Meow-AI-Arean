@@ -21,6 +21,8 @@ __pycache__/
 
 # 本机智能体工作数据（日志、记忆），与仓库内容无关
 /.workbuddy/
+# TRAE HTML 分享功能生成的本地分享包
+/.trae-html-share-packages/
 
 # 裁判台自检失败时写下的环境/命令证据（本机诊断用）
 /自检诊断.txt
@@ -52,20 +54,30 @@ __pycache__/
 # 正式赛构建产物与可重建回放（源码、赛程、结果、成绩仍入库）
 /war_of_desert/bots/bin/
 /war_of_desert/results/*/回放/
+/war_of_desert/实验记录/*/*/回放/
 
 # 每次 build / 初始化都会重写的本地产物，不入库：
 # - bots/封存记录/<赛季>.json 的 binSha256 每次编译都变，源码哈希不变；
 #   一季一本，build 只写自己那本。赛季实际跑过的那一份归档在
 #   results/<赛季>/封存记录.json，审计口径见 war_of_desert/results/README.md。
-# - 算法赛/赛程.json 由裁判台「初始化工作区与赛程」按当前报名者重新生成。
+# - 算法赛/赛程.json 由 `--init` 按当前报名者重新生成。
 /war_of_desert/bots/封存记录.json
 /war_of_desert/bots/封存记录/
 /算法赛/赛程.json
 
-# 裁判台工作区评测：暂存副本与评测产物不入库
+# 裁判台工作区评测：暂存副本与临时产物不入库
 /war_of_desert/workspace/_contestants/
 /war_of_desert/results/desk/
 /war_of_desert/tournament/_desk_*.json
+
+# 裁判台比赛/测试成绩：本地生成的对局记录与回放，不入库
+/算法赛/比赛记录/
+/算法赛/测试/测试成绩/
+/算法赛/测试/裁判台评测/
+/算法赛/测试/选手本地对局/
+/算法赛/测试/历史全流程/
+# 历史赛季目录保留赛程/结果/成绩；回放可由 arena run 重建，不入库
+/算法赛/测试/历史赛季/*/回放/
 
 # 实验标定临时产物：座位/公平性诊断用的短跑目录，结论已归档到正式实验目录
 /war_of_desert/results/_tmp-*/
@@ -111,5 +123,4 @@ __pycache__/
 # 若重新解包/打包到仓库根目录，同样忽略
 /Meow社区比赛__WoD正式赛_beta*
 
-# 测试存档：全流程实跑的对局记录、回放与成绩快照，只在本机留档，不入库
-/测试存档/
+# 历史全流程测试存档已迁到 算法赛/测试/历史全流程/（见上方忽略规则）

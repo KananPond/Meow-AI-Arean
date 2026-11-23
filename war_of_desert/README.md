@@ -2,7 +2,7 @@
 
 > **状态：可开赛**（当前正式赛 = **v1.9.1 · 第 6 季**：在 v1.4 基线上叠加胜利分三本账、遗产物与研究舰、CEP／射界／炮塔、火控与五级军衔、人口上限 36，1500 tick；v1.0 第 1 季 / v1.1 第 2 季 / v1.3 第 4 季 / v1.4 第 5 季已完赛，见 [`LEADERBOARD.md`](LEADERBOARD.md)）。
 >
-> **规则演进**：v1.5 → v1.9.1 仍由 `GameCfg.Ruleset == "v15"`（`sim.RulesetV15`）开关承载，当前规则指纹见 `arena version`；v1.4 语义与指纹 `553785d4` 保持不变，作为历史基线。规则见 [`workspace/RULES_V15.md`](workspace/RULES_V15.md)，配置 [`tournament/formal_v19.json`](tournament/formal_v19.json)，714 局标定见 [`results/exp-v191-700/`](results/exp-v191-700/README.md)。
+> **规则演进**：v1.5 → v1.9.1 仍由 `GameCfg.Ruleset == "v15"`（`sim.RulesetV15`）开关承载，当前规则指纹见 `arena version`；v1.4 语义与指纹 `553785d4` 保持不变，作为历史基线。规则见 [`workspace/RULES_V15.md`](workspace/RULES_V15.md)，配置 [`tournament/formal_v19.json`](tournament/formal_v19.json)，714 局标定见 [`实验记录/规则实验/exp-v191-700/`](实验记录/规则实验/exp-v191-700/README.md)。
 >
 > **AI 参与声明**：本仓库的引擎移植、参考 Bot、测试与文档由 AI（ZCode 智能体、TRAE/DeepSeek-V4.1-Flash）在人类指导下参与编写；
 > 规则设计、赛制与验收由人类主导，全部对局结果均经引擎内置的确定性复核门禁（golden trace + orderLog 重放）。
@@ -48,11 +48,9 @@
 双击 ../裁判台.bat         # 或 py -3 -X utf8 ../referee_desk.py
 ```
 
-它有两个页签：「赛季」跑本目录里冻结好的正式赛季；「工作区」扫描
-`../算法赛/RTS算法赛@<模型名>/`，勾选任意几个临时编排一场评测。
-
-窗口里选赛季配置，按顺序点「环境自检 → 编译封存 → 冻结赛程 → 开赛 → 评分」，
-进度条按场次走，日志实时滚动；右上角封存灯直接反映 `arena seal` 的结果。
+它有三个页签：「编码」给参赛 AI 开写代码的时间窗；「比赛」扫描
+`../算法赛/RTS算法赛@<模型名>/`，勾选任意几个调用本目录的官方 arena 对局；
+「测试」包含前两者的全部功能，成绩单独写入 `../算法赛/测试/测试成绩/`。
 
 组织方旧菜单（功能与裁判台重叠，保留给脚本化场景）：
 
@@ -86,7 +84,7 @@ go run ./cmd/arena check -config tournament/formal_v19.json -seed 20261109
 ## 攻守对战（实验）
 
 v1.0 之外的独立变体：一方守擂、一方进攻，守方有工事、攻方没有；VP 改为矿场，胜负只看母舰是否被摧毁。
-规则与协议见 [`赛事手册_攻守.md`](赛事手册_攻守.md)，标定过程见 [`results/siege/结论.md`](results/siege/结论.md)。
+规则与协议见 [`赛事手册_攻守.md`](赛事手册_攻守.md)，标定过程见 [`实验记录/攻守实验/siege/结论.md`](实验记录/攻守实验/siege/结论.md)。
 
 **当前采纳参数**（40 局/档 + 样本外验证标定）：
 
@@ -107,7 +105,7 @@ go build -o bots/bin/defender.exe ./workspace/siege/defender
 
 # 单局 / 批量标定（默认就是上面的参数）
 go run ./cmd/siege -smoke -seed 20261201
-go run ./cmd/siege -seeds 20261201-20261240 -workers 4 -out results/siege/run.csv
+go run ./cmd/siege -seeds 20261201-20261240 -workers 4 -out 实验记录/攻守实验/siege/run.csv
 
 # 契约自检：三模式（obey / neutral / aggressive）的移动与索敌边界
 node engine/oracle/selftest_modes.js
@@ -125,13 +123,13 @@ done
 # 循环赛 + 拟合（有序对 × seed 各一局）
 go run ./cmd/siegepool \
   -pool "v1=bots/bin/pool_v1.exe,v2=bots/bin/pool_v2.exe,v3=bots/bin/pool_v3.exe,v4=bots/bin/pool_v4.exe" \
-  -seeds 20261301-20261316 -workers 4 -out results/siege/bt_pool
+  -seeds 20261301-20261316 -workers 4 -out 实验记录/攻守实验/siege/bt_pool
 
 # 只重算评分，不重跑对局
-go run ./cmd/siegepool -from results/siege/bt_pool.csv -out results/siege/bt_pool
+go run ./cmd/siegepool -from 实验记录/攻守实验/siege/bt_pool.csv -out 实验记录/攻守实验/siege/bt_pool
 ```
 
-口径见 [`赛事手册_攻守.md`](赛事手册_攻守.md) §10，结果见 [`results/siege/bt_pool.md`](results/siege/bt_pool.md)。
+口径见 [`赛事手册_攻守.md`](赛事手册_攻守.md) §10，结果见 [`实验记录/攻守实验/siege/bt_pool.md`](实验记录/攻守实验/siege/bt_pool.md)。
 
 ---
 
@@ -159,8 +157,8 @@ go run ./cmd/arena rate  -config $CFG
 python -X utf8 scripts/exp_v16_metrics.py results/formal-v19
 ```
 
-标定数据见 [`results/exp-v191-700/README.md`](results/exp-v191-700/README.md)（v1.9.1 定稿）与
-[`results/exp-v19-700/README.md`](results/exp-v19-700/README.md)（v1.9.0）。
+标定数据见 [`实验记录/规则实验/exp-v191-700/README.md`](实验记录/规则实验/exp-v191-700/README.md)（v1.9.1 定稿）与
+[`实验记录/规则实验/exp-v19-700/README.md`](实验记录/规则实验/exp-v19-700/README.md)（v1.9.0）。
 v1.9.1：714 局、平局 4.2%、决胜座位 49.9:50.1、母舰斩杀 7.1%、平均 1139 tick、
 Warden BT 第 4；同 Bot 双座位 80 局送达差 t=1.11（不显著）。
 
@@ -206,12 +204,11 @@ Warden BT 第 4；同 Bot 双座位 80 局送达差 t=1.11（不显著）。
 │   │   ├── bots/warden/     攻城参考 Bot（RAILGUN + ARTILLERY + CARRIER，v1.9 新增）
 │   │   └── siege/           攻守参考 Bot：siegebot 库 + attacker / defender / pool
 │   ├── bots/                封存记录与编译产物（bin 不入库）
-│   ├── results/formal/      第 1 季：赛程、结果、成绩、回放
-│   ├── results/formal-v14/  第 5 季（v1.4，历史）：赛程、结果、成绩
-│   ├── results/exp-v15/     v1.5 实验：赛程、结果、回放（本地产物，回放不入库）
-│   ├── results/exp-v191-700/ v1.9.1 标定：714 局赛程、结果、BT 与公平性复验
-│   ├── results/siege/       攻守：HP 扫描、工事预算标定、BT 榜单与结论
-│   ├── replays/             历史赛季归档（预留）
+│   ├── results/             当前与今后的正式赛事产物
+│   ├── 实验记录/            规则实验归档（README = 实验日志索引）
+│   │   ├── 规则实验/        exp-v15 → exp-v191-700
+│   │   ├── 攻守实验/siege/  HP 扫描、工事预算标定、BT 榜单与结论
+│   │   └── 临时诊断/        座位/公平性短跑，结论已并入正式实验
 │   ├── notes/               赛前狠话、赛后复盘（预留）
 │   ├── start.py             组织方菜单（默认走当前赛季 formal_v19.json）
 │   ├── 开赛.py               旧版计时脚本，已被根目录 赛务.py 取代（保留备查）
@@ -280,7 +277,7 @@ cmd/arena ──► judge ──► engine(宿主客户端) ──► node engin
 2. **hello 约 110 KB**。v1.3 契约单行上限 128 KiB，hello 实测约 110 KB，在契约内。
 3. **视野关闭**。`rules.vision=false`，全图可见；开雾需要另跑一个赛季，不能与本赛季混排。
 4. **参考 Bot 只用于基准**。它们只有流场寻路和简单交战规则，不代表规则上限；第 1–5 季无人斩舰，属选手强度不足，不是规则问题。v1.3 起「斩舰」在数值上可达（`internal/sim/victory_test.go` 用 3 台 RAILGUN 在 25 格距离验证），但参考 Bot 的推进仍会在基地口被地形卡住。
-5. **回放不入库**。`results/*/回放/` 可由 `arena run` 重建；`bots/bin/` 同理。
+5. **回放不入库**。`results/*/回放/` 与 `实验记录/*/*/回放/` 可由 `arena run` 重建；`bots/bin/` 同理。
 6. **攻守模式仍是实验**。规则、协议、标定都齐了，但缺选手包、许可、回放查看器与沙箱，不能直接当正式赛季。
 7. **攻守的 BT 样本偏少**。每对 16 局时头名区间仍有 ±117 分；出正式榜单建议每对 ≥40 局（4 人池约 480 局）。
 8. **母舰削弱在 v1.4 对局中不可感知**。v1.4 把母舰 HP/攻击/移速/坡限全部下调，但第 5 季 90 局与第 4 季逐局完全相同——参考 Bot 既不把兵送进敌方母舰射程，也不指挥自家母舰移动。v1.9.1 通过远程兵降价与对舰倍率把斩杀率提到 7.1%（714 局中 51 局），削弱本身有门禁保证（`mobility_test.go`：母舰 400 拍内必须能驶出基地 60 px）。
