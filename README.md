@@ -200,7 +200,8 @@ go run ./cmd/arena rate -config tournament/formal_v19.json
 
 - **KananPond**：赛事设计、规则决策、验收与发布维护。
 - **TRAE（DeepSeek-V4.1-Flash，AI 编码智能体）**：v1.5 → v1.9.1 规则实验的引擎实现、参考 Bot、裁判台适配、标定与文档整理。
-- **ZCode 智能体（AI）**：引擎早期移植、测试与文档，见 [`war_of_desert/README.md`](war_of_desert/README.md) 的 AI 参与声明。
+- **ZCode（GLM-5.3-Flash）**：引擎早期移植、测试与文档，见 [`war_of_desert/README.md`](war_of_desert/README.md) 的 AI 参与声明。
+- **Qoder CN （Qwen-4-Max）**：Bot调优。
 
 ## 许可
 
