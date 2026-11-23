@@ -416,3 +416,53 @@ func TestV15Smoke(t *testing.T) {
 		t.Fatalf("v15 帧缺遗产/胜利分：relics=%d vs=%d", len(f.Relics), len(f.VS))
 	}
 }
+
+// v1.9.2 运货死锁修复：携带遗产且场上无己方旗时，采矿机必须能接受 Bot move
+// （修复前被引擎托管锁死在原地，永远走不到 VP 去插旗）；转采集时先弃货。
+func TestV15CarryNoFlagMobility(t *testing.T) {
+	g := newV15Game(t, fairnessSeeds[0])
+	var sv *Unit
+	for _, u := range g.Units {
+		if u.Side == 0 && u.Kind == "SALVAGER" {
+			sv = u
+			break
+		}
+	}
+	if sv == nil {
+		t.Fatal("v15 开局没有采矿机")
+	}
+	if len(g.V15.Flags) != 0 {
+		t.Fatal("开局不应有旗")
+	}
+	sv.Mode = "obey"
+	r := g.V15.Relics[0]
+	r.State, r.CarrierID = "carried", sv.ID
+	r.X, r.Y = sv.X, sv.Y
+	rid := r.ID
+	sv.Relic, sv.RState = &rid, "toDeposit"
+
+	x0, y0 := sv.X, sv.Y
+	tx, ty := sv.X+60, sv.Y+60
+	for i := 0; i < 10; i++ {
+		g.Step([2][]Action{{Action{Type: "move", ID: &sv.ID, X: &tx, Y: &ty}}, nil})
+	}
+	if distXY(sv.X, sv.Y, x0, y0) < 1 {
+		t.Fatalf("无旗时携货采矿机应能移动：(%.1f,%.1f)→(%.1f,%.1f) rstate=%s",
+			x0, y0, sv.X, sv.Y, sv.RState)
+	}
+	if sv.Relic == nil || r.State != "carried" {
+		t.Fatalf("移动不应丢货：sv.Relic=%v r.State=%s", sv.Relic, r.State)
+	}
+
+	resID := g.Resources[0].ID
+	g.Step([2][]Action{{Action{Type: "harvest", ID: &sv.ID, ResID: &resID}}, nil})
+	if sv.Relic != nil || sv.RState != "" {
+		t.Fatalf("转采集应清运输状态：sv.Relic=%v rstate=%s", sv.Relic, sv.RState)
+	}
+	if r.State != "ground" {
+		t.Fatalf("转采集应把遗产丢回地面，实际 %s", r.State)
+	}
+	if sv.Harvest == nil || *sv.Harvest != resID {
+		t.Fatalf("转采集未生效：harvest=%v", sv.Harvest)
+	}
+}

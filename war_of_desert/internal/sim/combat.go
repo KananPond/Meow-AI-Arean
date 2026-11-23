@@ -939,6 +939,11 @@ func (g *Game) Step(orders [2][]Action) *Frame {
 			}
 			u.AITargetID = 0
 			if u.Order != nil && u.Order.Type == "harvest" {
+				// v1.9.2：携带遗产时转采集先把遗产丢回地面，
+				// 避免采集/遗产两个状态机争夺同一台采矿机。
+				if u.Relic != nil {
+					g.dropRelic(u)
+				}
 				if u.Order.ResID == nil {
 					u.Harvest = nil
 				} else {
@@ -951,8 +956,11 @@ func (g *Game) Step(orders [2][]Action) *Frame {
 					u.HState = "toResource"
 				}
 			}
-			// 引擎托管的采集车/遗产运输车不走 Bot 移动指令
-			if u.Kind == "SALVAGER" && (u.Harvest != nil || u.Relic != nil) {
+			// 引擎托管的采集车/遗产运输车不走 Bot 移动指令。
+			// v1.9.2：携带遗产但场上无己方旗时恢复 Bot 移动——否则采矿机
+			// 原地死等、永远走不到 VP 去插旗（运货死锁）。
+			if u.Kind == "SALVAGER" && (u.Harvest != nil ||
+				(u.Relic != nil && g.nearestFriendlyFlagVP(u.Side, u.X, u.Y) != nil)) {
 				continue
 			}
 			if g.v15() && u.Kind == "RESEARCH" && u.RDuty {

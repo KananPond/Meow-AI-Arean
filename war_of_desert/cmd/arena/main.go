@@ -140,10 +140,10 @@ func cmdBuild(args []string) error {
 	rec := &contest.Seal{
 		Season:      cfg.Key,
 		GeneratedAt: time.Now().Format(time.RFC3339),
-		Note:        "封存源码哈希；bin 为编译产物，可随时由 source 重建；shared 为参考 Bot 共用的策略库",
+		Note:        "封存源码哈希；bin 为编译产物，可随时由 source 重建；shared 为基线共用的策略库（botkit/refbot/acebot）",
 		Shared:      map[string]string{},
 	}
-	for _, shared := range []string{"workspace/botkit", "workspace/refbot"} {
+	for _, shared := range []string{"workspace/botkit", "workspace/refbot", "workspace/acebot"} {
 		files, err := hashTree(filepath.Join(root, filepath.FromSlash(shared)))
 		if err != nil {
 			return err

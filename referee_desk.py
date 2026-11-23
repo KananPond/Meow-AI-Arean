@@ -52,7 +52,7 @@ APP_DIR = Path(__file__).resolve().parent
 ENGINE = APP_DIR / "war_of_desert"
 DEFAULT_CONTEST_ROOT = APP_DIR / "算法赛"
 STAGE_ROOT = ENGINE / "workspace" / "_contestants"
-REF_BOTS = ["Vanguard", "Bulwark", "Swarm", "Nomad", "Sapper", "Hunter", "Warden"]
+REF_BOTS = ["baseline1", "baseline2"]
 
 # 赛务（发卷 / 开赛 / 暂停 / 收卷）与裁判台同目录。用路径加载，
 # 避免模块名含中文时在某些 Python 上 import 失败。
@@ -743,7 +743,7 @@ class RefereeDesk(tk.Tk):
             want = self._sim_rule_version(ENGINE / "internal" / "sim", mode)
             have = self._sim_rule_version(
                 ws / "workspace" / "arena" / "internal" / "sim", mode)
-            head = "v1.9.1 当前" if mode.startswith("v1.9") else "v1.4 历史"
+            head = "v1.9.2 当前" if mode.startswith("v1.9") else "v1.4 历史"
             if want and have == want:
                 lines.append(("规则：%s · 引擎与 arena 副本都是 %s" % (head, want), "dim"))
             elif want and have:
@@ -1015,11 +1015,11 @@ class RefereeDesk(tk.Tk):
 
     RULE_SUMMARIES = {
         "v1.9": (
-            "v1.9.1 当前正式（1500 tick · ruleset v15，引擎 1.9.1）：遗产第 1/2 件各 +50、每方上限 100；"
+            "v1.9.2 当前正式（1500 tick · ruleset v15，引擎 1.9.2）：遗产第 1/2 件各 +50、每方上限 100；"
             "第 3 件起 0 VS 但推进 R1–R4 遗产科技（60/85/110/135 tick）；"
             "研究舰 100 CU / 25 tick / 速度 5.0，拔旗/舰毁中断研究；"
             "遗产补给 70 tick、场上最多 3 件无主；插旗 0 分；被拔旗守方 −25、攻方 +25（同一 VP 一次）；"
-            "库存遗产分随旗毁撤回；击杀 = min(造价×2/3,200)；人口上限 36；"
+            "库存遗产分随旗毁撤回；击杀 = min(造价×2/3,200)×军衔系数（满级 ×1.6）；人口上限 36；"
             "RAILGUN 240/40、ARTILLERY 550/180、两者对母舰伤害 ×1.5；"
             "7 名参考 Bot（含 Warden 攻城）。时间到依次比 VS → KD → 母舰 HP → "
             "旗控制（领先 >5%） → 平。"
@@ -1077,7 +1077,7 @@ class RefereeDesk(tk.Tk):
         rules_mode = self.rules_vars[scope].get()
         is_exp = str(rules_mode).startswith("v1.9")
         if is_exp:
-            rule_line = "规则 v1.9.1 当前正式（1500 tick · ruleset v15，引擎 1.9.1）"
+            rule_line = "规则 v1.9.2 当前正式（1500 tick · ruleset v15，引擎 1.9.2）"
         else:
             rule_line = "规则 v1.4 历史基线（1200 tick）"
         record_dir = self._record_dir(scope)
@@ -1121,7 +1121,7 @@ class RefereeDesk(tk.Tk):
         mode = str(rules_mode)
         is_exp = mode.startswith("v1.9")
         if is_exp:
-            version = "1.9.1"
+            version = "1.9.2"
         else:
             version = "1.4"
         mode_label = "v%s 当前" % version if is_exp else "v1.4 历史"
@@ -1171,7 +1171,7 @@ class RefereeDesk(tk.Tk):
             rules["rulesVersion"] = version
         if is_exp:
             # 把裁判台选中的 v1.9 规则写进评测配置，便于赛后审计。
-            # 数值必须与 internal/sim/rules15.go（1.9.1）保持一致。
+            # 数值必须与 internal/sim/rules15.go（1.9.2）保持一致。
             rules.update({
                 "popMax": 36,
                 "relicValue": 50, "relicVSCap": 100,
@@ -1219,7 +1219,7 @@ class RefereeDesk(tk.Tk):
                 cfg["entries"].append({"name": bot, "author": "官方参考 Bot",
                                        "source": "workspace/bots/%s" % bot.lower(),
                                        "bin": "bots/bin/%s.exe" % bot.lower()})
-            self._emit(("line", "未找到 baseline@*.exe，改用 %d 个参考 Bot"
+            self._emit(("line", "未找到 baseline@*.exe，改用 %d 个官方基线"
                         % len(REF_BOTS), "dim"))
         stage_rel = STAGE_ROOT.relative_to(ENGINE).as_posix()
         for slug in names:

@@ -2,16 +2,16 @@
 
 一个面向社区的 1v1 AI Bot 算法对抗赛项目。Bot 在程序生成的沙漠战场中争夺 VP、守护母舰；仓库提供本地运行的 Go 裁判与引擎、参赛模板、参考 Bot、赛事配置和赛季榜单。
 
-> 这是源码和赛事资料仓库，不是在线报名平台或托管式对战服务。执行链已可开赛（当前正式赛 **v1.9.1 · 第 6 季**，ruleset `v15`，1500 tick），组织流程见下方「裁判台」。
-> v1.9.1 在 v1.4 基线上叠加遗产／插旗／胜利分、研究舰与遗产科技、CEP／射界／炮塔、火控与五级军衔；规则见 [RULES_V15.md](war_of_desert/workspace/RULES_V15.md)，714 局标定数据见 [exp-v191-700](war_of_desert/实验记录/规则实验/exp-v191-700/README.md)。默认选手包已按 v1.9.1 发卷。
+> 这是源码和赛事资料仓库，不是在线报名平台或托管式对战服务。执行链已可开赛（当前正式赛 **v1.9.2 · 第 6 季**，ruleset `v15`，1500 tick），组织流程见下方「裁判台」。
+> v1.9.2 在 v1.4 基线上叠加遗产／插旗／胜利分、研究舰与遗产科技、CEP／射界／炮塔、火控与五级军衔（v1.9.1 基础上修复运货死锁，指纹 `077336ff`）；规则见 [RULES_V15.md](war_of_desert/workspace/RULES_V15.md)，714 局标定数据（v1.9.1 口径）见 [exp-v191-700](war_of_desert/实验记录/规则实验/exp-v191-700/README.md)。默认选手包已按 v1.9.2 发卷。
 
 本项目采用 [MIT License](LICENSE) 开源。
 
 ## 项目现状
 
 - 正式赛执行链支持编译 Bot、封存源码哈希、冻结赛程、运行对局和生成评分。
-- 仓库包含 Go 原生规则引擎及历史 JavaScript oracle；当前赛季（第 6 季 v1.9.1）配置使用 Go 原生引擎。
-- 当前正式赛规则版本为 **v1.9.1**（ruleset `v15`，1500 tick）：在 v1.4 基线（跳过式生产队列、母舰 RU 基础收入、四子系统分配、CU/RU 双资源运输线、资源成对同类、脱战自愈、母舰削弱）之上叠加胜利分三本账（击杀／遗产／插旗）、遗产物运输入库、研究舰与 R1–R4 遗产科技、CEP 与射界／炮塔、火控 C1–C3、5 级单位等级、人口上限 36。
+- 仓库包含 Go 原生规则引擎及历史 JavaScript oracle；当前赛季（第 6 季 v1.9.2）配置使用 Go 原生引擎。
+- 当前正式赛规则版本为 **v1.9.2**（ruleset `v15`，1500 tick；v1.9.1 基础上修复运货死锁与采集/遗产状态机冲突，指纹变更；714 局标定为 v1.9.1 口径，正式开赛前建议重跑）：在 v1.4 基线（跳过式生产队列、母舰 RU 基础收入、四子系统分配、CU/RU 双资源运输线、资源成对同类、脱战自愈、母舰削弱）之上叠加胜利分三本账（击杀／遗产／插旗）、遗产物运输入库、研究舰与 R1–R4 遗产科技、CEP 与射界／炮塔、火控 C1–C3、5 级单位等级、人口上限 36。
 - v1.4 保留为历史基线（`tournament/formal_v14.json`、`算法赛/测试/历史赛季/formal-v14/`）；v1.5–v1.8 为规则实验阶段，产物见 `war_of_desert/实验记录/规则实验/exp-v*`。
 - 第 4、5 季基准赛均为 6 名选手、45 场对阵、90 局，零故障、90/90 局通过确定性复核，见[赛季榜单](war_of_desert/LEADERBOARD.md)；v1.9.1 以 7 Bot × 17 seed × 换边 2 局 = 714 局完成标定（平局 4.2%、决胜座位 49.9:50.1、母舰斩杀 7.1%），见 [exp-v191-700](war_of_desert/实验记录/规则实验/exp-v191-700/README.md)。
 - 正式赛逐局 JSON、赛程和回放属于本地生成的赛事产物，并未全部包含在当前 Git 推送内容中。
@@ -23,7 +23,7 @@
 - Bot 以独立进程运行，通过标准输入/输出的 JSON 行协议与裁判通信。
 - 裁判执行决策时限、故障判罚、换边对局和确定性复核。
 - 赛后可生成 Bradley–Terry 实力榜与独立的加权总分榜。
-- 提供 Go 原生引擎、冻结的 JavaScript oracle、golden trace 回归测试及参考 Bot。
+- 提供 Go 原生引擎、冻结的 JavaScript oracle、golden trace 回归测试及两个官方基线（中等 / 极强）。
 
 ## 目录
 
@@ -33,8 +33,8 @@
 ├── referee_desk.py       ← 裁判台本体（tkinter，标准库）
 ├── 赛务.py               ← 发卷 / 开赛 / 暂停 / 收卷（也可单独命令行用）
 ├── 算法赛/               ← 比赛工作区，每个子目录是一名选手
-│   ├── baseline@1.exe    基线一（预编译，Vanguard）
-│   ├── baseline@2.exe    基线二（预编译，Nomad）
+│   ├── baseline@1.exe    基线一（预编译，中等战术）
+│   ├── baseline@2.exe    基线二（预编译，极强·多轮调试）
 │   ├── 比赛记录/          裁判台「比赛」页签的成绩归档（本地生成，不入库）
 │   ├── 测试/             历史比赛记录与「测试」页签的测试成绩（本地生成）
 │   └── RTS算法赛@<模型名>/
@@ -87,9 +87,11 @@ py -3 -X utf8 referee_desk.py --init "算法赛" 1
 | 基线 | `算法赛/baseline@*.exe` | **预编译**可执行文件，不参与编译，直接上场 |
 | 选手 | `算法赛/RTS算法赛@<模型名>/` | 目录名即选手名，以收卷后的 `交卷/<选手名>_bot.go` 为准 |
 
-当前两个基线是用参考 Bot 编译的：`baseline@1` = Vanguard（正面推进），
-`baseline@2` = Nomad（机动抢点）。评测时基线排在名册前面，BT 以
-`baseline@1` 为锚（=0），因此不同场次的选手分数可以直接横向比较。
+两个基线的身份：`baseline@1` = **中等战术水平**（攻城消耗剖面，refbot 库）；
+`baseline@2` = **多轮调试的极强上限对手**（acebot 库：集火/伤兵微操/护旗/劫旗/遗产竞速），
+调试记录见 [baseline-tuning](war_of_desert/实验记录/Bot实验/baseline-tuning/README.md)。
+旧 7 个参考 Bot 已归档至 [参考Bot归档](war_of_desert/实验记录/参考Bot归档/README.md)。
+评测时基线排在名册前面，BT 以 `baseline@1` 为锚（=0），因此不同场次的选手分数可以直接横向比较。
 
 ## 裁判台
 
@@ -138,7 +140,7 @@ cd war_of_desert
 # 运行正式赛源码的 Go 测试
 go test ./cmd/... ./internal/... ./workspace/...
 
-# 编译当前赛季（第 6 季 v1.9.1）配置中的 Bot，并封存源码哈希
+# 编译当前赛季（第 6 季 v1.9.2）配置中的 Bot，并封存源码哈希
 go run ./cmd/arena build -config tournament/formal_v19.json
 
 # 运行模板 Bot 与参考 Bot 的换边自检
@@ -170,7 +172,7 @@ go run ./cmd/arena check -config tournament/formal_v19.json -seed 20261109
 
 ## 运行整季基准赛
 
-组织方可按顺序执行以下命令。配置使用当前第 6 季 v1.9.1 基准赛，生成物写入 `war_of_desert/results/formal-v19/`。
+组织方可按顺序执行以下命令。配置使用当前第 6 季 v1.9.2 基准赛，生成物写入 `war_of_desert/results/formal-v19/`。
 
 ```bash
 cd war_of_desert
@@ -184,9 +186,9 @@ go run ./cmd/arena rate -config tournament/formal_v19.json
 
 | 内容 | 文档 |
 |---|---|
-| 规则与参赛约束 | [选手规则](war_of_desert/workspace/RULES.md) · [v1.9.1 增量](war_of_desert/workspace/RULES_V15.md) |
+| 规则与参赛约束 | [选手规则](war_of_desert/workspace/RULES.md) · [v1.9.2 增量](war_of_desert/workspace/RULES_V15.md) |
 | 选手模板、参考 Bot 与本地命令 | [选手工作区](war_of_desert/workspace/README.md) |
-| 赛季配置 | [v1.9.1 正式配置（当前）](war_of_desert/tournament/formal_v19.json) · [v1.9.1 标定配置](war_of_desert/tournament/experiment_v19_700.json) · [v1.4 配置（历史）](war_of_desert/tournament/formal_v14.json) · [v1.3 配置（历史）](war_of_desert/tournament/formal_v13.json) · [v1.2 配置（历史）](war_of_desert/tournament/formal_v12.json) · [v1.1 配置（历史）](war_of_desert/tournament/formal_v11.json) · [v1.0 配置（历史）](war_of_desert/tournament/formal.json) |
+| 赛季配置 | [v1.9.2 正式配置（当前）](war_of_desert/tournament/formal_v19.json) · [v1.9.1 标定配置](war_of_desert/tournament/experiment_v19_700.json) · [v1.4 配置（历史）](war_of_desert/tournament/formal_v14.json) · [v1.3 配置（历史）](war_of_desert/tournament/formal_v13.json) · [v1.2 配置（历史）](war_of_desert/tournament/formal_v12.json) · [v1.1 配置（历史）](war_of_desert/tournament/formal_v11.json) · [v1.0 配置（历史）](war_of_desert/tournament/formal.json) |
 | 历季成绩摘要 | [赛季榜单](war_of_desert/LEADERBOARD.md) |
 | 赛事产物格式与复核 | [结果目录说明](war_of_desert/results/README.md) |
 | v1.9.1 规则与 714 局标定 | [Plan_V15.md](Dev/实验/Plan_V15.md) · [exp-v191-700](war_of_desert/实验记录/规则实验/exp-v191-700/README.md) |

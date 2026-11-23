@@ -124,3 +124,9 @@ __pycache__/
 /Meow社区比赛__WoD正式赛_beta*
 
 # 历史全流程测试存档已迁到 算法赛/测试/历史全流程/（见上方忽略规则）
+
+# 基线调试与测试轮的本地结果（证据归档在 实验记录/Bot实验/）
+/war_of_desert/results/baseline-*/
+/war_of_desert/results/test-*/
+/war_of_desert/实验记录/参考Bot归档/bin/
+/war_of_desert/实验记录/攻守实验/bin/

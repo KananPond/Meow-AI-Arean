@@ -1,8 +1,8 @@
 # Desert Arena · 正式赛事（Go 执行链 + Go 原生引擎）
 
-> **状态：可开赛**（当前正式赛 = **v1.9.1 · 第 6 季**：在 v1.4 基线上叠加胜利分三本账、遗产物与研究舰、CEP／射界／炮塔、火控与五级军衔、人口上限 36，1500 tick；v1.0 第 1 季 / v1.1 第 2 季 / v1.3 第 4 季 / v1.4 第 5 季已完赛，见 [`LEADERBOARD.md`](LEADERBOARD.md)）。
+> **状态：可开赛**（当前正式赛 = **v1.9.2 · 第 6 季**：在 v1.4 基线上叠加胜利分三本账、遗产物与研究舰、CEP／射界／炮塔、火控与五级军衔、人口上限 36，1500 tick；v1.0 第 1 季 / v1.1 第 2 季 / v1.3 第 4 季 / v1.4 第 5 季已完赛，见 [`LEADERBOARD.md`](LEADERBOARD.md)）。
 >
-> **规则演进**：v1.5 → v1.9.1 仍由 `GameCfg.Ruleset == "v15"`（`sim.RulesetV15`）开关承载，当前规则指纹见 `arena version`；v1.4 语义与指纹 `553785d4` 保持不变，作为历史基线。规则见 [`workspace/RULES_V15.md`](workspace/RULES_V15.md)，配置 [`tournament/formal_v19.json`](tournament/formal_v19.json)，714 局标定见 [`实验记录/规则实验/exp-v191-700/`](实验记录/规则实验/exp-v191-700/README.md)。
+> **规则演进**：v1.5 → v1.9.2 仍由 `GameCfg.Ruleset == "v15"`（`sim.RulesetV15`）开关承载，当前规则指纹见 `arena version`；v1.4 语义与指纹 `553785d4` 保持不变，作为历史基线。规则见 [`workspace/RULES_V15.md`](workspace/RULES_V15.md)，配置 [`tournament/formal_v19.json`](tournament/formal_v19.json)，714 局标定见 [`实验记录/规则实验/exp-v191-700/`](实验记录/规则实验/exp-v191-700/README.md)。
 >
 > **AI 参与声明**：本仓库的引擎移植、参考 Bot、测试与文档由 AI（ZCode 智能体、TRAE/DeepSeek-V4.1-Flash）在人类指导下参与编写；
 > 规则设计、赛制与验收由人类主导，全部对局结果均经引擎内置的确定性复核门禁（golden trace + orderLog 重放）。
@@ -10,7 +10,7 @@
 > **赛事手册**：[`赛事手册.md`](赛事手册.md) ｜ **规则基线（v1.0 历史）**：[`../Dev/Plan_Beta.md`](../Dev/Plan_Beta.md) 快照
 > **引擎双轨**：`engine.kind` 二选一——`oracle`（只读快照 `MVP@288db07f`，`engine/oracle_host.js` 承载，校验 `python -X utf8 scripts/verify_oracle.py`）
 > 或 `native`（**Go 原生引擎**：规则语义在 `internal/sim`，宿主 `cmd/enginehost`，当前赛季配置 [`tournament/formal_v19.json`](tournament/formal_v19.json)）
-> **执行链**：Go 标准库，零第三方依赖。当前正式赛规则 = **v1.9.1**（ruleset `v15` / 1500 tick / 胜利分三本账 / 遗产与研究舰 / CEP 与射界 / 火控 C1–C3 / 五级军衔 / 七领域计分）
+> **执行链**：Go 标准库，零第三方依赖。当前正式赛规则 = **v1.9.2**（ruleset `v15` / 1500 tick / 胜利分三本账 / 遗产与研究舰 / CEP 与射界 / 火控 C1–C3 / 五级军衔 / 七领域计分）
 
 ---
 
@@ -62,11 +62,11 @@ python -X utf8 start.py season   # 整季流水线：build → plan → run → 
 在 **`war_of_desert/`** 执行：
 
 ```bash
-CFG=tournament/formal_v19.json   # 当前赛季（v1.9.1）
+CFG=tournament/formal_v19.json   # 当前赛季（v1.9.2）
 go run ./cmd/arena selftest -config $CFG   # 验证超时 kill / 崩溃重启 / 非法结构红牌
-go run ./cmd/arena build    -config $CFG   # 编译 7 名参考 Bot（Vanguard / Nomad / Swarm / Sapper / Bulwark / Hunter / Warden）并封存源码哈希
+go run ./cmd/arena build    -config $CFG   # 编译 2 个基线（baseline1 中等 / baseline2 极强）并封存源码哈希
 go run ./cmd/arena plan     -config $CFG   # 冻结赛程 → results/formal-v19/赛程.json
-go run ./cmd/arena run      -config $CFG   # 跑完 357 场 / 714 局 → 结果.jsonl + 回放（开赛前校验封存）
+go run ./cmd/arena run      -config $CFG   # 双基线 17 场 / 34 局（加选手后按名册扩展）→ 结果.jsonl + 回放（开赛前校验封存）
 go run ./cmd/arena rate     -config $CFG   # BT + 加权总分 → 成绩.md / 成绩_加权总分.md / 成绩.json
 ```
 
@@ -133,20 +133,24 @@ go run ./cmd/siegepool -from 实验记录/攻守实验/siege/bt_pool.csv -out �
 
 ---
 
-## 当前正式赛 · v1.9.1
+## 当前正式赛 · v1.9.2
 
-v1.9.1 是当前正式赛口径，规则由 `GameCfg.Ruleset == "v15"`（`sim.RulesetV15`）承载，
+v1.9.2 是当前正式赛口径（v1.9.1 基础上修复运货死锁），规则由 `GameCfg.Ruleset == "v15"`（`sim.RulesetV15`）承载，
 配置 [`tournament/formal_v19.json`](tournament/formal_v19.json)，规则实现 `internal/sim/rules15.go`，
 完整规则见 [`workspace/RULES_V15.md`](workspace/RULES_V15.md)。v1.4 语义与指纹 `553785d4` 保持不变，作为历史基线。
 
 - 胜利分：第 1/2 件遗产各 +50（上限 100），第 3 件起 0 VS 但推进遗产科技；击杀 `min(造价×2/3,200)`；插旗 0 分；被拔旗 −25，攻方 +25（同 VP 一次）；库存遗产分随旗毁撤回。
 - 新单位 **研究舰（RESEARCH）**：无攻击、80 HP、100 CU / 25 tick；停在己方旗下研究 R1–R4 遗产科技；拔旗/舰毁中断研究。
-- 遗产科技 R1–R4：60 / 85 / 110 / 135 tick，提供伤害/精度/装甲/射程；6 件以上库存给过载伤害。
+- 遗产科技 R1–R4：60 / 85 / 110 / 135 tick，提供伤害/精度/装甲/射程（R4 为全体单位射程 +15%、伤害 +15%）；单旗库存 >5 件给过载伤害（每多 1 件 +2%，封顶 +20%）。
 - v1.8 系增量：人口上限 36、参考 Bot 全线 Push、RAILGUN 240/40、ARTILLERY 550/180，
   两者对母舰伤害 ×1.5；时间到判定链只保留 VS → KD → 母舰 HP → 旗控制 → 平。
 - v1.8.3 关键修复：neutral 模式的「高差据守」只在敌人进入自身射程时生效。
 - v1.9：新增第 7 个参考 Bot **Warden**（RAILGUN + ARTILLERY + CARRIER）；遗产补给 70 tick / 场上 3 件。
-- 1500 tick、**7 Bot** × 17 seed × 换边 2 局 = **714 局**；v1.9.1 指纹 `393ee404`，v1.4 指纹仍是 `553785d4`。
+- 1500 tick；预制 Bot 名册已合并为 **2 个基线**：baseline@1（中等战术，refbot 攻城剖面）/
+  baseline@2（极强，acebot 集火/微操/护旗/劫旗/遗产竞速，多轮调试见
+  [`实验记录/Bot实验/baseline-tuning/`](实验记录/Bot实验/baseline-tuning/README.md)）；
+  旧 7 参考 Bot 归档在 [`实验记录/参考Bot归档/`](实验记录/参考Bot归档/README.md)。
+  v1.9.2 指纹 `077336ff`（v1.9.1 为 `393ee404`，运货死锁修复后变更），v1.4 指纹仍是 `553785d4`。
 
 ```bash
 CFG=tournament/formal_v19.json
@@ -180,7 +184,7 @@ Warden BT 第 4；同 Bot 双座位 80 局送达差 t=1.11（不显著）。
 │   │   ├── siegepool/       攻守：循环赛 + 双参数 BT 评分
 │   │   └── faultbot/        自检用故障注入 Bot
 │   ├── internal/
-│   │   ├── sim/             Go 原生规则引擎（rules15.go = v1.9.1 实验通道；v14 语义不变）
+│   │   ├── sim/             Go 原生规则引擎（rules15.go = v1.9.2 实验通道；v14 语义不变）
 │   │   ├── protocol/        hello / tick / actions / end 的线上契约与地图解码
 │   │   ├── engine/          引擎宿主客户端（行分隔 JSON）
 │   │   ├── judge/           进程隔离、死线、红牌、重启、回放、确定性复核
@@ -195,18 +199,19 @@ Warden BT 第 4；同 Bot 双座位 80 局送达差 t=1.11（不显著）。
 │   ├── tournament/formal_v12.json   第 3 季（v1.2，赛程作废）
 │   ├── tournament/formal_v13.json   第 4 季（v1.3）
 │   ├── tournament/formal_v14.json   第 5 季（v1.4，历史）
-│   ├── tournament/formal_v19.json   第 6 季（v1.9.1，当前正式赛）
+│   ├── tournament/formal_v19.json   第 6 季（v1.9.2，当前正式赛）
 │   ├── tournament/experiment_v15.json  v1.5 实验（历史，1500 tick）
 │   ├── tournament/experiment_v19_700.json  v1.9.1 714 局标定配置
-│   ├── workspace/           引擎侧参考工作区（Starter 选手 + botkit/refbot 共用库）
-│   │   ├── bots/sapper/     攻坚参考 Bot（RAILGUN 拆舰，v1.3 新增）
-│   │   ├── bots/hunter/     遗产／插旗参考 Bot（v1.5 新增）
-│   │   ├── bots/warden/     攻城参考 Bot（RAILGUN + ARTILLERY + CARRIER，v1.9 新增）
+│   ├── workspace/           引擎侧参考工作区（Starter 选手 + botkit/refbot/acebot 共用库）
+│   │   ├── bots/baseline1/  基线一：中等战术（refbot 攻城剖面）
+│   │   ├── bots/baseline2/  基线二：极强（acebot 集火/微操/护旗/劫旗/遗产竞速）
 │   │   └── siege/           攻守参考 Bot：siegebot 库 + attacker / defender / pool
 │   ├── bots/                封存记录与编译产物（bin 不入库）
 │   ├── results/             当前与今后的正式赛事产物
 │   ├── 实验记录/            规则实验归档（README = 实验日志索引）
 │   │   ├── 规则实验/        exp-v15 → exp-v191-700
+│   │   ├── 参考Bot归档/     旧 7 参考 Bot 源码与 exe（v1.9.1 名册）
+│   │   ├── Bot实验/         baseline-tuning 多轮调试记录
 │   │   ├── 攻守实验/siege/  HP 扫描、工事预算标定、BT 榜单与结论
 │   │   └── 临时诊断/        座位/公平性短跑，结论已并入正式实验
 │   ├── notes/               赛前狠话、赛后复盘（预留）

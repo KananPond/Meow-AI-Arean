@@ -1,7 +1,7 @@
 # 选手工作区
 
-> 当前比赛规则：**v1.9.1**（ruleset `v15`，1500 tick）。`RULES.md` 是协议与经济基线，
-> `RULES_V15.md` 是 v1.9.1 的增量，两者冲突时以 `RULES_V15.md` 为准。
+> 当前比赛规则：**v1.9.2**（ruleset `v15`，1500 tick）。`RULES.md` 是协议与经济基线，
+> `RULES_V15.md` 是 v1.9.2 的增量，两者冲突时以 `RULES_V15.md` 为准。
 
 > 编码期你只需要动 `submission/<选手名>_bot.go`。其余目录是规则、裁判和陪练。
 
@@ -10,7 +10,7 @@
 ```text
 workspace/
 ├── RULES.md                   完整规则与行协议（先读）
-├── RULES_V15.md               v1.9.1 增量规则（当前比赛）
+├── RULES_V15.md               v1.9.2 增量规则（当前比赛）
 ├── prompt.md                  发给模型的原始任务书
 ├── README.md                  本文件
 ├── clock.py                   编码期计时器（只读）
@@ -23,8 +23,8 @@ workspace/
 │   └── workspace/botkit/      协议库（import "desertarena/workspace/botkit"）
 ├── bots/
 │   ├── skeleton/              骨架 Bot：只演示接口协议，不含任何策略
-│   ├── baseline@1.exe         基线一：正面推进（预编译，无源码）
-│   └── baseline@2.exe         基线二：机动抢点（预编译，无源码）
+│   ├── baseline@1.exe         基线一：中等战术（预编译，无源码）
+│   └── baseline@2.exe         基线二：极强·多轮调试（预编译，无源码）
 ├── tournament/local.json      本地赛季配置（两个基线 + 你的 Bot）
 ├── 本地对局.bat               双击：编译 + 跟两个基线打
 ├── 本地赛季.bat               双击：编译 + 完整赛季评分
