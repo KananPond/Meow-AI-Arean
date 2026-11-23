@@ -144,22 +144,75 @@ def detect_source(ws: Path):
     return None, "没找到 package main"
 
 
-def pick_frozen(stage: Path):
-    """找收卷副本：优先 交卷记录.json 里登记的 file，其次扫 *_bot.go / decide.go。"""
-    d = stage / "交卷"
+def verify_frozen(ws: Path) -> dict | None:
+    """校验 交卷/ 目录。无 交卷/ 返回 None；有 交卷/ 则必须资格通过且 SHA-256 吻合。"""
+    d = ws / "交卷"
     if not d.is_dir():
         return None
-    rec = d / "交卷记录.json"
-    if rec.is_file():
-        try:
-            name = json.loads(rec.read_text(encoding="utf-8")).get("file")
-            if name and (d / name).is_file():
-                return d / name
-        except Exception:  # noqa: BLE001
-            pass
-    for p in sorted(d.glob("*_bot.go")) + sorted(d.glob("decide.go")):
-        return p
-    return None
+    rec_path = d / "交卷记录.json"
+    if not rec_path.is_file():
+        raise ValueError("%s：存在 交卷/ 目录但缺少 交卷记录.json" % ws.name)
+    try:
+        rec = json.loads(rec_path.read_text(encoding="utf-8"))
+    except Exception as e:  # noqa: BLE001
+        raise ValueError("%s：交卷记录.json 损坏（%s）" % (ws.name, e)) from e
+    if not isinstance(rec, dict):
+        raise ValueError("%s：交卷记录.json 格式非法" % ws.name)
+    if rec.get("accepted") is not True:
+        raise ValueError("%s：交卷资格未通过（accepted=%r，超时或未提交），拒绝进入评测"
+                         % (ws.name, rec.get("accepted")))
+    fname = rec.get("file")
+    if not isinstance(fname, str) or not fname or Path(fname).name != fname:
+        raise ValueError("%s：交卷记录.json 中 file 字段非法（%r）" % (ws.name, fname))
+    frozen_file = d / fname
+    if not frozen_file.is_file():
+        raise ValueError("%s：找不到收卷文件 交卷/%s" % (ws.name, fname))
+    want_sha = rec.get("sha256")
+    if not isinstance(want_sha, str) or not want_sha:
+        raise ValueError("%s：交卷记录.json 缺少 sha256" % ws.name)
+    actual_sha = hashlib.sha256(frozen_file.read_bytes()).hexdigest()
+    if actual_sha != want_sha:
+        raise ValueError("%s：交卷文件 交卷/%s 哈希不符（记录 %s，实际 %s）"
+                         % (ws.name, fname, want_sha[:12], actual_sha[:12]))
+    return {"path": frozen_file, "file": fname, "sha256": actual_sha, "record": rec}
+
+
+def stage_contestant(ws: Path, stage: Path, src: str) -> dict:
+    """把选手源码暂存到 stage/<src>。
+
+    已收卷（存在 交卷/）时，只把通过资格与哈希校验的单文件交卷放进空目录，
+    不带入工作区里多余的 .go 文件或收卷后的改动；未收卷时仅复制源码目录用于演练。
+    """
+    if stage.exists():
+        shutil.rmtree(stage)
+    dst = stage if src == "." else stage / src
+    frozen = verify_frozen(ws)
+    if frozen is not None:
+        dst.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(frozen["path"], dst / frozen["file"])
+        return {"frozen": True, "file": frozen["file"], "sha256": frozen["sha256"]}
+    src_dir = ws if src == "." else ws / src
+    if not src_dir.is_dir():
+        raise ValueError("%s：找不到源码目录 %s" % (ws.name, src))
+    shutil.copytree(src_dir, dst, ignore=shutil.ignore_patterns(
+        "bin", "*.exe", ".git", "__pycache__", "go.mod", "go.sum",
+        "arena", "对局记录", ".bin"))
+    return {"frozen": False, "file": None, "sha256": tree_digest(stage)}
+
+
+def resolve_opponents(root: Path) -> tuple[list[str], list[Path]]:
+    """解析对战页实际使用的对手列表：有 baseline@*.exe 用基线，否则用 REF_BOTS。"""
+    baselines = sorted(root.glob("baseline@*.exe")) if root.is_dir() else []
+    if baselines:
+        return [exe.stem for exe in baselines], baselines
+    return list(REF_BOTS), []
+
+
+def contest_match_counts(num_picked: int, num_opponents: int, seeds: int) -> tuple[int, int]:
+    """按两两循环 × max(1, seeds) × 换边 2 局，返回 (总场次数, 总局数)。"""
+    k = num_picked + num_opponents
+    matches = (k * (k - 1) // 2) * max(1, seeds)
+    return matches, matches * 2
 
 
 def slugify(name: str) -> str:
@@ -1052,7 +1105,7 @@ class RefereeDesk(tk.Tk):
     def _seal_one(self, ws: Path, label: str, auto: bool = False):
         """冻结交付文件到 交卷/。返回 info 或 None。"""
         try:
-            info = service.freeze(ws)
+            info = service.freeze(ws, auto=auto)
         except Exception as e:  # noqa: BLE001
             self._log("%s封存 %s 失败：%s\n" % ("自动" if auto else "", label, e), "err")
             return None
@@ -1060,9 +1113,11 @@ class RefereeDesk(tk.Tk):
         if info["missing_submission"]:
             self._log("%s %s：没有交付文件，记为未提交\n" % (head, label), "err")
         else:
-            self._log("%s %s：%d 字节，用 %.1f 分钟，sha256=%s\n"
+            suffix = "" if info.get("accepted") else "（超时不计成绩）"
+            self._log("%s %s：%d 字节，用 %.1f 分钟，sha256=%s%s\n"
                       % (head, label, info["bytes"], info["used_minutes"],
-                         info["sha256"][:16]), "ok")
+                         info["sha256"][:16], suffix),
+                      "ok" if info.get("accepted") else "err")
             if info.get("is_template"):
                 self._log("           注意：交付物与模板逐字节相同，参赛 AI 可能没写出东西\n",
                           "err")
@@ -1139,8 +1194,13 @@ class RefereeDesk(tk.Tk):
             messagebox.showwarning("裁判台", "先勾选至少一个可编译的工作区")
             return
         who = "只跑这一个" if len(picked) == 1 else "评测 %d 个选手" % len(picked)
-        k = len(picked) + len(REF_BOTS)
-        matches = k * (k - 1) // 2
+        try:
+            seeds = max(1, int(self.seed_count.get() or "1"))
+        except ValueError:
+            seeds = 1
+        root = Path(self.contest_root.get().strip() or DEFAULT_CONTEST_ROOT)
+        opp_names, _baselines = resolve_opponents(root)
+        matches, games = contest_match_counts(len(picked), len(opp_names), seeds)
         rules_mode = self.rules_mode.get()
         is_exp = str(rules_mode).startswith("v1.9")
         if is_exp:
@@ -1152,16 +1212,15 @@ class RefereeDesk(tk.Tk):
         if not messagebox.askokcancel(
                 "真的要开跑？",
                 "%s\n%s\n%s\n\n对手：%s%s\n\n"
-                "将进行 %d 场对阵、%d 局真实对局（每场换边打 2 局）。\n"
+                "%d 个 seed，将进行 %d 场对阵、%d 局真实对局（每场换边打 2 局）。\n"
                 "对局期间会另写一本评测封存（bots/封存记录/_desk_*.json），"
                 "跑完删掉并恢复当前赛季封存。"
                 % (who, "\n".join("  · " + w[1] for w in picked), rule_line,
-                   "、".join(REF_BOTS),
-                   "" if len(picked) == 1 else " + 彼此", matches, matches * 2),
+                   "、".join(opp_names),
+                   "" if len(picked) == 1 else " + 彼此", seeds, matches, games),
                 default=messagebox.CANCEL):
             self._log("已取消：没有发起对局\n", "dim")
             return
-        seeds = int(self.seed_count.get() or "1")
 
         def work():
             try:
@@ -1198,28 +1257,17 @@ class RefereeDesk(tk.Tk):
             names.append(slug)
             sources[slug] = src
             stage = STAGE_ROOT / slug
-            if stage.exists():
-                shutil.rmtree(stage)
-            # go.mod/go.sum 必须剥掉：工作区是独立模块（选手本地能直接 build），
-            # 带着它进引擎目录会变成嵌套模块，arena build 就编不动了。
-            # arena/ 是发给选手的引擎源码副本（他自己调试用），评测时用赛场这份，
-            # 不随卷走；对局记录与构建产物同理。
-            shutil.copytree(path, stage, ignore=shutil.ignore_patterns(
-                "bin", "*.exe", ".git", "__pycache__", "go.mod", "go.sum",
-                "arena", "对局记录", ".bin"))
-            # 有收卷副本就以收卷副本为准：评的必须是冻结那一刻的代码。
-            # 交付文件名是「<选手名>_bot.go」，不再固定叫 decide.go。
-            frozen = pick_frozen(stage)
-            if frozen is not None and src:
-                dst = stage if src == "." else stage / src
-                dst.mkdir(parents=True, exist_ok=True)
-                shutil.copy2(frozen, dst / frozen.name)
-                self._emit(("line", "     使用收卷副本 交卷/%s" % frozen.name, "dim"))
+            staged = stage_contestant(path, stage, src or ".")
+            if staged["frozen"]:
+                self._emit(("line", "     使用已校验收卷副本 交卷/%s" % staged["file"], "dim"))
+            else:
+                self._emit(("line", "     未收卷：暂存工作区源码（仅限演练）", "dim"))
             digest = tree_digest(stage)
             self._emit(("line", "暂存 %-24s ← %s" % (slug, path)))
             self._emit(("line", "     源码摘要 %s" % digest[:16]))
             manifest.append({"name": slug, "workdir": str(path), "staged": str(stage),
-                             "source": src, "sha256": digest})
+                             "source": src, "frozen": staged["frozen"],
+                             "frozen_file": staged["file"], "sha256": digest})
 
         rules = {"tickLimit": 1500 if is_exp else 1200, "tickMs": 50, "decideMs": 120,
                  "initMs": 2000, "maxStrikes": 3, "strikeMode": "consecutive",
@@ -1263,7 +1311,7 @@ class RefereeDesk(tk.Tk):
         # 对手必须排在前面：BT 以「名册第一名」为锚（=0），
         # 锚点放成选手的话，每个选手都会是 0 分，跨场无法比较。
         root = Path(self.contest_root.get().strip() or DEFAULT_CONTEST_ROOT)
-        baselines = sorted(root.glob("baseline@*.exe"))
+        opp_names, baselines = resolve_opponents(root)
         if baselines:
             for exe in baselines:
                 cfg["entries"].append({
@@ -1271,14 +1319,14 @@ class RefereeDesk(tk.Tk):
                     "bin": str(exe), "prebuilt": True,
                 })
             self._emit(("line", "对手：%s（预编译基线）"
-                        % "、".join(e.stem for e in baselines), "dim"))
+                        % "、".join(opp_names), "dim"))
         else:
-            for bot in REF_BOTS:
+            for bot in opp_names:
                 cfg["entries"].append({"name": bot, "author": "官方参考 Bot",
                                        "source": "workspace/bots/%s" % bot.lower(),
                                        "bin": "bots/bin/%s.exe" % bot.lower()})
             self._emit(("line", "未找到 baseline@*.exe，改用 %d 个参考 Bot"
-                        % len(REF_BOTS), "dim"))
+                        % len(opp_names), "dim"))
         stage_rel = STAGE_ROOT.relative_to(ENGINE).as_posix()
         for slug in names:
             sub = sources.get(slug) or "."
@@ -1303,7 +1351,7 @@ class RefereeDesk(tk.Tk):
                      ["go", "run", "./cmd/arena", "run", "-config", cfg_rel],
                      ["go", "run", "./cmd/arena", "rate", "-config", cfg_rel]):
             if not self._stream(argv):
-                return
+                return False
         self.last_out = out_rel
         self._emit(("line", "评测完成 → %s" % out_rel, "ok"))
         # 评测用的是临时编排，build 会顺手给它写一本 bots/封存记录/_desk_*.json。
@@ -1318,6 +1366,7 @@ class RefereeDesk(tk.Tk):
         except OSError:
             pass
         self._emit(("exit", 0, None))
+        return True
 
     # ---------------- 通用执行 ----------------
     def _start(self, steps):
@@ -1668,10 +1717,11 @@ def main():
         app.after(30000, app.quit)
         app.mainloop()
         text = state["text"] or app.seal_lbl.cget("text")
+        ok = ("✓" in text or "✗" in text)
         print("SEAL_LABEL=%s" % text)
-        print("SMOKE_OK" if ("✓" in text or "✗" in text) else "SMOKE_FAIL")
+        print("SMOKE_OK" if ok else "SMOKE_FAIL")
         app.destroy()
-        return
+        return 0 if ok else 1
     if "--init" in argv:
         # 无头初始化：--init [根目录] [seed 数]
         i = argv.index("--init")
@@ -1726,11 +1776,29 @@ def main():
         seeds = int(argv[i + 2]) if len(argv) > i + 2 else 1
         rules_mode = argv[i + 3] if len(argv) > i + 3 else "v1.9"
         app.headless = True
-        app._emit = lambda item: print(item[1] if item[0] == "line" else "EXIT=%s" % item[1])
+        exit_state = {"code": 0}
+
+        def on_emit(item):
+            if item[0] == "line":
+                print(item[1])
+            else:
+                exit_state["code"] = int(item[1] or 0)
+                print("EXIT=%s" % item[1])
+
+        app._emit = on_emit
         src, note = detect_source(ws)
-        app._contest_pipeline([(ws, ws.name, src, note)], seeds, rules_mode)
+        if not src:
+            print("编排失败：%s（%s）" % (ws.name, note))
+            app.destroy()
+            return 1
+        try:
+            ok = app._contest_pipeline([(ws, ws.name, src, note)], seeds, rules_mode)
+        except Exception as e:  # noqa: BLE001
+            print("编排失败：%s" % e)
+            app.destroy()
+            return 1
         app.destroy()
-        return
+        return 0 if (ok and exit_state["code"] == 0) else (exit_state["code"] or 1)
     if "--scan" in argv:
         i = argv.index("--scan")
         if len(argv) > i + 1:
@@ -1739,9 +1807,10 @@ def main():
         for path, label, src, note in app.workspaces:
             print("%-44s src=%-10s %s" % (label, src or "-", note))
         app.destroy()
-        return
+        return 0
     app.mainloop()
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main() or 0)
