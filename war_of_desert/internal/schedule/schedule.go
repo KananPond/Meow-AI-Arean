@@ -1,4 +1,8 @@
 // Package schedule 冻结赛程：每对选手在每张地图上换边各打一局。
+//
+// 版本：v1.2（Desert Arena 正式赛执行链）。
+// 功能：赛程的生成/保存/读取；冻结后再执行是正式赛纪律——
+// run 只认 赛程.json，不现场决定对阵。
 package schedule
 
 import (
@@ -13,6 +17,10 @@ type Entry struct {
 	Author string `json:"author,omitempty"`
 	Source string `json:"source"`
 	Bin    string `json:"bin"`
+	// Prebuilt 表示这名选手提交的是预编译好的可执行文件，构建时跳过编译，
+	// 只校验文件存在并记录它的 SHA-256。基线 Bot 与「已封存不想再重编」的
+	// 选手都走这条路。
+	Prebuilt bool `json:"prebuilt,omitempty"`
 }
 
 // Match 是一场对阵；Mirror=true 表示同一 seed 换边两局。
@@ -34,16 +42,22 @@ type Config struct {
 	StrikeMode string `json:"strikeMode"`
 	Generator  string `json:"generator"`
 	Vision     bool   `json:"vision"`
+	Ruleset    string `json:"ruleset,omitempty"`
 }
 
 // Plan 是 赛程.json 的完整内容。
 type Plan struct {
-	Version   int     `json:"version"`
-	CreatedBy string  `json:"createdBy"`
-	Mirror    bool    `json:"mirror"`
-	Entries   []Entry `json:"entries"`
-	Matches   []Match `json:"matches"`
-	Config    Config  `json:"config"`
+	Version   int    `json:"version"`
+	CreatedBy string `json:"createdBy"`
+	// 赛程必须自带规则身份：v1.1 与 v1.2 的赛程文件曾逐字节相同，
+	// 光看赛程分不出这批对局是哪套规则跑的。
+	RulesVersion string  `json:"rulesVersion,omitempty"`
+	RulesHash    string  `json:"rulesHash,omitempty"`
+	Engine       string  `json:"engine,omitempty"`
+	Mirror       bool    `json:"mirror"`
+	Entries      []Entry `json:"entries"`
+	Matches      []Match `json:"matches"`
+	Config       Config  `json:"config"`
 }
 
 // Build 生成赛程。seed 递增规则与 UP 主原版一致：baseSeed + 已排场次数，

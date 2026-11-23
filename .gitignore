@@ -16,6 +16,14 @@ target/
 venv/
 .venv/
 __pycache__/
+.mimosa/
+**/.mimosa/
+
+# 本机智能体工作数据（日志、记忆），与仓库内容无关
+/.workbuddy/
+
+# 裁判台自检失败时写下的环境/命令证据（本机诊断用）
+/自检诊断.txt
 
 # 编辑器与 IDE
 .vscode/
@@ -27,10 +35,81 @@ __pycache__/
 .env.*
 *.local
 
-# 开发/历史资料区（MVP 预言机、Docs、计划与审查报告、第三方参照）
-/Dev/MVP/
-/Dev/模板/
+# 开发/历史资料区：默认整片忽略（MVP 预言机、第三方参照模板、50 轮历史测试包，
+# 合计几百 MB，都是本地资料）。只有下面白名单里的设计文档入库。
+# 写法讲究：先 /Dev/* 全忽略，再逐个放行直接子项。git 不会进入被忽略的目录内部，
+# 所以放行必须写在第一层，不能指望在更深层写 ! 把文件捞回来。
+/Dev/*
+!/Dev/Docs/
+!/Dev/ORACLE.md
+!/Dev/Plan_Beta.md
+!/Dev/README.md
+!/Dev/plan.md
+!/Dev/实验/
+!/Dev/审查/
+!/Dev/归档/
 
 # 正式赛构建产物与可重建回放（源码、赛程、结果、成绩仍入库）
 /war_of_desert/bots/bin/
 /war_of_desert/results/*/回放/
+
+# 每次 build / 初始化都会重写的本地产物，不入库：
+# - bots/封存记录/<赛季>.json 的 binSha256 每次编译都变，源码哈希不变；
+#   一季一本，build 只写自己那本。赛季实际跑过的那一份归档在
+#   results/<赛季>/封存记录.json，审计口径见 war_of_desert/results/README.md。
+# - 算法赛/赛程.json 由裁判台「初始化工作区与赛程」按当前报名者重新生成。
+/war_of_desert/bots/封存记录.json
+/war_of_desert/bots/封存记录/
+/算法赛/赛程.json
+
+# 裁判台工作区评测：暂存副本与评测产物不入库
+/war_of_desert/workspace/_contestants/
+/war_of_desert/results/desk/
+/war_of_desert/tournament/_desk_*.json
+
+# 实验标定临时产物：座位/公平性诊断用的短跑目录，结论已归档到正式实验目录
+/war_of_desert/results/_tmp-*/
+/war_of_desert/tournament/_tmp_*.json
+
+# 裁判台演示工作区（本地测试用）
+/_demo工作区/
+
+# 选手工作区：发卷产物、赛务记录与收卷副本都是本地生成的，不入库
+/算法赛/RTS算法赛@*/workspace/
+/算法赛/RTS算法赛@*/交卷/
+/算法赛/RTS算法赛@*/.赛务.json
+
+# 被 _ 前缀隔离的历史选手目录（赛程.json 的 note 里解释了这种隔离方式）
+# 名字不再以 RTS 开头，上面的规则匹配不到，必须单列——否则 18MB 的 arena 副本
+# 会以未跟踪状态挂在 git status 里，一个 git add -A 就进库了。
+/算法赛/_RTS算法赛@*/workspace/
+/算法赛/_RTS算法赛@*/交卷/
+/算法赛/_RTS算法赛@*/.赛务.json
+
+# 模板工作区是选手包的唯一真源，必须入库（上面的忽略规则要放行它）
+!/算法赛/RTS算法赛@Model_name/workspace/
+!/算法赛/RTS算法赛@Model_name/workspace/**
+
+# 选手包里的 arena/ 由赛务.py 从引擎源码同步（--sync-engine），不重复入库
+/算法赛/RTS算法赛@Model_name/workspace/arena/
+/算法赛/RTS算法赛@Model_name/workspace/对局记录/
+/算法赛/RTS算法赛@Model_name/workspace/bot.exe
+
+# 上面的 !...workspace/** 是白名单，会盖住文件开头的 __pycache__/ 规则。
+# 这里必须再写一遍，否则跑一次 clock.py 就在模板里留下 .pyc 并跟着发卷出去。
+/算法赛/RTS算法赛@Model_name/workspace/**/__pycache__/
+/算法赛/RTS算法赛@Model_name/workspace/**/*.pyc
+
+# 引擎宿主构建产物（arena 与选区自检都会用到）
+/war_of_desert/.bin/
+
+# 本地对局产物
+/算法赛/RTS算法赛@Model_name/workspace/matches/
+
+# 正式赛 beta 发布包：解包目录与 7z 压缩包都是本地构建产物，不入库
+/_发布包/
+# 若重新解包/打包到仓库根目录，同样忽略
+/Meow社区比赛__WoD正式赛_beta*
+
+# 测试存档：全流程实跑的对局记录、回放与成绩快照，只在本机留档，不入库
+/测试存档/

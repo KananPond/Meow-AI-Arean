@@ -30,9 +30,19 @@
 const readline = require('readline');
 const path = require('path');
 /* 规则文件可由命令行参数指定：默认旧 rules.js；攻守实验传 rules_siege.js。
- * 冻结快照本身不改，变体是独立文件。 */
-const RULES_PATH = process.argv[2] ? path.resolve(process.argv[2]) : path.join(__dirname, 'oracle', 'rules.js');
-const R = require(RULES_PATH);
+ * 冻结快照本身不改，变体是独立文件。只允许 engine/oracle/ 白名单内的规则文件，
+ * 参数给完整路径也只取文件名，require 全部字面量，杜绝任意文件加载。 */
+const ALLOWED_RULES = new Set(['rules.js', 'rules_siege.js']);
+const RULES_NAME = process.argv[2] ? path.basename(process.argv[2]) : 'rules.js';
+let R;
+if (RULES_NAME === 'rules_siege.js') {
+  R = require('./oracle/rules_siege.js');
+} else if (RULES_NAME === 'rules.js') {
+  R = require('./oracle/rules.js');
+} else {
+  process.stderr.write('规则变体不在白名单: ' + RULES_NAME + '（允许: rules.js, rules_siege.js）\n');
+  process.exit(2);
+}
 
 const FRAME_EVERY = 5;      // 回放抽帧间隔（tick）
 let game = null;

@@ -1,28 +1,34 @@
-# 提示词原文 · 正式赛选手任务
-
-> 这是发给参赛模型的**一字不差的同一段提示词**。发给模型时，把 `workspace/` 打包一并附上。正式赛不追加任何口头提示。
-
----
-
-你要参加一场 AI 算法对抗赛：**Desert Arena · 沙漠遭遇战**。请写一个 Go 程序，在程序生成的沙漠地形上指挥部队，争夺 VP 点并保护/摧毁母舰。
+你要参加一场 AI 算法对抗赛：**Desert Arena · 沙漠遭遇战**。请写一个 Go 程序，在程序生成的沙漠地形上指挥部队，争夺 VP 点并保护/摧毁母舰。当前比赛规则为 **v1.9.1**（ruleset `v15`，1500 tick），细节见 `RULES.md` 与 `RULES_V15.md`。
 
 ## 你会拿到什么
 
 一个 `workspace/` 目录：
 
 - `RULES.md`：完整规则与行协议（**先读这个**）
-- `submission/decide.go`：可运行的起步模板，已经实现协议循环
-- `botkit/`：可选工具库（读 hello、解地图、寻路辅助）
-- `bots/`：五个官方参考 Bot 的源码，可读、可改、可对打
+- `submission/<选手名>_bot.go`：可运行的骨架，已经实现协议循环，但**不含任何策略**
+- `arena/`：正式赛的引擎、裁判与比赛程序源码（只读）——本地调试用的就是它
+- `arena/workspace/botkit/`：可选工具库（读 hello、解地图、寻路辅助）
+- `bots/`：一个骨架 + 两个预编译基线（`baseline@1.exe`、`baseline@2.exe`）
+- `tournament/local.json`：本地赛季配置（两个基线 + 你的 Bot）
+- `本地对局.bat` / `本地赛季.bat`：双击编译并对打，不用记命令
 - `clock.py`：查看编码期已用时间
 
 ## 你要交什么
 
-**一个 `submission/decide.go`**（可以再加自己的包，但入口必须在这里）。编译命令：
+**一个 `submission/<参赛选手名称>_bot.go`**（文件名用下划线接 `_bot.go`，不要改名）。编译命令：
 
 ```bash
-go build -o bots/bin/submission.exe ./workspace/submission
+go build -o bot.exe ./submission
 ```
+
+想先确认能跑通：
+
+```bat
+本地对局.bat
+```
+
+它编译你的代码，然后跟两个基线各打 2 个 seed（换边两局），打印逐局 VP、
+判定层级、故障与决策耗时，回放落在 `matches\local\`。
 
 程序通过 stdin/stdout 与裁判通信：
 
@@ -56,7 +62,7 @@ go build -o bots/bin/submission.exe ./workspace/submission
 - 四条科技树：火力、装甲线性；机动、工业交叉分叉。
 - 弹道是真实的二次阻力 + 重力，RK4 积分。高地优势来自物理，不是固定加成。
 - 五级判定链：斩舰 → VP → KD 差 → 母舰 HP → 平局。
-- 八领域加权总分独立于胜负：赢得多不等于分高。
+- 七领域加权总分独立于胜负：赢得多不等于分高。
 
 ## 严格禁止
 
@@ -69,14 +75,14 @@ go build -o bots/bin/submission.exe ./workspace/submission
 
 - 每场对阵换边两局，同一 seed、同一张点对称地图，双方各重启进程；
 - 40 局起步，正式名次用 Bradley–Terry 全池拟合（基准 0，差 400 ≈ 10:1）；
-- 另设八领域加权总分榜，与 BT 名次并列公示；
+- 另设七领域加权总分榜，与 BT 名次并列公示；
 - 每局都做确定性复核：同 seed + 同指令必得同结果。
 
 ## 交卷前自检
 
-1. `go build -o bots/bin/submission.exe ./workspace/submission` 通过；
-2. `go run ./cmd/arena check -seed 20261109` 输出 `CHECK_OK`，两局 `故障=0/0`、`确定性复核：true`；
-3. `decide` 平均耗时远低于 120 ms（参考 Bot 约 0.1 ms）；
+1. `go build -o bot.exe ./submission` 通过（在 `workspace/` 目录下执行）；
+2. 双击 `本地对局.bat`，或 `cd arena` 后 `go run ./cmd/arena check -seed 20261109`，输出 `CHECK_OK`，两局 `故障=0/0`、`确定性复核：true`；
+3. 每拍决策耗时远低于 120 ms（参考 Bot 约 0.1 ms）；
 4. 换 2–3 个 seed 各跑一次，确认不是背地图。
 
-时间规则：解压选手包开始计时，**90 分钟**目标完成，**120 分钟**强制收卷。到点时 `submission/decide.go` 是什么就算什么。
+时间规则：解压选手包开始计时，**90 分钟**目标完成，**120 分钟**强制收卷。到点时 `submission/<选手名>_bot.go` 是什么就算什么。

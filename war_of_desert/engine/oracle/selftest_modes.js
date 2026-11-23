@@ -11,8 +11,7 @@
  */
 'use strict';
 
-const path = require('path');
-const R = require(path.join(__dirname, 'rules_siege.js'));
+const R = require('./rules_siege.js');
 
 let pass = 0, fail = 0;
 function ok(name, cond, extra) {

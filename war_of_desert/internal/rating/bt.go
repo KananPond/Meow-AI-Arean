@@ -1,5 +1,8 @@
 // Package rating 实现 Bradley–Terry 实力值拟合。
 //
+// 版本：v1.2（Desert Arena 正式赛执行链）。
+// 功能：对称赛单参数 BT、bootstrap 95% 区间、加权总分。
+//
 // 口径与 UP 主原版 arena/bt.js 一致：基准锚定 0，差 400 分约等于 10:1；
 // 每对选手加一局虚拟平局抑制全胜/全败导致的最大似然发散；
 // 95% 区间按「对局整块」重抽样（bootstrap），不做单局独立假设。
@@ -11,10 +14,14 @@ import (
 )
 
 // Game 是一局的结果，Score 是 A 的得分：胜 1 / 平 0.5 / 负 0。
+//
+// Group 是 bootstrap 的整块编号（>0 才生效）：同一场对阵的换边两局必须一起
+// 重抽样，否则会把「同一张图、同一对选手」的两局当成独立样本，区间偏窄。
 type Game struct {
 	A     string
 	B     string
 	Score float64
+	Group int
 }
 
 // Result 是拟合结果。
@@ -110,6 +117,40 @@ func solve(games []Game, anchorName string, iterations int) solved {
 	return out
 }
 
+// buildBlocks 按 Group 把对局分块；没有设置 Group 时每局自成一块。
+func buildBlocks(games []Game) [][]Game {
+	grouped := false
+	for _, g := range games {
+		if g.Group > 0 {
+			grouped = true
+			break
+		}
+	}
+	if !grouped {
+		out := make([][]Game, 0, len(games))
+		for _, g := range games {
+			out = append(out, []Game{g})
+		}
+		return out
+	}
+	idx := map[int]int{}
+	var out [][]Game
+	for _, g := range games {
+		key := g.Group
+		if key <= 0 {
+			out = append(out, []Game{g})
+			continue
+		}
+		if i, ok := idx[key]; ok {
+			out[i] = append(out[i], g)
+			continue
+		}
+		idx[key] = len(out)
+		out = append(out, []Game{g})
+	}
+	return out
+}
+
 // Fit 拟合全池实力值并给出 bootstrap 区间。bootstrap<=0 时跳过重抽样。
 func Fit(games []Game, anchorName string, bootstrap int, seed int64) Result {
 	if len(games) == 0 {
@@ -142,10 +183,12 @@ func Fit(games []Game, anchorName string, bootstrap int, seed int64) Result {
 			rng = (rng*1664525 + 1013904223) & 0xffffffff
 			return float64(rng) / 4294967296.0
 		}
+		// 按 Group 整块抽样；没有 Group 时退化为逐局抽样（与旧行为一致）。
+		blocks := buildBlocks(games)
 		for b := 0; b < bootstrap; b++ {
 			resampled := make([]Game, 0, len(games))
-			for k := 0; k < len(games); k++ {
-				resampled = append(resampled, games[int(rand()*float64(len(games)))%len(games)])
+			for k := 0; k < len(blocks); k++ {
+				resampled = append(resampled, blocks[int(rand()*float64(len(blocks)))%len(blocks)]...)
 			}
 			r := solve(resampled, anchorName, 80)
 			for _, n := range base.names {

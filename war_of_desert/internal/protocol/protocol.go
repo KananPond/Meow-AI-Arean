@@ -1,7 +1,10 @@
 // Package protocol 定义 Desert Arena 正式赛的线上契约。
 //
-// 只放「线上真的会出现的东西」：hello / tick / actions / end 的字段形状、
-// 地图层编解码、规则常量的读取口径。裁判、引擎宿主与选手工具共用这一份定义。
+// 版本：v1.2（Desert Arena 正式赛执行链）。
+// 功能：hello / tick / actions / end 的字段形状、地图层编解码、
+// 规则常量的读取口径；裁判、引擎宿主与选手工具共用这一份定义。
+//
+// 只放「线上真的会出现的东西」。
 package protocol
 
 import (
@@ -18,7 +21,7 @@ const (
 	ProtoVersion = 5
 
 	// MaxLine 是单行上限（UTF-8 字节）。tick / actions 都必须满足。
-	MaxLine = 64 * 1024
+	MaxLine = 128 * 1024
 
 	// Grid / Cell / World 是 v1.0 固定地图口径：256×256 格，1 格 = 6 像素，
 	// 像素世界 1536×1536；物理尺度上 1 格 = 10 m，即全图 2.56 km。
@@ -53,10 +56,10 @@ func DecodeMapLayers(m EncodedMap) (MapLayers, error) {
 	if m.Enc != "rle+b64/1" {
 		return MapLayers{}, fmt.Errorf("未知的地图层编码：%s", m.Enc)
 	}
-	n := m.W * m.H
-	if n <= 0 {
+	if m.W <= 0 || m.H <= 0 || m.W > 1<<16 || m.H > 1<<16 {
 		return MapLayers{}, errors.New("地图尺寸非法")
 	}
+	n := m.W * m.H
 	baseRaw, err := b64(m.Base)
 	if err != nil {
 		return MapLayers{}, fmt.Errorf("base 解码失败: %w", err)
@@ -69,8 +72,17 @@ func DecodeMapLayers(m EncodedMap) (MapLayers, error) {
 	if err != nil {
 		return MapLayers{}, fmt.Errorf("elev 解码失败: %w", err)
 	}
-	base := rleDecode(baseRaw, n)
-	surf := rleDecode(surfRaw, n)
+	base, ok := rleDecode(baseRaw, n)
+	if !ok {
+		return MapLayers{}, fmt.Errorf("base 层解码后长度应为 %d（RLE 数据不匹配）", n)
+	}
+	surf, ok := rleDecode(surfRaw, n)
+	if !ok {
+		return MapLayers{}, fmt.Errorf("surf 层解码后长度应为 %d（RLE 数据不匹配）", n)
+	}
+	if len(elevRaw) != n {
+		return MapLayers{}, fmt.Errorf("elev 层长度 %d 应为 %d", len(elevRaw), n)
+	}
 	elev := make([]byte, n)
 	copy(elev, elevRaw)
 	return MapLayers{Base: base, Surf: surf, Elev: elev}, nil
@@ -89,18 +101,24 @@ func b64(s string) ([]byte, error) {
 	return base64.StdEncoding.DecodeString(clean)
 }
 
-func rleDecode(src []byte, n int) []byte {
+func rleDecode(src []byte, n int) ([]byte, bool) {
+	if len(src)%2 != 0 {
+		return nil, false
+	}
 	out := make([]byte, n)
 	p := 0
-	for i := 0; i+1 < len(src) && p < n; i += 2 {
+	for i := 0; i < len(src); i += 2 {
 		v := src[i]
 		count := int(src[i+1]) + 1
-		for k := 0; k < count && p < n; k++ {
+		if p+count > n {
+			return nil, false
+		}
+		for k := 0; k < count; k++ {
 			out[p] = v
 			p++
 		}
 	}
-	return out
+	return out, p == n
 }
 
 // Hello 是开局握手。地图只给编码形态，Bot 自己调 DecodeMapLayers。
@@ -151,7 +169,7 @@ type Rules struct {
 	} `json:"timing"`
 }
 
-// Card 是八领域计分卡。
+// Card 是计分卡（对称赛七领域 / 攻守赛八领域）。
 type Card struct {
 	Fields  []float64 `json:"fields"`
 	Total   float64   `json:"total"`
@@ -168,6 +186,16 @@ type DecideStat struct {
 	MaxMS  float64 `json:"max_ms"`
 	Late   int     `json:"late"`
 	Faults int     `json:"faults"`
+}
+
+// VSScore 是 v1.5/v1.6 胜利分三本账。
+type VSScore struct {
+	Kills     int `json:"kills"`
+	Relics    int `json:"relics"`
+	Flags     int `json:"flags"`
+	Total     int `json:"total"`
+	Delivered int `json:"delivered,omitempty"`
+	Stored    int `json:"stored,omitempty"`
 }
 
 // Result 是 end 段与结果归档的核心字段。
@@ -195,6 +223,9 @@ type Result struct {
 	Events               int          `json:"events"`
 	OrderTurns           int          `json:"orderTurns"`
 	FrameCount           int          `json:"frameCount"`
+	VS                   []VSScore    `json:"vs,omitempty"`
+	Invalid              bool         `json:"invalid,omitempty"`
+	InvalidReason        string       `json:"invalidReason,omitempty"`
 	Timing               struct {
 		TickMs       int `json:"tickMs"`
 		DecideMs     int `json:"decideMs"`

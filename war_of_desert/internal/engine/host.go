@@ -1,7 +1,11 @@
 // Package engine 负责与「规则引擎宿主」通信。
 //
-// 正式赛的规则来自冻结 oracle 快照，由独立 Node 进程承载；本包只认行分隔 JSON
-// 命令协议，不认识任何游戏规则。未来换成 Go 引擎时，替换宿主脚本即可。
+// 版本：v1.2（Desert Arena 正式赛执行链）。
+// 功能：宿主进程拉起（.js 走 node、二进制直启）、行 JSON 命令流的
+// 请求/应答封装；本包只认协议，不认识任何游戏规则。
+//
+// 正式赛的规则来自冻结 oracle 快照，由独立 Node 进程承载；
+// 未来换成 Go 引擎时，替换宿主脚本即可。
 package engine
 
 import (
@@ -13,6 +17,7 @@ import (
 	"os/exec"
 	"strings"
 	"sync"
+	"time"
 )
 
 // HostConfig 是一局游戏的规则配置。所有字段都会进规则指纹。
@@ -24,7 +29,9 @@ type HostConfig struct {
 	DecideMs   int    `json:"decideMs"`
 	InitMs     int    `json:"initMs"`
 	Vision     bool   `json:"vision"`
-	FrameEvery int    `json:"-"`
+	FrameEvery int    `json:"frameEvery,omitempty"`
+	// Ruleset "v14" / "v15"；空值按 v14 处理。
+	Ruleset string `json:"ruleset,omitempty"`
 
 	/* 攻守实验（siege）字段；旧模式留零值即可。 */
 	Mode                 string `json:"mode,omitempty"`
@@ -40,13 +47,18 @@ type HostConfig struct {
 
 // Host 是一个引擎宿主进程。非并发安全，调用方负责串行化。
 type Host struct {
-	cmd *exec.Cmd
-	in  io.WriteCloser
-	out *bufio.Reader
-	mu  sync.Mutex
+	cmd     *exec.Cmd
+	in      io.WriteCloser
+	out     *bufio.Reader
+	outFile io.ReadCloser
+	timeout time.Duration
+	mu      sync.Mutex
 
 	closed bool
 }
+
+// HostCallTimeout 是单条命令的最长等待时间。没有它时，宿主卡死会让裁判永久阻塞。
+const HostCallTimeout = 60 * time.Second
 
 type envelope struct {
 	OK           bool            `json:"ok"`
@@ -68,13 +80,19 @@ type envelope struct {
 	Verify       json.RawMessage `json:"verify"`
 }
 
-// Start 启动宿主。script 是 oracle_host.js 的路径；node 从 PATH 取。
+// Start 启动宿主。script 以 .js 结尾时用 node 承载（oracle_host.js），
+// 否则视为可执行文件直接拉起（Go 原生 enginehost）。
 func Start(script string, rulesPath ...string) (*Host, error) {
-	args := []string{script}
-	if len(rulesPath) > 0 && rulesPath[0] != "" {
-		args = append(args, rulesPath[0])
+	var cmd *exec.Cmd
+	if strings.HasSuffix(script, ".js") {
+		args := []string{script}
+		if len(rulesPath) > 0 && rulesPath[0] != "" {
+			args = append(args, rulesPath[0])
+		}
+		cmd = exec.Command("node", args...)
+	} else {
+		cmd = exec.Command(script)
 	}
-	cmd := exec.Command("node", args...)
 	cmd.Stderr = os.Stderr
 	in, err := cmd.StdinPipe()
 	if err != nil {
@@ -87,7 +105,16 @@ func Start(script string, rulesPath ...string) (*Host, error) {
 	if err := cmd.Start(); err != nil {
 		return nil, fmt.Errorf("启动引擎宿主失败: %w", err)
 	}
-	return &Host{cmd: cmd, in: in, out: bufio.NewReaderSize(out, 1<<20)}, nil
+	return &Host{cmd: cmd, in: in, out: bufio.NewReaderSize(out, 1<<20), outFile: out, timeout: HostCallTimeout}, nil
+}
+
+// deadlineSetter 是 os.File 的超时接口（管道在 Windows/Linux 上都支持）。
+type deadlineSetter interface {
+	SetReadDeadline(time.Time) error
+}
+
+type writeDeadlineSetter interface {
+	SetWriteDeadline(time.Time) error
 }
 
 func (h *Host) call(req any, resp *envelope) error {
@@ -100,8 +127,22 @@ func (h *Host) call(req any, resp *envelope) error {
 	if err != nil {
 		return err
 	}
+	// 写也带截止时间：宿主不读 stdin 时，hello 这类大行会把裁判永久卡住。
+	if h.timeout > 0 {
+		if dl, ok := h.in.(writeDeadlineSetter); ok {
+			_ = dl.SetWriteDeadline(time.Now().Add(h.timeout))
+			defer func() { _ = dl.SetWriteDeadline(time.Time{}) }()
+		}
+	}
 	if _, err := h.in.Write(append(raw, '\n')); err != nil {
 		return fmt.Errorf("写引擎宿主失败: %w", err)
+	}
+	// 读带截止时间：宿主卡死时返回错误，而不是让整个裁判永久阻塞。
+	if h.timeout > 0 {
+		if dl, ok := h.outFile.(deadlineSetter); ok {
+			_ = dl.SetReadDeadline(time.Now().Add(h.timeout))
+			defer func() { _ = dl.SetReadDeadline(time.Time{}) }()
+		}
 	}
 	line, err := h.out.ReadString('\n')
 	if err != nil {
@@ -140,6 +181,9 @@ func (h *Host) New(cfg HostConfig) (*NewReply, error) {
 		"initMs":     cfg.InitMs,
 		"vision":     cfg.Vision,
 		"frameEvery": cfg.FrameEvery,
+	}
+	if cfg.Ruleset != "" {
+		req["ruleset"] = cfg.Ruleset
 	}
 	if cfg.Mode != "" {
 		req["mode"] = cfg.Mode

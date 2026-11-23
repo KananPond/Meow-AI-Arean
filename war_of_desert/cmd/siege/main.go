@@ -1,4 +1,7 @@
-// Command siege 跑攻守实验：固定守方/攻方 Bot 与地图 seed，逐级改变守方母舰 HP，
+// Command siege 跑攻守实验。
+//
+// 版本：v1.2（Desert Arena 攻守变体标定工具）。
+// 功能：固定守方/攻方 Bot 与地图 seed，逐级改变守方母舰 HP，
 // 统计“攻方摧毁守方母舰”的比例。
 //
 //	go run ./cmd/siege -hps 3000,1500,800,400 -seeds 1-8 -workers 4
@@ -12,6 +15,7 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -61,23 +65,24 @@ type summary struct {
 
 func main() {
 	var (
-		attacker  = flag.String("attacker", "bots/bin/attacker.exe", "攻方程序")
-		defender  = flag.String("defender", "bots/bin/defender.exe", "守方程序")
-		seeds     = flag.String("seeds", "20261201-20261208", "seed 列表/范围")
-		hps       = flag.String("hps", "1250", "守方母舰 HP 梯度")
-		workers   = flag.Int("workers", 4, "并行局数")
-		out       = flag.String("out", "results/siege/pilot.csv", "CSV 输出")
-		smoke     = flag.Bool("smoke", false, "只跑一局并打印细节")
-		smokeHP   = flag.Int("hp", 1250, "smoke 用的 HP")
-		smokeSeed = flag.Int("seed", 20261201, "smoke 用的 seed")
-		tickLim   = flag.Int("tickLimit", 1260, "tick 上限")
-		fortBud   = flag.Int("fortBudget", 16, "守方工事预算")
-		attCU     = flag.Int("attackerCu", 900, "攻方起始 CU")
-		defCU     = flag.Int("defenderCu", 700, "守方起始 CU")
-		attLav    = flag.Int("attackerLav", 4, "攻方初始 LAV")
-		defLav    = flag.Int("defenderLav", 3, "守方初始 LAV")
-		place     = flag.Int("placeTicks", 80, "布置阶段 tick")
-		dump      = flag.String("dump", "", "把 smoke 的完整对局 JSON 写到该路径")
+		attacker   = flag.String("attacker", "bots/bin/attacker.exe", "攻方程序")
+		defender   = flag.String("defender", "bots/bin/defender.exe", "守方程序")
+		seeds      = flag.String("seeds", "20261201-20261208", "seed 列表/范围")
+		hps        = flag.String("hps", "1250", "守方母舰 HP 梯度")
+		workers    = flag.Int("workers", 4, "并行局数")
+		out        = flag.String("out", "results/siege/pilot.csv", "CSV 输出")
+		smoke      = flag.Bool("smoke", false, "只跑一局并打印细节")
+		smokeHP    = flag.Int("hp", 1250, "smoke 用的 HP")
+		smokeSeed  = flag.Int("seed", 20261201, "smoke 用的 seed")
+		tickLim    = flag.Int("tickLimit", 1260, "tick 上限")
+		fortBud    = flag.Int("fortBudget", 16, "守方工事预算")
+		attCU      = flag.Int("attackerCu", 900, "攻方起始 CU")
+		defCU      = flag.Int("defenderCu", 700, "守方起始 CU")
+		attLav     = flag.Int("attackerLav", 4, "攻方初始 LAV")
+		defLav     = flag.Int("defenderLav", 3, "守方初始 LAV")
+		place      = flag.Int("placeTicks", 80, "布置阶段 tick")
+		dump       = flag.String("dump", "", "把 smoke 的完整对局 JSON 写到该路径")
+		engineKind = flag.String("engine", "oracle", "规则引擎：oracle（Node 快照）| native（Go enginehost）")
 	)
 	flag.Parse()
 
@@ -87,11 +92,23 @@ func main() {
 	}
 	host := filepath.Join(root, "engine", "oracle_host.js")
 	rules := filepath.Join(root, "engine", "oracle", "rules_siege.js")
-	if _, err := os.Stat(host); err != nil {
-		fail(fmt.Errorf("找不到宿主 %s", host))
-	}
-	if _, err := os.Stat(rules); err != nil {
-		fail(fmt.Errorf("找不到规则变体 %s", rules))
+	if *engineKind == "native" {
+		// Go 原生引擎：构建 enginehost，规则语义在二进制内，不再传规则变体
+		bin := filepath.Join(root, "bots", "bin", "enginehost.exe")
+		build := exec.Command("go", "build", "-o", bin, "./cmd/enginehost")
+		build.Dir = root
+		if out, err := build.CombinedOutput(); err != nil {
+			fail(fmt.Errorf("构建 enginehost 失败: %s", strings.TrimSpace(string(out))))
+		}
+		host = bin
+		rules = ""
+	} else {
+		if _, err := os.Stat(host); err != nil {
+			fail(fmt.Errorf("找不到宿主 %s", host))
+		}
+		if _, err := os.Stat(rules); err != nil {
+			fail(fmt.Errorf("找不到规则变体 %s", rules))
+		}
 	}
 
 	mkCfg := func(seed, hp int) judge.Config {

@@ -7,3 +7,14 @@ war_of_desert/engine/oracle/* -text
 
 # 回放、赛程、成绩等产物按字节留档，同样不做 EOL 转换。
 war_of_desert/results/** -text
+
+# 封存记录（bots/封存记录.json）按字节比对选手源码的 SHA-256。
+# 统一 LF：否则本机工作区（CRLF）与干净克隆（LF）算出来的哈希不同，
+# `arena seal` 在别人的机器上永远报红。实测过：clone 后 6/6 全失配。
+war_of_desert/workspace/** text eol=lf
+
+# golden trace 是逐帧哈希基准，按字节留档。
+war_of_desert/engine/golden/* -text
+
+# 批处理脚本必须 CRLF：cmd 逐行解析 .bat，换行风格不对会出怪问题。
+*.bat text eol=crlf
