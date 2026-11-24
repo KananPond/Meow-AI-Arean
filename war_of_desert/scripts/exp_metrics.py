@@ -1,7 +1,7 @@
 # /// script
 # 统计 v1.4 / v1.5 实验对局的关键指标。
-# 用法：py -3 -X utf8 scripts/exp_metrics.py 实验记录/规则实验/exp-v15
-# 读取 结果.jsonl + 回放/*.json；回放缺帧时自动跳过对应指标。
+# 用法：py -3 -X utf8 scripts/exp_metrics.py experiment-records/rule-experiments/exp-v15
+# 读取 结果.jsonl + replays/*.json；回放缺帧时自动跳过对应指标。
 # ///
 
 import json
@@ -14,7 +14,7 @@ import statistics
 
 def load_games(root):
     games = []
-    for f in sorted(glob.glob(os.path.join(root, "回放", "*.json"))):
+    for f in sorted(glob.glob(os.path.join(root, "replays", "*.json"))):
         d = json.load(open(f, encoding="utf-8"))
         for g in d.get("games", []):
             games.append((f, g))
@@ -22,7 +22,7 @@ def load_games(root):
 
 
 def main():
-    root = sys.argv[1] if len(sys.argv) > 1 else "实验记录/规则实验/exp-v15"
+    root = sys.argv[1] if len(sys.argv) > 1 else "experiment-records/rule-experiments/exp-v15"
     games = load_games(root)
     if not games:
         print("没有回放：", root)

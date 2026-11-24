@@ -55,6 +55,7 @@ func setupMiniSeason(t *testing.T, players []string, tickLimit int) (root, cfgPa
 		"bots/bin",
 		"workspace/botkit",
 		"workspace/refbot",
+		"workspace/acebot",
 	} {
 		if err := os.MkdirAll(filepath.Join(root, filepath.FromSlash(dir)), 0o755); err != nil {
 			t.Fatal(err)

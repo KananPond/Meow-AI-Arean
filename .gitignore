@@ -47,23 +47,23 @@ __pycache__/
 !/Dev/Plan_Beta.md
 !/Dev/README.md
 !/Dev/plan.md
-!/Dev/实验/
-!/Dev/审查/
-!/Dev/归档/
+!/Dev/experiments/
+!/Dev/reviews/
+!/Dev/archive/
 
 # 正式赛构建产物与可重建回放（源码、赛程、结果、成绩仍入库）
 /war_of_desert/bots/bin/
-/war_of_desert/results/*/回放/
-/war_of_desert/实验记录/*/*/回放/
+/war_of_desert/results/*/replays/
+/war_of_desert/experiment-records/*/*/replays/
 
 # 每次 build / 初始化都会重写的本地产物，不入库：
-# - bots/封存记录/<赛季>.json 的 binSha256 每次编译都变，源码哈希不变；
+# - bots/seal-records/<赛季>.json 的 binSha256 每次编译都变，源码哈希不变；
 #   一季一本，build 只写自己那本。赛季实际跑过的那一份归档在
 #   results/<赛季>/封存记录.json，审计口径见 war_of_desert/results/README.md。
-# - 算法赛/赛程.json 由 `--init` 按当前报名者重新生成。
+# - algorithm-contest/赛程.json 由 `--init` 按当前报名者重新生成。
 /war_of_desert/bots/封存记录.json
-/war_of_desert/bots/封存记录/
-/算法赛/赛程.json
+/war_of_desert/bots/seal-records/
+/algorithm-contest/赛程.json
 
 # 裁判台工作区评测：暂存副本与临时产物不入库
 /war_of_desert/workspace/_contestants/
@@ -71,13 +71,13 @@ __pycache__/
 /war_of_desert/tournament/_desk_*.json
 
 # 裁判台比赛/测试成绩：本地生成的对局记录与回放，不入库
-/算法赛/比赛记录/
-/算法赛/测试/测试成绩/
-/算法赛/测试/裁判台评测/
-/算法赛/测试/选手本地对局/
-/算法赛/测试/历史全流程/
+/algorithm-contest/match-records/
+/algorithm-contest/tests/test-results/
+/algorithm-contest/tests/referee-desk-evals/
+/algorithm-contest/tests/contestant-local-matches/
+/algorithm-contest/tests/history-full-workflow/
 # 历史赛季目录保留赛程/结果/成绩；回放可由 arena run 重建，不入库
-/算法赛/测试/历史赛季/*/回放/
+/algorithm-contest/tests/history-seasons/*/replays/
 
 # 实验标定临时产物：座位/公平性诊断用的短跑目录，结论已归档到正式实验目录
 /war_of_desert/results/_tmp-*/
@@ -87,40 +87,46 @@ __pycache__/
 /_demo工作区/
 
 # 选手工作区：发卷产物、赛务记录与收卷副本都是本地生成的，不入库
-/算法赛/RTS算法赛@*/workspace/
-/算法赛/RTS算法赛@*/交卷/
-/算法赛/RTS算法赛@*/.赛务.json
+/algorithm-contest/rts-contest@*/workspace/
+/algorithm-contest/rts-contest@*/submissions/
+/algorithm-contest/rts-contest@*/.赛务.json
 
 # 被 _ 前缀隔离的历史选手目录（赛程.json 的 note 里解释了这种隔离方式）
-# 名字不再以 RTS 开头，上面的规则匹配不到，必须单列——否则 18MB 的 arena 副本
+# 名字不再以 rts-contest 开头，上面的规则匹配不到，必须单列——否则 18MB 的 arena 副本
 # 会以未跟踪状态挂在 git status 里，一个 git add -A 就进库了。
-/算法赛/_RTS算法赛@*/workspace/
-/算法赛/_RTS算法赛@*/交卷/
-/算法赛/_RTS算法赛@*/.赛务.json
+/algorithm-contest/_rts-contest@*/workspace/
+/algorithm-contest/_rts-contest@*/submissions/
+/algorithm-contest/_rts-contest@*/.赛务.json
 
 # 模板工作区是选手包的唯一真源，必须入库（上面的忽略规则要放行它）
-!/算法赛/RTS算法赛@Model_name/workspace/
-!/算法赛/RTS算法赛@Model_name/workspace/**
+!/algorithm-contest/rts-contest@model-name/workspace/
+!/algorithm-contest/rts-contest@model-name/workspace/**
 
 # 选手包里的 arena/ 由赛务.py 从引擎源码同步（--sync-engine），不重复入库
-/算法赛/RTS算法赛@Model_name/workspace/arena/
-/算法赛/RTS算法赛@Model_name/workspace/对局记录/
-/算法赛/RTS算法赛@Model_name/workspace/bot.exe
+/algorithm-contest/rts-contest@model-name/workspace/arena/
+/algorithm-contest/rts-contest@model-name/workspace/match-records/
+/algorithm-contest/rts-contest@model-name/workspace/bot.exe
 
 # 上面的 !...workspace/** 是白名单，会盖住文件开头的 __pycache__/ 规则。
 # 这里必须再写一遍，否则跑一次 clock.py 就在模板里留下 .pyc 并跟着发卷出去。
-/算法赛/RTS算法赛@Model_name/workspace/**/__pycache__/
-/算法赛/RTS算法赛@Model_name/workspace/**/*.pyc
+/algorithm-contest/rts-contest@model-name/workspace/**/__pycache__/
+/algorithm-contest/rts-contest@model-name/workspace/**/*.pyc
 
 # 引擎宿主构建产物（arena 与选区自检都会用到）
 /war_of_desert/.bin/
 
 # 本地对局产物
-/算法赛/RTS算法赛@Model_name/workspace/matches/
+/algorithm-contest/rts-contest@model-name/workspace/matches/
 
 # 正式赛 beta 发布包：解包目录与 7z 压缩包都是本地构建产物，不入库
 /_发布包/
 # 若重新解包/打包到仓库根目录，同样忽略
 /Meow社区比赛__WoD正式赛_beta*
 
-# 历史全流程测试存档已迁到 算法赛/测试/历史全流程/（见上方忽略规则）
+# 历史全流程测试存档已迁到 algorithm-contest/tests/history-full-workflow/（见上方忽略规则）
+
+# 基线调试与测试轮的本地结果（证据归档在 experiment-records/bot-experiments/）
+/war_of_desert/results/baseline-*/
+/war_of_desert/results/test-*/
+/war_of_desert/experiment-records/reference-bots-archive/bin/
+/war_of_desert/experiment-records/offense-defense-experiments/bin/

@@ -140,10 +140,10 @@ func cmdBuild(args []string) error {
 	rec := &contest.Seal{
 		Season:      cfg.Key,
 		GeneratedAt: time.Now().Format(time.RFC3339),
-		Note:        "封存源码哈希；bin 为编译产物，可随时由 source 重建；shared 为参考 Bot 共用的策略库",
+		Note:        "封存源码哈希；bin 为编译产物，可随时由 source 重建；shared 为基线共用的策略库（botkit/refbot/acebot）",
 		Shared:      map[string]string{},
 	}
-	for _, shared := range []string{"workspace/botkit", "workspace/refbot"} {
+	for _, shared := range []string{"workspace/botkit", "workspace/refbot", "workspace/acebot"} {
 		files, err := hashTree(filepath.Join(root, filepath.FromSlash(shared)))
 		if err != nil {
 			return err
@@ -217,7 +217,7 @@ func fileExists(p string) bool {
 // binPath 把配置里的 bin 解析成绝对路径。
 //
 // 相对路径按仓库根解析；绝对路径原样使用——基线 Bot 以预编译 exe 的形式
-// 放在 算法赛/ 下，不在 Go 模块里，不能被 Join 拼接。
+// 放在 algorithm-contest/ 下，不在 Go 模块里，不能被 Join 拼接。
 func binPath(root, rel string) string {
 	if filepath.IsAbs(rel) || (len(rel) > 1 && rel[1] == ':') {
 		return filepath.FromSlash(rel)
@@ -479,7 +479,7 @@ func cmdRun(args []string) error {
 	w := bufio.NewWriter(out)
 	defer w.Flush()
 
-	replayDir := filepath.Join(outDir, "回放")
+	replayDir := filepath.Join(outDir, "replays")
 	if err := os.MkdirAll(replayDir, 0o755); err != nil {
 		return err
 	}
@@ -1033,7 +1033,7 @@ func cmdLocal(args []string) error {
 	fmt.Printf("  对手：%s\n", strings.Join(opponents, "、"))
 	fmt.Printf("  宿主：%s\n\n", host)
 
-	replayDir := filepath.Join(*outDir, "回放")
+	replayDir := filepath.Join(*outDir, "replays")
 	if err := os.MkdirAll(replayDir, 0o755); err != nil {
 		return err
 	}

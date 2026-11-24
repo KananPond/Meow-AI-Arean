@@ -1,6 +1,6 @@
 # /// script
 # v1.6 实验统计：结果.jsonl + 可选回放。
-# 用法：py -3 -X utf8 scripts/exp_v16_metrics.py 实验记录/规则实验/exp-v16-500 [--replay-sample 5]
+# 用法：py -3 -X utf8 scripts/exp_v16_metrics.py experiment-records/rule-experiments/exp-v16-500 [--replay-sample 5]
 # ///
 import json
 import sys
@@ -11,7 +11,7 @@ import statistics
 
 
 def main():
-    root = sys.argv[1] if len(sys.argv) > 1 else "实验记录/规则实验/exp-v16-500"
+    root = sys.argv[1] if len(sys.argv) > 1 else "experiment-records/rule-experiments/exp-v16-500"
     sample = 1
     if "--replay-sample" in sys.argv:
         sample = max(1, int(sys.argv[sys.argv.index("--replay-sample") + 1]))
@@ -49,9 +49,9 @@ def main():
     print(f"七领域总分均值 {statistics.mean(totals) if totals else 0:.2f}")
     print("领域均值：" + " ｜ ".join(f"{n} {v:.1f}" for n, v in field_avg))
 
-    if not os.path.isdir(os.path.join(root, "回放")):
+    if not os.path.isdir(os.path.join(root, "replays")):
         return
-    replays = sorted(glob.glob(os.path.join(root, "回放", "*.json")))
+    replays = sorted(glob.glob(os.path.join(root, "replays", "*.json")))
     replays = replays[::sample]
     tech_score = collections.Counter()
     research_seen = 0

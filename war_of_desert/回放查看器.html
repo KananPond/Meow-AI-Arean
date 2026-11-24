@@ -44,13 +44,13 @@
 <body>
 <header>
   <h1>Desert Arena · 回放查看器</h1>
-  <span class="hint">把 <code>results/*/回放/match-NNN.json</code> 拖进来 ｜ <kbd>空格</kbd> 播放/暂停 ｜ <kbd>←</kbd><kbd>→</kbd> 逐帧</span>
+  <span class="hint">把 <code>results/*/replays/match-NNN.json</code> 拖进来 ｜ <kbd>空格</kbd> 播放/暂停 ｜ <kbd>←</kbd><kbd>→</kbd> 逐帧</span>
   <span style="flex:1"></span>
   <button id="pick">选择回放文件…</button>
   <input id="file" type="file" accept=".json" style="display:none">
 </header>
 
-<div id="drop">把回放 JSON 拖到这里，或点击选择<br><small>results/formal-v11/回放/match-001.json</small></div>
+<div id="drop">把回放 JSON 拖到这里，或点击选择<br><small>results/formal-v11/replays/match-001.json</small></div>
 
 <main id="stage">
   <div>
@@ -96,7 +96,7 @@
 <script>
 'use strict';
 /* 回放查看器 · 零依赖单文件
- * 数据源：arena run 产出的 回放/match-NNN.json（hello 头 + 逐局 frames）
+ * 数据源：arena run 产出的 replays/match-NNN.json（hello 头 + 逐局 frames）
  * 地图层解码与 mapgen.js rle+b64/1 同构：(值, 计数-1) 字节对；elev 原样字节。
  */
 const SURF_COLORS = ['#d8c08a','#c2a272','#e6d29a','#7a6a58','#b09468','#e8e2d0','#cbb27f','#9aa3a8'];

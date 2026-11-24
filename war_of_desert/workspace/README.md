@@ -1,10 +1,10 @@
 # 选手工作区
 
-> 当前比赛规则：**v1.9.1**（ruleset `v15`，1500 tick）。`RULES.md` 是协议与经济基线，
-> `RULES_V15.md` 是 v1.9.1 增量，冲突时以 `RULES_V15.md` 为准。
+> 当前比赛规则：**v1.9.2**（ruleset `v15`，1500 tick）。`RULES.md` 是协议与经济基线，
+> `RULES_V15.md` 是 v1.9.2 增量，冲突时以 `RULES_V15.md` 为准。
 
 > 这是**引擎侧**的参考工作区：正式赛的 Starter 选手，加上 `botkit/`、`refbot/` 共用库。
-> 发给选手的完整包在 [`../../算法赛/RTS算法赛@Model_name/workspace/`](../../算法赛/RTS算法赛@Model_name/workspace/)，
+> 发给选手的完整包在 [`../../algorithm-contest/rts-contest@model-name/workspace/`](../../algorithm-contest/rts-contest@model-name/workspace/)，
 > 里面带 `arena/`（引擎与裁判源码）、骨架 + 两个预编译基线、`本地对局.bat`。
 
 > 正式赛编码期，你只需要动 `submission/`。其余目录是规则、工具和陪练。
@@ -14,21 +14,17 @@
 ```text
 workspace/
 ├── RULES.md               完整规则与行协议（先读）
-├── RULES_V15.md           v1.9.1 增量规则（当前比赛）
+├── RULES_V15.md           v1.9.2 增量规则（当前比赛）
 ├── prompt.md              发给模型的原始任务书
 ├── README.md              本文件
 ├── clock.py               编码期计时器（只读）
 ├── submission/decide.go   你的提交物
 ├── botkit/                可选工具库：协议、地图解码、一步寻路
-├── refbot/                参考 Bot 共用策略库（只读）
-└── bots/                  七个参考 Bot
-    ├── vanguard/          正面推进
-    ├── bulwark/           经济防守
-    ├── swarm/             数量压制
-    ├── nomad/             机动抢点
-    ├── sapper/            攻坚拆舰（v1.3 新增）
-    ├── hunter/            遗产／插旗优先（v1.5 新增）
-    └── warden/            攻城压制（RAILGUN + ARTILLERY + CARRIER，v1.9 新增）
+├── refbot/                baseline@1 共用策略库（只读）
+├── acebot/                baseline@2 共用策略库（只读）
+└── bots/                  两个官方基线（旧 7 参考 Bot 见 experiment-records/reference-bots-archive/）
+    ├── baseline1/         中等战术（refbot 攻城剖面）
+    └── baseline2/         极强（acebot：集火/微操/护旗/劫旗/遗产竞速）
                           （正式赛第 6 名选手 Starter 就是 submission/decide.go）
 ```
 
@@ -95,10 +91,9 @@ python -X utf8 clock.py
 
 读源码比读文档快：
 
-- `vanguard`：重甲正面推进，看它怎么用 `AAV + 母舰火力`；
-- `bulwark`：先经济后装甲，看它怎么排科技顺序；
-- `swarm`：轻甲海，看它怎么把产能拉满；
-- `nomad`：侦察 + 抢点，看它怎么用 `SCOUT` 换 VP；
+- `baseline1`：中等战术、攻城消耗，看它怎么排科技与生产顺序；
+- `baseline2`：极强对手，看 acebot 的集火评分、伤兵微操、护旗/劫旗决策；
+- 旧 7 参考 Bot（vanguard/bulwark/swarm/nomad/sapper/hunter/warden）源码在 `experiment-records/reference-bots-archive/`，可读；
 - `submission`：基线模板，注释最多，适合从它改。
 
 想快速验证一个想法，直接改 `submission/decide.go` 里的一行常量再跑 `check`，比空想快。
