@@ -28,7 +28,7 @@
 当前文件以便留档，但记录 accepted=false，正式成绩不计。
 
 目标目录默认是根目录 workspace；未来多位选手可放在 bots/<名字>/workspace
-或 算法赛@<模型>/workspace。赛务记录保存在根目录 赛务记录.json。
+或 rts-contest@<模型>/workspace。赛务记录保存在根目录 赛务记录.json。
 """
 
 from __future__ import annotations
@@ -78,7 +78,7 @@ def find_targets() -> list[Path]:
     if (HERE / CLOCK_REL).is_file():
         found.append(HERE)
 
-    patterns = ("算法赛@*", "选手@*", "bots/*", "submissions/*")
+    patterns = ("rts-contest@*", "选手@*", "bots/*", "submissions/*")
     for pattern in patterns:
         for p in HERE.glob(pattern):
             if p.is_dir() and (p / CLOCK_REL).is_file() and p not in found:
@@ -117,7 +117,7 @@ class Site:
         self.workspace = self.target / "workspace"
         self.clock = self.workspace / "clock.py"
         self.submission = self.workspace / "submission" / "decide.go"
-        self.frozen_dir = self.target / "交卷"
+        self.frozen_dir = self.target / "submissions"
         self.frozen_file = self.frozen_dir / "decide.go"
         self.freeze_record = self.frozen_dir / "交卷记录.json"
 

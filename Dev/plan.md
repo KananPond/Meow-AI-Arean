@@ -1,7 +1,7 @@
 # plan.md · Desert Arena 改造方案（v0.11 → v1.0-candidate）
 
 > **文档性质**：可执行的改造工程方案，不是愿景稿。每条工作项都给了「现状 → 目标 → 改哪个文件哪一行 → 怎么验收」。
-> **基线版本**：`Dev/MVP` v0.11（2026-11-13 修复后），实测见 [`审查/MVP_测试报告_20261113.md`](审查/MVP_测试报告_20261113.md)。
+> **基线版本**：`Dev/MVP` v0.11（2026-11-13 修复后），实测见 [`reviews/MVP_测试报告_20261113.md`](reviews/MVP_测试报告_20261113.md)。
 > **上游依据**：[`Plan_Beta.md`](Plan_Beta.md)（v1.0 规则意图）、[`ORACLE.md`](ORACLE.md)（快照纪律）、
 > `Meow-AI-Arean/docs/open-source-scope.md`（正式集数规范）、`community/contests/rmuc2026/`（社区竞赛范式）。
 > **本文不含**：`war_of_desert/`（Go 移植半成品）的功能开发。它只保留「编译通过 + 单位口径正确」，不再追规则。
@@ -56,7 +56,7 @@
 ### 0.3 三条不可违反的约束
 
 1. **快照纪律**：`Dev/MVP` 是源码事实源；`war_of_desert/engine/oracle/` 是只读快照。任何规则改动都必须同时升 `rulesHash` 与协议版本，不允许「只改 MVP 就宣称正式赛变了」。
-2. **不改历史数据**：`Dev/MVP/正式比赛测试/归档/`、`算法赛/测试/历史赛季/formal/` 下的既有结果是历史证据，只读。新规则的新结果写到新目录。
+2. **不改历史数据**：`Dev/MVP/formal-match-tests/archive/`、`algorithm-contest/tests/history-seasons/formal/` 下的既有结果是历史证据，只读。新规则的新结果写到新目录。
 3. **先证伪再调参**：任何「数值不合理」的判断，必须先有探针（probe bot / 脚本）证明「在当前数值下不可行」，再改数值。反例：RAILGUN 320 CU 看似贵，但 1200 tick 的总收入约 2300～6000 CU，真正原因是参考 Bot 不造它——这种情况改 Bot，不改数值。
 
 ---
@@ -76,7 +76,7 @@
 | `referee/tournament.js` | 179 | 循环赛 + 积分榜 | 需替换为 BT（C3） |
 | `referee/bots/tactical.js` | 289 | 参考 Bot A（BFS 认领 + 科技） | 需扩（F1） |
 | `referee/bots/greedy.js` | 80 | 参考 Bot B（暴兵） | 需扩（F1） |
-| `正式比赛测试/workspace/arena.js` | 371 | 本地 runner（check/play/batch/full） | 稳定 |
+| `formal-match-tests/workspace/arena.js` | 371 | 本地 runner（check/play/batch/full） | 稳定 |
 | `test/*.js` | 2,855 | 8 个套件 | 需扩（§12） |
 | `referee/match_test.js` / `web_smoke.js` | 524 / 135 | 裁判 / 渲染套件 | 稳定 |
 
@@ -211,7 +211,7 @@
 - 不做 512² 地图（先解决 256² 的编码与性能，512² 是 v1.1）。
 - 不做服务器/匹配系统（本地 runner + 批处理即可）。
 - 不做 Go 引擎重写（`war_of_desert/` 只修口径，不追规则）。
-- 不做多模式（攻守 `Plan_Siege` 仍在 `实验/`，不随本次投稿）。
+- 不做多模式（攻守 `Plan_Siege` 仍在 `experiments/`，不随本次投稿）。
 
 ---
 
@@ -322,7 +322,7 @@ tickLimit: (typeof window !== 'undefined' && window.WOD_TICK_LIMIT) || 1200,
 
 **现状**：`Dev/MVP/_archive_skeleton/` 里是上一轮的 `README_root`、`war_desert/` 等骨架，含大量 600 tick / 10 TPS 的过期口径，容易被误读为现行规范。
 
-**改法**：整目录移动到 `Dev/归档/_archive_skeleton/`，在 `Dev/归档/README.md` 登记一行「已被 v0.11 取代，只读」。
+**改法**：整目录移动到 `Dev/archive/_archive_skeleton/`，在 `Dev/archive/README.md` 登记一行「已被 v0.11 取代，只读」。
 
 **验收**：`grep -r "600 tick" Dev/MVP --include=*.md` 不再命中（除测试注释与历史归档）。
 
@@ -334,7 +334,7 @@ tickLimit: (typeof window !== 'undefined' && window.WOD_TICK_LIMIT) || 1200,
 
 新增 `Dev/docs/单位卡.md`：一张 A4 大小的速查表（§1.2 + §1.3 的内容），选手包与评审各一份。
 
-**验收**：两份文档被 `Dev/README.md` 索引；`Dev/MVP/正式比赛测试/workspace/RULES.md` 首段链接到单位卡。
+**验收**：两份文档被 `Dev/README.md` 索引；`Dev/MVP/formal-match-tests/workspace/RULES.md` 首段链接到单位卡。
 
 ---
 
@@ -808,7 +808,7 @@ const gates = [
 ### B3 · 数据迁移与版本标记
 
 - `result` 里新增 `scoreVersion: 2`、`rulesHash`、`proto: 6`。
-- 旧结果目录标注：`Dev/MVP/正式比赛测试/归档/` 与 `算法赛/测试/历史赛季/formal/` 首行加「scoreVersion:1，不可与 v2 比较」。
+- 旧结果目录标注：`Dev/MVP/formal-match-tests/archive/` 与 `algorithm-contest/tests/history-seasons/formal/` 首行加「scoreVersion:1，不可与 v2 比较」。
 - `results/README.md` 说明「跨版本只比胜负，不比分数」。
 
 **验收**：随机抽 3 个旧结果文件，`scoreVersion` 为 1；新跑的为 2。
@@ -1269,7 +1269,7 @@ CHALLENGE_OK
 
 **补强**
 1. manifest 增加 `rulesHash`、`proto`、`poolHash`、`generatedAt`。
-2. `scripts/freeze.js`：编译/打包选手提交，写 `交卷/交卷记录.json`（含 SHA-256、时间、提交者）。
+2. `scripts/freeze.js`：编译/打包选手提交，写 `submissions/交卷记录.json`（含 SHA-256、时间、提交者）。
 3. GitHub Actions：
 
 ```yaml
@@ -1378,8 +1378,8 @@ CHALLENGE_OK
 | `referee/referee.js` | 默认 `vision:true`、`botP95` 维护 | A7/B1 |
 | `referee/tournament.js` | `tickLimit` 默认值；输出改 JSONL | 0.2/C2 |
 | `referee/match.js` | 默认 tickLimit；回放模式 | 0.2/E7 |
-| `正式比赛测试/workspace/arena.js` | `pool` 命令、`--resume` | C2 |
-| `正式比赛测试/workspace_manifest.json` | 增加 4 个哈希字段 | E8 |
+| `formal-match-tests/workspace/arena.js` | `pool` 命令、`--resume` | C2 |
+| `formal-match-tests/workspace_manifest.json` | 增加 4 个哈希字段 | E8 |
 | `botkit`（JS/Go） | deflate 解码、`heading`、`mode` 示例 | D3/D2 |
 | 全部 `*.md` | 600 tick / 64 KiB / 5:1 等旧口径 | 0.x/E3 |
 
@@ -1387,9 +1387,9 @@ CHALLENGE_OK
 
 | 路径 | 处理 | 阶段 |
 |---|---|---|
-| `Dev/MVP/_archive_skeleton/` | → `Dev/归档/` | 0.3 |
+| `Dev/MVP/_archive_skeleton/` | → `Dev/archive/` | 0.3 |
 | `referee/tournament.js` 的积分榜输出 | 保留代码，排名改用 BT | C3 |
-| `Dev/实验/Plan_Siege.md` | 不动（不随投稿） | — |
+| `Dev/experiments/Plan_Siege.md` | 不动（不随投稿） | — |
 | `war_of_desert/` 的引擎快照 | 标注「v1.0 历史，不追 v2 规则」 | E3 |
 
 ---
@@ -1489,7 +1489,7 @@ v1.0                      阶段 6 + 12 条 DoD
 | 数据 | 兼容策略 |
 |---|---|
 | v0.11 旧回放 | 只读；播放器提示 `proto 5 不兼容`；不参与新排名 |
-| 旧 `算法赛/测试/历史赛季/formal/` | 标注 `scoreVersion 1`；跨版本只比胜负 |
+| 旧 `algorithm-contest/tests/history-seasons/formal/` | 标注 `scoreVersion 1`；跨版本只比胜负 |
 | Go `war_of_desert` | 标注「v1.0 历史快照，不追 v2」；不参与新赛季 |
 | `botkit` | 同时支持 RLE（旧）与 deflate（新），按 `encoding` 分流 |
 
@@ -1539,7 +1539,7 @@ npm run accept                       # 12 条 DoD
 
 # 正式测试包
 npm run sync:formal
-cd 正式比赛测试/workspace && node arena.js full
+cd formal-match-tests/workspace && node arena.js full
 
 # 地图池
 node scripts/build_map_pool.js --out maps/pool.json
@@ -1565,7 +1565,7 @@ docker run --rm -i --network none --cpus 1 --memory 512m wod-bot < tick.json
 - [ ] `CONDITIONS.md` 14 项无「待定」
 - [ ] `prompt.md`
 - [ ] 目录结构对齐正式集数规范
-- [ ] `.gitignore` 不排除回放/成绩
+- [ ] `.gitignore` 不排除replays/成绩
 
 **复现（7）**
 - [ ] 空目录 + `workspace/` 能独立跑

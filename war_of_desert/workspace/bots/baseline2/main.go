@@ -1,7 +1,7 @@
 // baseline@2 · 极强基线：acebot 增强策略（集火/微操/护旗/劫旗/遗产竞速）。
 //
 // 定位：精心调试的上限对手——选手必须超越它才能证明实力。
-// 参数经多轮实验标定，见 实验记录/Bot实验/baseline-tuning/。
+// 参数经多轮实验标定，见 experiment-records/bot-experiments/baseline-tuning/。
 package main
 
 import (

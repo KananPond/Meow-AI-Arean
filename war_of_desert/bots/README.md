@@ -7,7 +7,7 @@
 ```text
 bots/
 ├── bin/                 编译产物（.exe），不入库，可随时重建
-├── 封存记录/             按赛季分册，文件名 = 配置名（生成物，不入库）
+├── seal-records/             按赛季分册，文件名 = 配置名（生成物，不入库）
 │   ├── formal_v19.json        第 6 季正式赛（v1.9.2）
 │   ├── experiment_v19_700.json  v1.9.1 714 局标定
 │   ├── formal_v14.json        第 5 季正式赛（历史）
@@ -32,7 +32,7 @@ v1.4 历史赛季的封存就被顶掉，`arena seal -config tournament/formal_v
 1. 对每个 entry 执行 `go build -o bots/bin/<name>.exe ./<source>`；
 2. 递归计算 `source` 下所有 `.go` 文件的 SHA-256；
 3. 计算共用库 `workspace/botkit`、`workspace/refbot`、`workspace/acebot` 的 SHA-256；
-4. 写入 `封存记录/<赛季>.json`（只覆盖这一本）。
+4. 写入 `seal-records/<赛季>.json`（只覆盖这一本）。
 
 只有“源码哈希 + 共用库哈希 + 编译产物”三者一致，才认为这名选手的参赛版本没有被替换。
 

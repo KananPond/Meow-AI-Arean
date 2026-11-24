@@ -1,6 +1,6 @@
 {
   "name": "Desert Arena · 正式赛 v1.9.2（第 6 季 · 双基线）",
-  "season": "第 6 季 · v1.9.2：预制 Bot 合并为 baseline@1（中等）/ baseline@2（极强）；旧 7 参考 Bot 归档至 实验记录/参考Bot归档/",
+  "season": "第 6 季 · v1.9.2：预制 Bot 合并为 baseline@1（中等）/ baseline@2（极强）；旧 7 参考 Bot 归档至 experiment-records/reference-bots-archive/",
   "version": "1.9.2",
   "engine": {
     "kind": "native",

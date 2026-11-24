@@ -49,7 +49,7 @@ type Config struct {
 	Verify  bool             `json:"verify"`
 
 	// Key 是配置文件名（去掉目录与 .json），也是这个赛季封存记录的文件名。
-	// 两个赛季并存靠它区分：bots/封存记录/<Key>.json。
+	// 两个赛季并存靠它区分：bots/seal-records/<Key>.json。
 	Key string `json:"-"`
 }
 
