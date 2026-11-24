@@ -130,3 +130,7 @@ __pycache__/
 /war_of_desert/results/test-*/
 /war_of_desert/experiment-records/reference-bots-archive/bin/
 /war_of_desert/experiment-records/offense-defense-experiments/bin/
+
+# v1.9.2 714 局全链路回归留档：成绩/赛程/结果入库，回放仍由上面的 replays 规则忽略
+!/war_of_desert/results/test-v192-full/
+
