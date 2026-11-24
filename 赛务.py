@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """Desert Arena · 赛务（发卷 / 开赛 / 暂停 / 收卷）。
 
-版本：v1.9.1
+版本：v1.9.2
 功能：以「一个选手目录」为单位管理编码期。目录可以是空的——开赛时先把
       选手包铺进去，再开始计时；到点把 submission/<选手名>_bot.go 冻结到 交卷/。
 
@@ -18,7 +18,7 @@
     算法赛/RTS算法赛@X/
     ├── workspace/            选手包（由模板 RTS算法赛@Model_name 复制而来）
     │   ├── RULES.md …         协议与经济基线
-    │   ├── RULES_V15.md …     v1.9.1 增量规则（当前比赛）
+    │   ├── RULES_V15.md …     v1.9.2 增量规则（当前比赛）
     │   ├── bots/             骨架 Bot + 两个预编译基线
     │   ├── submission/X_bot.go    ← AI 在这里写（文件名 = 选手名 + _bot.go）
     │   └── clock.py               ← 选手自己查看剩余时间
@@ -152,7 +152,7 @@ def sync_engine(dest: Path) -> dict:
 def engine_rules_version() -> str:
     """从 internal/sim 读当前比赛规则版本号，避免文档和代码各说一套。
 
-    当前比赛走 v1.9.1（ruleset v15），版本常量在 rules15.go 的
+    当前比赛走 v1.9.2（ruleset v15），版本常量在 rules15.go 的
     RulesVersionV15；读不到时退回 rules.go 的 RulesVersion。
     """
     for name, key in (("rules15.go", "RulesVersionV15"),

@@ -58,4 +58,4 @@ go run ./cmd/arena seal  -config tournament/formal_v19.json   # 只校验，出 
 | Nomad | `workspace/bots/nomad` | 机动抢点 |
 | Starter | `workspace/submission` | 选手提交模板 |
 
-共用库：`workspace/botkit`（协议与寻路）、`workspace/refbot`（参考 Bot 策略）。
+共用库：`workspace/botkit`（协议与寻路）、`workspace/refbot`（baseline@1 策略）、`workspace/acebot`（baseline@2 策略）。

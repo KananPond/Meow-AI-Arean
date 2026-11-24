@@ -5,7 +5,7 @@
 > v1.6–v1.9.2 的增量见 `war_of_desert/workspace/RULES_V15.md` 与
 > `实验记录/规则实验/exp-v19-700/`、`实验记录/规则实验/exp-v191-700/`。
 > 事实源：`war_of_desert/internal/sim/rules15.go` + `tournament/formal_v19.json`。
-> 当前规则指纹：`393ee404`（v1.9.1 / 1500 tick / 7 Bot / 17 seed）。
+> 当前规则指纹：`077336ff`（v1.9.2 / 1500 tick / 双基线 / 17 seed）。
 >
 > 注意：下面第 2 节的数值是 v1.5 初版；v1.7 起击杀改为 `min(造价×2/3,200)`、
 > 遗产第 1/2 件各 +50（上限 100）、插旗 0 分，以 `RULES_V15.md` 为准。

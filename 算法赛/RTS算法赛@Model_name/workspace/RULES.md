@@ -15,7 +15,7 @@
 ```text
 workspace/
 ├── RULES.md                 本文件
-├── RULES_V15.md             v1.9.1 增量规则（当前比赛，先读）
+├── RULES_V15.md             v1.9.2 增量规则（当前比赛，先读）
 ├── prompt.md                发给模型的原始任务书
 ├── clock.py                 编码期计时（只读）
 ├── go.mod                   本地编译用（指向 arena/，别加第三方依赖）
