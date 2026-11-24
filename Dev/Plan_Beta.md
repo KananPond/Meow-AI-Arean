@@ -4,7 +4,7 @@
 > **事实源**：正式版规则实现与测试在 `Dev/MVP/`；`war_of_desert/` 是围绕 `MVP@288db07` 旧快照的 Go 移植**半成品**，不作为规则事实源。本文中 `MVP/` 均指 `Dev/MVP/`。
 > **v1.1 修订**：① `applyMove` 改用 `TICK_MS/1000`，修掉单位实际速度 2× 表值；② `TICK_LIMIT` 600→1200（60s），补偿速度修正后的交战窗口；③ `MAX_LINE` 64KB→128KB（256² hello 实测约 110KB）；④ 正式测试包新增 `sync:formal` 与 manifest 校验，`arena.js` 支持 `--frozen`。
 > **取代关系**：本文取代 `Plan_Alpha.md` 与 `MVP_plan.md` 的未完成规划内容；后两者已归档到 `Docs/archive/`，仅作历史资料。
-> **攻守模式**：攻守是不对称变体，规则在 `war_of_desert/engine/oracle/rules_siege.js`，规格与标定见 `实验/Plan_Siege.md`；它属于实验分支，不随正式版投稿。
+> **攻守模式**：攻守是不对称变体，规则在 `war_of_desert/engine/oracle/rules_siege.js`，规格与标定见 `experiments/Plan_Siege.md`；它属于实验分支，不随正式版投稿。
 > **基线锚点**：`Dev/MVP` 的 tag `baseline/288db07` 是 v1.0 历史语义锚点；v1.1 起以 `Dev/MVP` HEAD 为准，`war_of_desert/engine/oracle/` 保留为 v1.0 历史快照。
 > **快照纪律**：`Dev/MVP` 可继续开发；`war_of_desert/engine/oracle/` 是历史只读快照，不再回灌。新规则进入正式测试包用 `npm run sync:formal` 同步 `workspace/engine/` 与 manifest，并刷新 `rulesHash`。
 
@@ -124,7 +124,7 @@ schema 必须覆盖：字段名称、类型、可选性、数组形状、枚举�
 - 选手包必须包含 `workspace/clock.py`，供模型随时查看开发已用时间、目标时间和强制收卷时间。
 - 组织方使用 `开赛.py` 开赛、暂停、恢复和收卷；权威记录写入 `赛务记录.json`，`clock.py` 是选手侧展示，不作为最终审计依据。
 - 默认赛程：90 分钟为目标完成时间，120 分钟为强制收卷；到点后即使仍可留档，也必须标记 `accepted=false`。
-- 收卷对象是 `workspace/submission/decide.go`；强制收卷时复制到 `<选手目录>/交卷/decide.go`，记录 SHA-256、字节数、用时、accepted 和缺失状态。
+- 收卷对象是 `workspace/submission/decide.go`；强制收卷时复制到 `<选手目录>/submissions/decide.go`，记录 SHA-256、字节数、用时、accepted 和缺失状态。
 - 未找到 `decide.go` 也必须生成收卷记录，且 `accepted=false`、`missing_submission=true`。
 - 暂停/恢复必须写入赛务记录；暂停期间不增长已用时间，恢复后接续原计时。
 - 选手不得修改 `clock.py` 或赛务记录；组织方重置计时时必须保留重开、暂停和收卷历史。
@@ -314,9 +314,9 @@ v1.0 采用：
 |---|---|
 | `war_of_desert/`（`cmd/ internal/ engine/ workspace/ tournament/`） | Go 正式赛执行链、选手包与赛季产物；引擎仍由快照 oracle 宿主承载，Go 引擎待 §6.2 门禁 |
 | `Dev/MVP/` | JS 规则预言机源码（**2026-11-13 已解冻**，可继续开发）；v1.0 锚点为 tag `baseline/288db07` |
-| `Dev/MVP/正式比赛测试/` | 独立自包含正式比赛测试环境；新增未跟踪目录，不改变 `baseline/288db07` 提交 |
+| `Dev/MVP/formal-match-tests/` | 独立自包含正式比赛测试环境；新增未跟踪目录，不改变 `baseline/288db07` 提交 |
 | `Dev/Docs/` | 原作调研、版权与术语资料；不是运行时代码 |
-| `Dev/reference/模板/` | 第三方只读参照；不得复制源码或素材 |
+| `Dev/reference/templates/` | 第三方只读参照；不得复制源码或素材 |
 | `Dev/` 下历史文档与报告 | 历史评估证据，不作为当前规则事实源 |
 
 ---

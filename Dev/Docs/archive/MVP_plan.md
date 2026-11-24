@@ -37,7 +37,7 @@
 | 冻结规则细节与测试口径 | `MVP/README.md`、`MVP/referee/README.md` |
 | 项目入口与目录职责 | 根目录 `README.md` |
 | 原作事实、版权边界、术语 | `Docs/README.md` 及 Docs 各文件 |
-| 历史审查证据 | 根目录各 `MVP_*审查/评估报告` |
+| 历史审查证据 | 根目录各 `MVP_*reviews/评估报告` |
 
 ## 使用规则
 

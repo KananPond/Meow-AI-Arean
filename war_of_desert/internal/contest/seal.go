@@ -7,7 +7,7 @@
 // 开跑，赛后审计第 1 条（源码哈希与封存记录一致）直接过不去。
 // 现在把校验做成开赛硬门槛：对不上就中止，并指出是哪个文件。
 //
-// v1.4 起封存记录按赛季分册：bots/封存记录/<配置名>.json。老的单本
+// v1.4 起封存记录按赛季分册：bots/seal-records/<配置名>.json。老的单本
 // bots/封存记录.json 只够装一个名册，v1.5 实验赛季（Hunter）一 build 就把
 // 正式赛季（Starter）那本盖掉，于是「赛季页封存灯永远是红的」——名册差异
 // 被误报成源码被篡改。一本一赛季，两个赛季并存互不影响。
@@ -35,7 +35,7 @@ type SealEntry struct {
 	BinSHA256 string `json:"binSha256,omitempty"`
 }
 
-// Seal 是一个赛季的封存记录（bots/封存记录/<赛季>.json）。
+// Seal 是一个赛季的封存记录（bots/seal-records/<赛季>.json）。
 type Seal struct {
 	Season      string            `json:"season,omitempty"`
 	GeneratedAt string            `json:"generatedAt"`
@@ -45,7 +45,7 @@ type Seal struct {
 }
 
 // SealDir 是封存记录的存放目录，文件名 = 赛季标识（配置文件名去掉 .json）。
-const SealDir = "封存记录"
+const SealDir = "seal-records"
 
 // SealPath 返回某赛季封存记录的路径。
 //

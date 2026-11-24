@@ -20,7 +20,9 @@ const (
 	RulesetV14 = "v14"
 	RulesetV15 = "v15"
 
-	RulesVersionV15 = "1.9.1"
+	// v1.9.2：运货死锁修复——携带遗产的采矿机在己方无旗时恢复 Bot 移动；
+	// 对携带遗产的采矿机下达 harvest 先弃货再转采集。语义修订，指纹随之变化。
+	RulesVersionV15 = "1.9.2"
 
 	// MothershipSiegeMul v1.8.2：RAILGUN/ARTILLERY 对母舰伤害倍率。
 	// 远程兵每方每局只有 0.4 / 0.08 台，单靠造价调整不足以在 1500 tick 内拆舰。
@@ -751,7 +753,8 @@ func (g *Game) stepRelics(side int) {
 		case "toDeposit":
 			vp := g.nearestFriendlyFlagVP(side, u.X, u.Y)
 			if vp == nil {
-				// 没有己方旗，原地等；采矿机不丢货。
+				// 没有己方旗：默认原地等；移动阶段仍接受 Bot move（v1.9.2），
+				// 采矿机可以自己去无旗 VP 插旗，不丢货。
 				g.applyMove(u, u.X, u.Y)
 				continue
 			}

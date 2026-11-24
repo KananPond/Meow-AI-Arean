@@ -16,7 +16,7 @@
 | 测试有效吗 | 部分无效。头号用例（两局换边比赛）实测**零开火零击杀**；"3 个 seed" 实为**2 张地图** |
 | 符合 WoD 需求吗 | 核心玩法假设（地形修正链路）已验证；**比赛侧需求（进程隔离/512²/经济/迷雾/选手包/成绩表/BT）缺失** |
 | 能用于主项目吗 | **不能直接搬运行时代码**；可作为「规则与协议契约」蓝本做**重写式迁移** |
-| 可行性判定 | 可行，但需先补 5 项 P0（运行形态、规则单源、回放/成绩契约、Game(n)、seed 语义）才能动工 |
+| 可行性判定 | 可行，但需先补 5 项 P0（运行形态、规则单源、replays/成绩契约、Game(n)、seed 语义）才能动工 |
 
 ---
 
@@ -34,7 +34,7 @@
 | 人口只增不减 | ✅ 已修 | 阵亡回收 `pop`；`contract_test` §2 断言 `pop == 存活 + 队列`（6/6、22/22） |
 | AAV 造价两套不一致 | ✅ 已修 | 统一 240；`contract_test` §1 对 6 单位 × 8 字段逐项比对 |
 | `Game(n)` 忽略 n | ✅ 已修 | `n != 2` 显式抛错，§12 断言 |
-| 回放/成绩 schema 三套不兼容 | ✅ 裁判侧已修 | `result` 补 `mode/ranks/forfeit/timeouts/errors/max_ms/turns/vp`；`result.replays` 改为 `{header,names,result,frames}` |
+| replays/成绩 schema 三套不兼容 | ✅ 裁判侧已修 | `result` 补 `mode/ranks/forfeit/timeouts/errors/max_ms/turns/vp`；`result.replays` 改为 `{header,names,result,frames}` |
 | 输入层 0 覆盖 | ✅ 已修 | 新增 `test/harness.js`（可合成事件）+ `test/input_test.js`（28 条断言） |
 | 判定链只到第 2 级 | ✅ 已修 | `contract_test` §4 逐级覆盖 1~5 级 |
 | 摘要漏字段 | ✅ 已修 | 摘要混入 `pop/power/queue/state/path/targetId/cd` |
@@ -358,7 +358,7 @@ AAV 造价直接进入"歼敌"（击杀按造价加权）与"保存兵力"两个
 |---|---|---|
 | P0 | 运行形态不兼容（浏览器 JS vs `arena/core.py` + 子进程） | 代码复用率极低，迁移实为重写 |
 | P0 | 规则双源漂移 | 人类版、裁判版、正式版三方数值不一致，成绩不可解释 |
-| P0 | 回放/成绩 schema 三套 | 主仓库 `viewer.html`、`rate.py`(BT) 直接读不了 |
+| P0 | replays/成绩 schema 三套 | 主仓库 `viewer.html`、`rate.py`(BT) 直接读不了 |
 | P0 | `Game(n)` 假接口 | 混战模式静默降级，赛后才发现 |
 | P0 | seed 重映射碰撞 | 样本重复、兵力规模不可控，排名置信区间失真 |
 | P1 | 战斗链路 0 验证 + 对局从不交火 | 冻结规则前无法保证平衡；正式赛可能出现"零交战"局 |

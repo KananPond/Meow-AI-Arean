@@ -1,9 +1,9 @@
 # Desert Arena · 榜单
 
-> 本文件汇总历季**正式赛**榜单与读法。完整数据归档在 `../算法赛/测试/历史赛季/<dir>/`。
-> **当前正式赛季 = v1.9.1 · 第 6 季**（配置 `tournament/formal_v19.json`）；v1.9.1 的 714 局标定与 BT 见 [`实验记录/规则实验/exp-v191-700/README.md`](实验记录/规则实验/exp-v191-700/README.md)。以下第 5 季及更早为已完赛的历史赛季（v1.0 / v1.1 / v1.3 / v1.4），数据保持原样。
+> 本文件汇总历季**正式赛**榜单与读法。完整数据归档在 `../algorithm-contest/tests/history-seasons/<dir>/`。
+> **当前正式赛季 = v1.9.2 · 第 6 季**（配置 `tournament/formal_v19.json`，双基线）；v1.9.1 的 714 局标定与 BT 见 [`experiment-records/rule-experiments/exp-v191-700/README.md`](experiment-records/rule-experiments/exp-v191-700/README.md)。以下第 5 季及更早为已完赛的历史赛季（v1.0 / v1.1 / v1.3 / v1.4），数据保持原样。
 >
-> v1.5–v1.8 的规则实验产物在 `实验记录/规则实验/exp-v*`，只用于规则验证，不混入正式榜单；v1.9.1 已是当前正式口径。
+> v1.5–v1.8 的规则实验产物在 `experiment-records/rule-experiments/exp-v*`，只用于规则验证，不混入正式榜单；v1.9.2 已是当前正式口径（v1.9.1 基础上修复运货死锁）。
 
 ---
 
@@ -11,7 +11,7 @@
 
 > 规则指纹 `553785d4` ｜ 引擎 `native` ｜ 6 名选手 ｜ 45 场 / 90 局 ｜ 零故障 ｜ 90/90 确定性复核
 > 规则：1200 tick ｜ 母舰 HP 1800 / 攻击 13 / 移速 0.30 / 坡限 4（v1.3 为 3000 / 22 / 0.55 / 32）
-> 完整数据：[`../算法赛/测试/历史赛季/formal-v14/成绩.md`](../算法赛/测试/历史赛季/formal-v14/成绩.md)、[`../算法赛/测试/历史赛季/formal-v14/成绩_加权总分.md`](../算法赛/测试/历史赛季/formal-v14/成绩_加权总分.md)
+> 完整数据：[`../algorithm-contest/tests/history-seasons/formal-v14/成绩.md`](../algorithm-contest/tests/history-seasons/formal-v14/成绩.md)、[`../algorithm-contest/tests/history-seasons/formal-v14/成绩_加权总分.md`](../algorithm-contest/tests/history-seasons/formal-v14/成绩_加权总分.md)
 
 ### 正式名次（Bradley–Terry）
 
@@ -37,7 +37,7 @@
 
 > 规则指纹 `c3a88788` ｜ 引擎 `native` ｜ 6 名选手 ｜ 45 场 / 90 局 ｜ 零故障 ｜ 90/90 确定性复核
 > 规则：1200 tick ｜ 资源类型按镜像成对分配 ｜ 母舰脱战才自愈 ｜ 攻坚兵对舰倍率 2.5/2.0
-> 完整数据：[`../算法赛/测试/历史赛季/formal-v13/成绩.md`](../算法赛/测试/历史赛季/formal-v13/成绩.md)、[`../算法赛/测试/历史赛季/formal-v13/成绩_加权总分.md`](../算法赛/测试/历史赛季/formal-v13/成绩_加权总分.md)
+> 完整数据：[`../algorithm-contest/tests/history-seasons/formal-v13/成绩.md`](../algorithm-contest/tests/history-seasons/formal-v13/成绩.md)、[`../algorithm-contest/tests/history-seasons/formal-v13/成绩_加权总分.md`](../algorithm-contest/tests/history-seasons/formal-v13/成绩_加权总分.md)
 
 ### 正式名次（Bradley–Terry）
 
@@ -74,7 +74,7 @@
 ## 第 3 季 · 基准赛（Go 原生引擎，v1.2 规则）
 
 > 仅冻结赛程，未跑完（v1.2 验收时发现公平性与审计缺陷，赛程作废，见 v1.3 变更记录）。
-> 结果目录：`../算法赛/测试/历史赛季/formal-v12/`（只有 `赛程.json`）。
+> 结果目录：`../algorithm-contest/tests/history-seasons/formal-v12/`（只有 `赛程.json`）。
 
 ---
 
@@ -82,7 +82,7 @@
 
 > 规则指纹 `9874da0a` ｜ 引擎 `native`（Go 原生，golden trace 回归通过）｜ 5 名选手 ｜ 20 场 / 40 局 ｜ 零故障 ｜ 40/40 确定性复核
 > 规则：1200 tick ｜ 四子系统分配 / CU-RU 运输线经济 ｜ 七领域计分
-> 完整数据：[`../算法赛/测试/历史赛季/formal-v11/成绩.md`](../算法赛/测试/历史赛季/formal-v11/成绩.md)、[`../算法赛/测试/历史赛季/formal-v11/成绩_加权总分.md`](../算法赛/测试/历史赛季/formal-v11/成绩_加权总分.md)
+> 完整数据：[`../algorithm-contest/tests/history-seasons/formal-v11/成绩.md`](../algorithm-contest/tests/history-seasons/formal-v11/成绩.md)、[`../algorithm-contest/tests/history-seasons/formal-v11/成绩_加权总分.md`](../algorithm-contest/tests/history-seasons/formal-v11/成绩_加权总分.md)
 
 ### 正式名次（Bradley–Terry）
 
@@ -124,7 +124,7 @@
 ## 第 1 季 · 基准赛（JS oracle 引擎，v1.0 规则）
 
 > 规则指纹 `906f1b14` ｜ 5 名选手 ｜ 20 场 / 40 局 ｜ 零故障 ｜ 40/40 确定性复核
-> 完整数据：[`../算法赛/测试/历史赛季/formal/成绩.md`](../算法赛/测试/历史赛季/formal/成绩.md)、[`../算法赛/测试/历史赛季/formal/成绩_加权总分.md`](../算法赛/测试/历史赛季/formal/成绩_加权总分.md)
+> 完整数据：[`../algorithm-contest/tests/history-seasons/formal/成绩.md`](../algorithm-contest/tests/history-seasons/formal/成绩.md)、[`../algorithm-contest/tests/history-seasons/formal/成绩_加权总分.md`](../algorithm-contest/tests/history-seasons/formal/成绩_加权总分.md)
 
 ### 正式名次（Bradley–Terry）
 

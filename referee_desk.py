@@ -12,8 +12,8 @@
      提示词由人手动粘贴发送，裁判台不代发。
   ② 比赛：选择参赛工作区的 Bot、比赛规则版本，调用 war_of_desert 的官方
      arena（build/plan/run/rate）与 baseline@1/2 对局，成绩写入
-     `算法赛/比赛记录/<时间戳>/`。
-  ③ 测试：编码 + 比赛的全部功能，成绩只写入 `算法赛/测试/测试成绩/<时间戳>/`。
+     `algorithm-contest/match-records/<时间戳>/`。
+  ③ 测试：编码 + 比赛的全部功能，成绩只写入 `algorithm-contest/tests/test-results/<时间戳>/`。
 
     python -X utf8 referee_desk.py        # 或双击 裁判台.bat
 
@@ -50,9 +50,9 @@ import importlib.util
 
 APP_DIR = Path(__file__).resolve().parent
 ENGINE = APP_DIR / "war_of_desert"
-DEFAULT_CONTEST_ROOT = APP_DIR / "算法赛"
+DEFAULT_CONTEST_ROOT = APP_DIR / "algorithm-contest"
 STAGE_ROOT = ENGINE / "workspace" / "_contestants"
-REF_BOTS = ["Vanguard", "Bulwark", "Swarm", "Nomad", "Sapper", "Hunter", "Warden"]
+REF_BOTS = ["baseline1", "baseline2"]
 
 # 赛务（发卷 / 开赛 / 暂停 / 收卷）与裁判台同目录。用路径加载，
 # 避免模块名含中文时在某些 Python 上 import 失败。
@@ -74,10 +74,10 @@ BAD = "#e05252"
 # 版本号写进窗口标题：改完代码没重启，一眼就能看出来跑的是旧的。
 DESK_VERSION = "1.10"
 # 成绩归档：正式比赛与测试分开，互不覆盖。
-MATCH_RECORD_DIR = "比赛记录"
-TEST_RECORD_DIR = Path("测试") / "测试成绩"
+MATCH_RECORD_DIR = "match-records"
+TEST_RECORD_DIR = Path("tests") / "test-results"
 # 比赛根目录下这些子目录是归档区，不是参赛工作区。
-NON_CONTESTANT_DIRS = {"比赛记录", "测试"}
+NON_CONTESTANT_DIRS = {"match-records", "tests"}
 
 
 class _StopCheck(Exception):
@@ -150,7 +150,7 @@ def detect_source(ws: Path):
 
 def pick_frozen(stage: Path):
     """找收卷副本：优先 交卷记录.json 里登记的 file，其次扫 *_bot.go / decide.go。"""
-    d = stage / "交卷"
+    d = stage / "submissions"
     if not d.is_dir():
         return None
     rec = d / "交卷记录.json"
@@ -386,7 +386,7 @@ class RefereeDesk(tk.Tk):
 
         left = tk.Frame(body, bg=BG)
         left.grid(row=0, column=0, sticky="nsew", padx=(0, 12))
-        tk.Label(left, text="选择工作区（目录名形如 RTS算法赛@<模型名>）",
+        tk.Label(left, text="选择工作区（目录名形如 rts-contest@<model-name>）",
                  bg=BG, fg=MUTED, font=(None, 9)).pack(anchor="w")
         wrap = tk.Frame(left, bg=BG)
         wrap.pack(fill="both", expand=True, pady=(4, 0))
@@ -470,7 +470,7 @@ class RefereeDesk(tk.Tk):
         if scope not in self.rules_vars:
             self.rules_vars[scope] = tk.StringVar(value="v1.9")
 
-        dest = "算法赛/比赛记录" if scope == "official" else "算法赛/测试/测试成绩"
+        dest = "algorithm-contest/match-records" if scope == "official" else "algorithm-contest/tests/test-results"
         row = tk.Frame(parent, bg=BG)
         row.pack(fill="x", padx=12, pady=(10, 0))
         tk.Label(row, text="比赛根目录", bg=BG, fg=MUTED).pack(side="left")
@@ -743,7 +743,7 @@ class RefereeDesk(tk.Tk):
             want = self._sim_rule_version(ENGINE / "internal" / "sim", mode)
             have = self._sim_rule_version(
                 ws / "workspace" / "arena" / "internal" / "sim", mode)
-            head = "v1.9.1 当前" if mode.startswith("v1.9") else "v1.4 历史"
+            head = "v1.9.2 当前" if mode.startswith("v1.9") else "v1.4 历史"
             if want and have == want:
                 lines.append(("规则：%s · 引擎与 arena 副本都是 %s" % (head, want), "dim"))
             elif want and have:
@@ -969,7 +969,7 @@ class RefereeDesk(tk.Tk):
 
     # ---------------- ⑤ 收卷封存 ----------------
     def _seal_one(self, ws: Path, label: str, auto: bool = False):
-        """冻结交付文件到 交卷/。返回 info 或 None。"""
+        """冻结交付文件到 submissions/。返回 info 或 None。"""
         try:
             info = service.freeze(ws)
         except Exception as e:  # noqa: BLE001
@@ -1015,14 +1015,14 @@ class RefereeDesk(tk.Tk):
 
     RULE_SUMMARIES = {
         "v1.9": (
-            "v1.9.1 当前正式（1500 tick · ruleset v15，引擎 1.9.1）：遗产第 1/2 件各 +50、每方上限 100；"
+            "v1.9.2 当前正式（1500 tick · ruleset v15，引擎 1.9.2）：遗产第 1/2 件各 +50、每方上限 100；"
             "第 3 件起 0 VS 但推进 R1–R4 遗产科技（60/85/110/135 tick）；"
             "研究舰 100 CU / 25 tick / 速度 5.0，拔旗/舰毁中断研究；"
             "遗产补给 70 tick、场上最多 3 件无主；插旗 0 分；被拔旗守方 −25、攻方 +25（同一 VP 一次）；"
-            "库存遗产分随旗毁撤回；击杀 = min(造价×2/3,200)；人口上限 36；"
+            "库存遗产分随旗毁撤回；击杀 = min(造价×2/3,200)×军衔系数（满级 ×1.6）；人口上限 36；"
             "RAILGUN 240/40、ARTILLERY 550/180、两者对母舰伤害 ×1.5；"
-            "7 名参考 Bot（含 Warden 攻城）。时间到依次比 VS → KD → 母舰 HP → "
-            "旗控制（领先 >5%） → 平。"
+            "预制双基线（baseline1 中等 / baseline2 极强）。时间到依次比 VS → KD → 母舰 HP → "
+            "旗控制时长（差 > max(15, 5%×Turn) tick） → 平。"
         ),
         "v1.4": (
             "v1.4 历史基线（1200 tick · ruleset v14）：VP 累计分、七领域计分、"
@@ -1077,7 +1077,7 @@ class RefereeDesk(tk.Tk):
         rules_mode = self.rules_vars[scope].get()
         is_exp = str(rules_mode).startswith("v1.9")
         if is_exp:
-            rule_line = "规则 v1.9.1 当前正式（1500 tick · ruleset v15，引擎 1.9.1）"
+            rule_line = "规则 v1.9.2 当前正式（1500 tick · ruleset v15，引擎 1.9.2）"
         else:
             rule_line = "规则 v1.4 历史基线（1200 tick）"
         record_dir = self._record_dir(scope)
@@ -1088,7 +1088,7 @@ class RefereeDesk(tk.Tk):
                 "%s\n%s\n%s\n\n对手：%s%s\n\n"
                 "将进行 %d 场对阵、%d 局真实对局（每场换边打 2 局）。\n"
                 "成绩写入：%s\n"
-                "对局期间会另写一本评测封存（bots/封存记录/_desk_*.json），跑完删掉。"
+                "对局期间会另写一本评测封存（bots/seal-records/_desk_*.json），跑完删掉。"
                 % (who, "\n".join("  · " + w[1] for w in picked), rule_line,
                    "、".join(e.stem for e in baselines) if baselines
                    else "、".join(REF_BOTS),
@@ -1121,7 +1121,7 @@ class RefereeDesk(tk.Tk):
         mode = str(rules_mode)
         is_exp = mode.startswith("v1.9")
         if is_exp:
-            version = "1.9.1"
+            version = "1.9.2"
         else:
             version = "1.4"
         mode_label = "v%s 当前" % version if is_exp else "v1.4 历史"
@@ -1156,7 +1156,7 @@ class RefereeDesk(tk.Tk):
                 dst = stage if src == "." else stage / src
                 dst.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(frozen, dst / frozen.name)
-                self._emit(("line", "     使用收卷副本 交卷/%s" % frozen.name, "dim"))
+                self._emit(("line", "     使用收卷副本 submissions/%s" % frozen.name, "dim"))
             digest = tree_digest(stage)
             self._emit(("line", "暂存 %-24s ← %s" % (slug, path)))
             self._emit(("line", "     源码摘要 %s" % digest[:16]))
@@ -1171,7 +1171,7 @@ class RefereeDesk(tk.Tk):
             rules["rulesVersion"] = version
         if is_exp:
             # 把裁判台选中的 v1.9 规则写进评测配置，便于赛后审计。
-            # 数值必须与 internal/sim/rules15.go（1.9.1）保持一致。
+            # 数值必须与 internal/sim/rules15.go（1.9.2）保持一致。
             rules.update({
                 "popMax": 36,
                 "relicValue": 50, "relicVSCap": 100,
@@ -1219,7 +1219,7 @@ class RefereeDesk(tk.Tk):
                 cfg["entries"].append({"name": bot, "author": "官方参考 Bot",
                                        "source": "workspace/bots/%s" % bot.lower(),
                                        "bin": "bots/bin/%s.exe" % bot.lower()})
-            self._emit(("line", "未找到 baseline@*.exe，改用 %d 个参考 Bot"
+            self._emit(("line", "未找到 baseline@*.exe，改用 %d 个官方基线"
                         % len(REF_BOTS), "dim"))
         stage_rel = STAGE_ROOT.relative_to(ENGINE).as_posix()
         for slug in names:
@@ -1251,7 +1251,7 @@ class RefereeDesk(tk.Tk):
         dest = out_abs
         if record_base is not None:
             # 引擎只允许把结果写在 war_of_desert 内，所以先落到 results/desk/<stamp>，
-            # 跑完再整体搬到 算法赛/比赛记录 或 算法赛/测试/测试成绩。
+            # 跑完再整体搬到 algorithm-contest/match-records 或 algorithm-contest/tests/test-results。
             dest = Path(record_base) / stamp
             dest.parent.mkdir(parents=True, exist_ok=True)
             if dest.exists():
@@ -1261,7 +1261,7 @@ class RefereeDesk(tk.Tk):
             self.last_out = str(dest)
         self._emit(("line", "成绩 → %s" % dest, "ok"))
         # 临时编排的封存与配置：跑完就删，封存目录里只留赛季的账。
-        for p in (ENGINE / "bots" / "封存记录" / (Path(cfg_rel).stem + ".json"),
+        for p in (ENGINE / "bots" / "seal-records" / (Path(cfg_rel).stem + ".json"),
                   ENGINE / cfg_rel):
             try:
                 p.unlink()
@@ -1469,7 +1469,7 @@ class RefereeDesk(tk.Tk):
         can_seal = state in ("进行中", "已暂停") and not busy
         btns["freeze"].configure(state="normal" if can_seal else "disabled")
         if state == "已收卷":
-            self._set_step_label(ui, "freeze", "已收卷，交卷/ 里有副本", MUTED)
+            self._set_step_label(ui, "freeze", "已收卷，submissions/ 里有副本", MUTED)
         elif state == "未开赛":
             self._set_step_label(ui, "freeze", "开始编码后才能收卷", MUTED)
         elif state.startswith("已超时"):

@@ -2,28 +2,28 @@
 # -*- coding: utf-8 -*-
 """Desert Arena · 赛务（发卷 / 开赛 / 暂停 / 收卷）。
 
-版本：v1.9.1
+版本：v1.9.2
 功能：以「一个选手目录」为单位管理编码期。目录可以是空的——开赛时先把
-      选手包铺进去，再开始计时；到点把 submission/<选手名>_bot.go 冻结到 交卷/。
+      选手包铺进去，再开始计时；到点把 submission/<选手名>_bot.go 冻结到 submissions/。
 
-    python -X utf8 赛务.py --dir "算法赛/RTS算法赛@X" --issue     # 发卷
-    python -X utf8 赛务.py --dir "算法赛/RTS算法赛@X" --start     # 开赛计时
-    python -X utf8 赛务.py --dir "算法赛/RTS算法赛@X" --status
-    python -X utf8 赛务.py --dir "算法赛/RTS算法赛@X" --pause --note="模型限额"
-    python -X utf8 赛务.py --dir "算法赛/RTS算法赛@X" --resume
-    python -X utf8 赛务.py --dir "算法赛/RTS算法赛@X" --freeze
+    python -X utf8 赛务.py --dir "algorithm-contest/rts-contest@x" --issue     # 发卷
+    python -X utf8 赛务.py --dir "algorithm-contest/rts-contest@x" --start     # 开赛计时
+    python -X utf8 赛务.py --dir "algorithm-contest/rts-contest@x" --status
+    python -X utf8 赛务.py --dir "algorithm-contest/rts-contest@x" --pause --note="模型限额"
+    python -X utf8 赛务.py --dir "algorithm-contest/rts-contest@x" --resume
+    python -X utf8 赛务.py --dir "algorithm-contest/rts-contest@x" --freeze
 
 目录约定（与 开赛.py 一致）：
 
-    算法赛/RTS算法赛@X/
-    ├── workspace/            选手包（由模板 RTS算法赛@Model_name 复制而来）
+    algorithm-contest/rts-contest@x/
+    ├── workspace/            选手包（由模板 rts-contest@model-name 复制而来）
     │   ├── RULES.md …         协议与经济基线
-    │   ├── RULES_V15.md …     v1.9.1 增量规则（当前比赛）
+    │   ├── RULES_V15.md …     v1.9.2 增量规则（当前比赛）
     │   ├── bots/             骨架 Bot + 两个预编译基线
     │   ├── submission/X_bot.go    ← AI 在这里写（文件名 = 选手名 + _bot.go）
     │   └── clock.py               ← 选手自己查看剩余时间
-    ├── 交卷/X_bot.go         收卷后的冻结副本
-    ├── 交卷/交卷记录.json     SHA-256 / 字节数 / 用时 / accepted
+    ├── submissions/X_bot.go         收卷后的冻结副本
+    ├── submissions/交卷记录.json     SHA-256 / 字节数 / 用时 / accepted
     └── .赛务.json            计时与暂停的权威记录
 
 计时口径：90 分钟目标、120 分钟强制收卷。超过 120 分钟仍会冻结留档，
@@ -50,7 +50,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 ENGINE = HERE / "war_of_desert"
 # 选手包的唯一真源：模板工作区。其他选手目录都由它复制而来。
-TEMPLATE = HERE / "算法赛" / "RTS算法赛@Model_name"
+TEMPLATE = HERE / "algorithm-contest" / "rts-contest@model-name"
 PACKAGE = TEMPLATE / "workspace"
 
 TARGET_MINUTES = 90
@@ -58,7 +58,7 @@ LIMIT_MINUTES = 120
 
 WS = "workspace"
 CLOCK = Path(WS) / "clock.py"
-FROZEN_DIR = "交卷"
+FROZEN_DIR = "submissions"
 RECORD = ".赛务.json"
 WIN_EPOCH_OFFSET = 11644473600
 
@@ -152,7 +152,7 @@ def sync_engine(dest: Path) -> dict:
 def engine_rules_version() -> str:
     """从 internal/sim 读当前比赛规则版本号，避免文档和代码各说一套。
 
-    当前比赛走 v1.9.1（ruleset v15），版本常量在 rules15.go 的
+    当前比赛走 v1.9.2（ruleset v15），版本常量在 rules15.go 的
     RulesVersionV15；读不到时退回 rules.go 的 RulesVersion。
     """
     for name, key in (("rules15.go", "RulesVersionV15"),
@@ -434,7 +434,7 @@ def resume(ws: Path) -> None:
 
 
 def freeze(ws: Path) -> dict:
-    """冻结 submission/<选手名>_bot.go 到 交卷/，记录哈希与用时。"""
+    """冻结 submission/<选手名>_bot.go 到 submissions/，记录哈希与用时。"""
     src = submission_path(ws)
     out = ws / FROZEN_DIR
     out.mkdir(parents=True, exist_ok=True)

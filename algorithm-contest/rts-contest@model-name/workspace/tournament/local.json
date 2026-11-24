@@ -1,0 +1,53 @@
+{
+  "name": "本地练习赛（v1.9.2）",
+  "season": "本地 · v1.9.2 规则（遗产/插旗/胜利分/CEP/等级）",
+  "version": "1.9.2",
+  "engine": {
+    "kind": "native"
+  },
+  "rules": {
+    "tickLimit": 1500,
+    "tickMs": 50,
+    "decideMs": 120,
+    "initMs": 2000,
+    "maxStrikes": 3,
+    "strikeMode": "consecutive",
+    "generator": "minecraft",
+    "vision": false,
+    "ruleset": "v15"
+  },
+  "schedule": {
+    "seeds": [
+      20261109,
+      20261116,
+      20261123
+    ],
+    "mirror": true,
+    "bootstrap": 200
+  },
+  "entries": [
+    {
+      "name": "baseline@1",
+      "author": "基线（预编译）",
+      "source": "",
+      "bin": "bots/baseline@1.exe",
+      "prebuilt": true
+    },
+    {
+      "name": "baseline@2",
+      "author": "基线（预编译）",
+      "source": "",
+      "bin": "bots/baseline@2.exe",
+      "prebuilt": true
+    },
+    {
+      "name": "你的 Bot",
+      "author": "本地",
+      "source": "",
+      "bin": "bot.exe",
+      "prebuilt": true
+    }
+  ],
+  "output": "matches/season",
+  "verify": true
+}

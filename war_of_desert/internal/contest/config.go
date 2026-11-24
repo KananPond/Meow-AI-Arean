@@ -49,7 +49,7 @@ type Config struct {
 	Verify  bool             `json:"verify"`
 
 	// Key 是配置文件名（去掉目录与 .json），也是这个赛季封存记录的文件名。
-	// 两个赛季并存靠它区分：bots/封存记录/<Key>.json。
+	// 两个赛季并存靠它区分：bots/seal-records/<Key>.json。
 	Key string `json:"-"`
 }
 
@@ -83,7 +83,7 @@ func Load(path string) (*Config, string, error) {
 // 选手包里的 arena/ 不带 tournament/ 目录，check/local 需要一个不需要配置文件的
 // 兜底：数值必须与正式赛配置一致，否则本地跑出来的判定和赛场不是一回事。
 func Default() *Config {
-	c := &Config{Name: "本地默认", Season: "local", Version: "1.9.1"}
+	c := &Config{Name: "本地默认", Season: "local", Version: "1.9.2"}
 	c.Engine.Kind = "native"
 	c.Rules.TickLimit = 1500
 	c.Rules.TickMs = 50
