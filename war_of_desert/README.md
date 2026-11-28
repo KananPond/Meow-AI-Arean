@@ -79,6 +79,18 @@ go run ./cmd/arena check -config tournament/formal_v19.json -seed 20261109
 观赛：把 `results/*/replays/match-NNN.json` 拖进 [`回放查看器.html`](回放查看器.html)
 （零依赖单文件，浏览器直接打开；地形 / 单位 / VP / 记分 / 终局复核徽标）。
 
+3D 观赛：[`回放查看器3D.html`](回放查看器3D.html) 把同一份回放渲染成卡拉克沙漠风格的三维战场
+（Three.js；沙丘 / 台地 / 干河谷 / 盐沼、程序化地面舰队、VP 信标、跟随镜头与战术地图）。
+它从 CDN 取 Three.js，建议用本地 HTTP 服务打开：
+
+```bash
+cd war_of_desert && python -m http.server 8777
+# http://127.0.0.1:8777/回放查看器3D.html
+```
+
+视觉参考图（家园：卡拉克沙漠，仅作风格参考）在 `refs/kharak/`，来源与版权说明见
+[`refs/kharak/SOURCE.md`](refs/kharak/SOURCE.md)。
+
 ---
 
 ## 攻守对战（实验）
@@ -177,6 +189,8 @@ Warden BT 第 4；同 Bot 双座位 80 局送达差 t=1.11（不显著）。
 │   ├── 赛事手册.md           正式赛制、流程、判罚、申诉、运营清单
 │   ├── LEADERBOARD.md       两季榜单与读法
 │   ├── 回放查看器.html       零依赖回放播放器（拖入 match-NNN.json 观赛）
+│   ├── 回放查看器3D.html     Three.js 三维回放（卡拉克沙漠风格）
+│   ├── refs/kharak/          视觉参考图（来源见 SOURCE.md）
 │   ├── go.mod
 │   ├── cmd/
 │   │   ├── arena/           build / plan / run / rate / check / selftest
